@@ -19,5 +19,18 @@ export const steam = {
   "steam.loadError": "تعذر تحميل ملف Steam المحفوظ.",
   "steam.connectionError": "تعذر إكمال اتصال Steam.",
   "steam.verificationError": "تعذر التحقق من اتصال Steam.",
-  "steam.disconnectError": "تعذر قطع اتصال Steam."
+  "steam.disconnectError": "تعذر قطع اتصال Steam.",
+  "steam.sync.title": "مكتبة الألعاب",
+  "steam.sync.button": "مزامنة المكتبة",
+  "steam.sync.syncing": "جارٍ المزامنة...",
+  "steam.sync.lastSync": "آخر مزامنة:",
+  "steam.sync.never": "لم تتم المزامنة بعد",
+  "steam.sync.result": "تم جلب {fetched} · إضافة {inserted} · تحديث {updated} · دون تغيير {unchanged} · تخطي {skipped}",
+  "steam.sync.reconnect": "أعد ربط Steam لتوفير مفتاح API لهذه الجلسة.",
+  "steam.sync.invalidKey": "رفض Steam مفتاح API. أعد ربط الحساب ثم حاول مجددًا.",
+  "steam.sync.privateLibrary": "تفاصيل ألعاب Steam خاصة. اجعلها عامة من إعدادات الخصوصية في Steam.",
+  "steam.sync.rateLimited": "يستقبل Steam طلبات كثيرة حاليًا. حاول لاحقًا.",
+  "steam.sync.network": "تعذر الوصول إلى مكتبة Steam. تحقق من الاتصال.",
+  "steam.sync.timeout": "استغرق رد Steam وقتًا طويلًا. حاول مجددًا.",
+  "steam.sync.error": "تعذرت مزامنة مكتبة Steam."
 } as const;

@@ -576,6 +576,15 @@ main { width:100%; max-width:1540px; padding:clamp(24px,2.4vw,38px) clamp(20px,2
 .profile-avatar img { width:100%; height:100%; display:block; object-fit:cover; }
 .steam-avatar { width:52px; height:52px; border-radius:13px; }
 .steam-error { margin:12px 0 0; padding:10px 12px; border:1px solid color-mix(in srgb,var(--danger) 28%,transparent); border-radius:var(--radius-sm); color:var(--danger); background:color-mix(in srgb,var(--danger) 7%,transparent); font-size:11px; }
+.steam-library-panel { display:grid; gap:12px; }
+.steam-sync-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 15px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface); }
+.steam-sync-row > div { min-width:0; }
+.steam-sync-row strong,.steam-sync-row small { display:block; }
+.steam-sync-row small { margin-top:4px; color:var(--text-secondary); font-size:11px; }
+.steam-sync-result { margin:0; padding:10px 12px; border:1px solid color-mix(in srgb,var(--success) 28%,transparent); border-radius:var(--radius-sm); color:var(--success); background:color-mix(in srgb,var(--success) 7%,transparent); font-size:11px; }
+.steam-sync-spinning { animation:steam-sync-rotation .8s linear infinite; }
+@keyframes steam-sync-rotation { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .steam-sync-spinning { animation:none; } }
 .settings-section > header { gap:13px; padding-bottom:17px; }.settings-section > header > div { width:38px; height:38px; border-radius:var(--radius-md); }
 .settings-section > header h2 { font-size:15px; }.settings-section > header > span > p { font-size:12px; }
 .setting-toggle { min-height:58px; padding:11px 0; }.setting-toggle span strong { font-size:13px; }.setting-toggle span small { font-size:11px; line-height:1.45; }
@@ -1049,4 +1058,75 @@ html[dir="rtl"] svg { transform:none; }
 @media (prefers-reduced-motion:reduce) {
   .nexus-game-card__media-gradient,.nexus-game-card__hover-details { transition:none; }
   .nexus-game-card__hover-details { transform:none; }
+}
+
+/* Achievement Journey v1 */
+.achievement-journey { display:flex;flex-direction:column;gap:clamp(28px,3vw,42px);animation:journey-enter var(--motion-standard) var(--ease-standard) both; }
+@keyframes journey-enter { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none} }
+.journey-hero { position:relative;isolation:isolate;display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-6);overflow:hidden;min-height:260px;padding:clamp(28px,4vw,52px);background:linear-gradient(125deg,var(--surface-elevated),color-mix(in srgb,var(--accent-subtle) 65%,var(--surface-default))); }
+.journey-hero__glow { position:absolute;z-index:-1;inset-block-start:-50%;inset-inline-end:-8%;width:48%;aspect-ratio:1;border-radius:50%;pointer-events:none;background:radial-gradient(circle,color-mix(in srgb,var(--accent-primary) 24%,transparent),transparent 68%); }
+.journey-hero__content { max-width:720px; }
+.journey-eyebrow { display:inline-flex;align-items:center;gap:var(--space-2);color:var(--accent-primary);font-size:var(--font-size-xs);font-weight:800;letter-spacing:.12em;text-transform:uppercase; }
+.journey-hero__content > p { margin:var(--space-6) 0 var(--space-2);color:var(--text-secondary);font-size:var(--font-size-md); }
+.journey-hero h1 { max-width:680px;margin:0;font-size:var(--font-size-display);line-height:var(--line-tight);letter-spacing:-.035em; }
+.journey-hero__summary { max-width:620px;margin-block-start:var(--space-5);color:var(--text-secondary);font-size:var(--font-size-lg);line-height:var(--line-relaxed); }
+.journey-section { display:flex;flex-direction:column;gap:var(--space-5); }
+.journey-game-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,220px));justify-content:start;gap:clamp(16px,1.5vw,22px); }
+.journey-ranked-game { position:relative;min-width:0; }
+.journey-ranked-game > .ds-status-badge { position:absolute;z-index:6;inset-block-start:var(--space-3);inset-inline-end:var(--space-3);pointer-events:none; }
+.journey-ranked-game .nexus-game-card { width:100%; }
+.journey-ranked-game .nexus-game-card__content { min-height:66px;gap:var(--space-1);padding:var(--space-3); }
+.journey-ranked-game .nexus-game-card__heading h2 { display:-webkit-box;overflow:hidden;min-height:2.2em;font-size:var(--font-size-md);line-height:1.1;white-space:normal;-webkit-box-orient:vertical;-webkit-line-clamp:2; }
+.journey-feature-grid { display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:var(--space-5); }
+.journey-next-achievement,.journey-dna,.journey-weekly,.journey-library { min-width:0;padding:clamp(20px,2.2vw,30px); }
+.journey-achievement-button { width:100%;display:grid;grid-template-columns:92px minmax(0,1fr);align-items:center;gap:var(--space-5);margin-block-start:var(--space-6);padding:var(--space-3);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);background:var(--surface-subtle);text-align:start;cursor:pointer;transition:transform var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard); }
+.journey-achievement-button:hover { transform:translateY(-2px);border-color:var(--border-interactive); }
+.journey-achievement-button:focus-visible { outline:3px solid var(--focus-ring);outline-offset:3px; }
+.journey-achievement-art { width:92px;aspect-ratio:2/3;border-radius:var(--radius-sm); }
+.journey-achievement-button span { color:var(--text-tertiary);font-size:var(--font-size-xs); }
+.journey-achievement-button h2 { margin:var(--space-1) 0 var(--space-2);font-size:var(--font-size-xl); }
+.journey-achievement-button p { margin:0 0 var(--space-3);color:var(--text-secondary);font-size:var(--font-size-sm);line-height:var(--line-normal); }
+.journey-dna { display:flex;align-items:flex-start;flex-direction:column;gap:var(--space-3); }
+.journey-dna .ds-section-header { width:100%;margin-block-end:var(--space-3); }
+.journey-dna__mark { width:56px;height:56px;display:grid;place-items:center;border-radius:var(--radius-lg);color:var(--accent-primary);background:var(--accent-subtle); }
+.journey-dna__secondary { color:var(--text-tertiary);font-size:var(--font-size-xs); }
+.journey-dna > p { margin:0;color:var(--text-secondary);font-size:var(--font-size-sm);line-height:var(--line-relaxed); }
+.journey-dna .ds-progress { width:100%;margin-block-start:auto; }
+.journey-cards-grid { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-4); }
+.journey-insight-card { display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:var(--space-3);padding:var(--space-5); }
+.journey-insight-card h3 { margin:0;font-size:var(--font-size-lg);line-height:var(--line-normal); }
+.journey-insight-card p { flex:1;margin:0;color:var(--text-secondary);font-size:var(--font-size-sm);line-height:var(--line-relaxed); }
+.journey-insight-card button { padding:0;border:0;color:var(--accent-primary);background:transparent;font-size:var(--font-size-sm);font-weight:700;cursor:pointer; }
+.journey-insight-card button:focus-visible { outline:3px solid var(--focus-ring);outline-offset:3px;border-radius:var(--radius-xs); }
+.journey-inline-empty { padding:var(--space-6);color:var(--text-secondary);font-size:var(--font-size-sm);text-align:start; }
+.journey-metric-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);margin-block-start:var(--space-6); }
+.journey-metric { display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--space-1) var(--space-2);min-width:0;padding:var(--space-3);border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-subtle); }
+.journey-metric svg { grid-row:1/3;color:var(--accent-primary); }
+.journey-metric span { overflow:hidden;color:var(--text-tertiary);font-size:var(--font-size-xs);text-overflow:ellipsis;white-space:nowrap; }
+.journey-metric strong { font-size:var(--font-size-lg);line-height:var(--line-tight); }
+.journey-skeleton-grid { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-4); }
+.journey-skeleton-grid > .ds-surface,.journey-feature-grid > .ds-surface { display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-5); }
+
+@media (max-width:1180px) {
+  .journey-cards-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:900px) {
+  .journey-feature-grid { grid-template-columns:1fr; }
+  .journey-game-grid { grid-template-columns:repeat(auto-fit,minmax(170px,200px)); }
+}
+@media (max-width:620px) {
+  .journey-hero { min-height:0;flex-direction:column; }
+  .journey-game-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr)); }
+  .journey-game-grid .nexus-game-card { max-width:200px; }
+  .journey-cards-grid,.journey-skeleton-grid { grid-template-columns:1fr; }
+  .journey-achievement-button { grid-template-columns:72px minmax(0,1fr); }
+  .journey-achievement-art { width:72px; }
+}
+@media (max-width:420px) {
+  .journey-metric-grid { grid-template-columns:1fr; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .achievement-journey { animation:none; }
+  .journey-achievement-button { transition:none; }
+  .journey-achievement-button:hover { transform:none; }
 }

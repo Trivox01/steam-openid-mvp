@@ -9,6 +9,7 @@ import { useAsyncData } from "../hooks/useAsyncData";
 import { services } from "../services/compositionRoot";
 import { GameCard, GameCardCompact } from "../components/games/GameCard";
 import { useTranslation } from "../i18n/TranslationContext";
+import { useLibraryRevision } from "../hooks/useLibraryRevision";
 
 type GameFilter = "all" | "completed" | "progress" | "not_started";
 type GameSort = "recent" | "completion" | "playtime" | "name";
@@ -22,7 +23,8 @@ export function GamesPage({ onOpenGame }: { onOpenGame: (id: GameId) => void }) 
   const [sort, setSort] = useState<GameSort>("recent");
   const [view, setView] = useState<ViewMode>("grid");
   const [density, setDensity] = useState<LibraryDensity>("comfortable");
-  const state = useAsyncData(() => services.games.list(), []);
+  const libraryRevision = useLibraryRevision();
+  const state = useAsyncData(() => services.games.list(), [libraryRevision]);
   const source = state.status === "success" ? state.data : [];
   const games = useMemo(() => source
     .filter((game) => game.name.toLowerCase().includes(query.toLowerCase()))
@@ -75,13 +77,13 @@ function toGameCardData(game: Game): GameCardData {
     totalAchievements: game.totalAchievements,
     completionPercent: game.completionPercentage,
     lastPlayedAt: game.lastPlayedAt,
-    favorite: false,
-    hidden: false,
-    status: game.completionPercentage === 100
+    favorite: game.favorite ?? false,
+    hidden: game.hidden ?? false,
+    status: game.status ?? (game.completionPercentage === 100
       ? "completed"
       : game.playtimeHours <= 0
         ? "notStarted"
-        : "playing"
+        : "playing")
   };
 }
 

@@ -19,5 +19,18 @@ export const steam = {
   "steam.loadError": "The saved Steam profile could not be loaded.",
   "steam.connectionError": "Steam connection could not be completed.",
   "steam.verificationError": "Steam connection could not be verified.",
-  "steam.disconnectError": "Steam could not be disconnected."
+  "steam.disconnectError": "Steam could not be disconnected.",
+  "steam.sync.title": "Game library",
+  "steam.sync.button": "Sync library",
+  "steam.sync.syncing": "Syncing...",
+  "steam.sync.lastSync": "Last sync:",
+  "steam.sync.never": "Not synced yet",
+  "steam.sync.result": "{fetched} fetched · {inserted} added · {updated} updated · {unchanged} unchanged · {skipped} skipped",
+  "steam.sync.reconnect": "Reconnect Steam to provide the API key for this session.",
+  "steam.sync.invalidKey": "Steam rejected the API key. Reconnect your account and try again.",
+  "steam.sync.privateLibrary": "Your Steam game details are private. Make them public in Steam privacy settings.",
+  "steam.sync.rateLimited": "Steam is receiving too many requests. Please try again later.",
+  "steam.sync.network": "The Steam library could not be reached. Check your connection.",
+  "steam.sync.timeout": "Steam took too long to respond. Please try again.",
+  "steam.sync.error": "The Steam library could not be synchronized."
 } as const;

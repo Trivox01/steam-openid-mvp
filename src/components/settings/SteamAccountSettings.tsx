@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Eye, EyeOff, Gamepad2, Link2Off, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Gamepad2, Link2Off, RefreshCw, ShieldCheck } from "lucide-react";
 import { HoloPulseLoader } from "../ui/holo-pulse-loader";
 import { services } from "../../services/compositionRoot";
 import { steamProfileToUserProfile } from "../../services/platform/SteamConnectionService";
@@ -10,6 +10,9 @@ import type {
 } from "../../types";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
 import { useTranslation } from "../../i18n/TranslationContext";
+import type { SteamLibrarySyncResult } from "../../types";
+import { SteamLibrarySyncError } from "../../services/platform/SteamLibrarySyncService";
+import { publishLibraryChange } from "../../services/dataEvents";
 
 export function SteamAccountSettings({
   onProfileChange
@@ -24,6 +27,9 @@ export function SteamAccountSettings({
   const [profile, setProfile] = useState<SteamProfile>();
   const [message, setMessage] = useState("");
   const [disconnectOpen, setDisconnectOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SteamLibrarySyncResult>();
+  const [lastSyncedAt, setLastSyncedAt] = useState<string>();
   const available = services.steam.available;
 
   useEffect(() => {
@@ -41,6 +47,11 @@ export function SteamAccountSettings({
         setStatus("error");
         setMessage(t("steam.loadError"));
       });
+    services.steamLibrarySync.getLastSync()
+      .then((metadata) => {
+        if (active) setLastSyncedAt(metadata?.lastSyncedAt);
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
     };
@@ -86,6 +97,32 @@ export function SteamAccountSettings({
     }
   };
 
+  const syncLibrary = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setMessage("");
+    setSyncResult(undefined);
+    try {
+      const result = await services.steamLibrarySync.sync();
+      setSyncResult(result);
+      setLastSyncedAt(result.syncedAt);
+      publishLibraryChange();
+    } catch (error) {
+      const code = error instanceof SteamLibrarySyncError ? error.code : "unknown";
+      const keyByCode: Record<string, Parameters<typeof t>[0]> = {
+        api_key_unavailable: "steam.sync.reconnect",
+        invalid_api_key: "steam.sync.invalidKey",
+        private_library: "steam.sync.privateLibrary",
+        rate_limited: "steam.sync.rateLimited",
+        no_internet: "steam.sync.network",
+        timeout: "steam.sync.timeout"
+      };
+      setMessage(t(keyByCode[code] ?? "steam.sync.error"));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   if (!available) {
     return (
       <div className="steam-unavailable" role="status">
@@ -101,20 +138,40 @@ export function SteamAccountSettings({
   return (
     <>
       {profile && status === "connected" ? (
-        <div className="steam-connected-card">
-          <ProfileAvatar
-            className="steam-avatar"
-            src={profile.avatarMediumUrl || profile.avatarFullUrl || profile.avatarUrl}
-            name={profile.personaName}
-          />
-          <div>
-            <span className="connected-badge"><CheckCircle2 /> {t("steam.connected")}</span>
-            <strong>{profile.personaName}</strong>
-            <small>{profile.steamId}</small>
+        <div className="steam-library-panel">
+          <div className="steam-connected-card">
+            <ProfileAvatar
+              className="steam-avatar"
+              src={profile.avatarMediumUrl || profile.avatarFullUrl || profile.avatarUrl}
+              name={profile.personaName}
+            />
+            <div>
+              <span className="connected-badge"><CheckCircle2 /> {t("steam.connected")}</span>
+              <strong>{profile.personaName}</strong>
+              <small>{profile.steamId}</small>
+            </div>
+            <button className="secondary-button" type="button" onClick={() => setDisconnectOpen(true)}>
+              <Link2Off size={15} /> {t("steam.disconnect")}
+            </button>
           </div>
-          <button className="secondary-button" type="button" onClick={() => setDisconnectOpen(true)}>
-            <Link2Off size={15} /> {t("steam.disconnect")}
-          </button>
+          <div className="steam-sync-row">
+            <div>
+              <strong>{t("steam.sync.title")}</strong>
+              <small>{lastSyncedAt
+                ? `${t("steam.sync.lastSync")} ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(lastSyncedAt))}`
+                : t("steam.sync.never")}</small>
+            </div>
+            <button className="primary-button" type="button" onClick={() => void syncLibrary()} disabled={syncing}>
+              <RefreshCw size={15} className={syncing ? "steam-sync-spinning" : ""} />
+              {syncing ? t("steam.sync.syncing") : t("steam.sync.button")}
+            </button>
+          </div>
+          {syncResult && <p className="steam-sync-result" role="status">{t("steam.sync.result")
+            .replace("{fetched}", String(syncResult.fetched))
+            .replace("{inserted}", String(syncResult.inserted))
+            .replace("{updated}", String(syncResult.updated))
+            .replace("{unchanged}", String(syncResult.unchanged))
+            .replace("{skipped}", String(syncResult.skipped))}</p>}
         </div>
       ) : (
         <div className="steam-connection-form">

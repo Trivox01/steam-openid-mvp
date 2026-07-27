@@ -1,6 +1,6 @@
 export const common = {
   "nav.overview": "Overview",
-  "nav.dashboard": "Dashboard",
+  "nav.dashboard": "Achievement Journey",
   "nav.games": "My Games",
   "nav.achievements": "Achievements",
   "nav.activity": "Activity",

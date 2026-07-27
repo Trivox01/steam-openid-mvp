@@ -7,6 +7,10 @@ pub struct GameRecord {
     pub cover_url: String, pub background_url: String, pub playtime_minutes: i64,
     pub achievements_unlocked: i64, pub achievements_total: i64, pub completion_percentage: f64,
     pub last_played_at: Option<String>,
+    pub playtime_two_weeks_minutes: Option<i64>, pub playtime_windows_minutes: Option<i64>,
+    pub playtime_mac_minutes: Option<i64>, pub playtime_linux_minutes: Option<i64>,
+    pub icon_url: String, pub synced_at: Option<String>, pub favorite: bool, pub hidden: bool,
+    pub game_status: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

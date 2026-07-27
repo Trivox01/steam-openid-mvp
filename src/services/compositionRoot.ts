@@ -5,6 +5,7 @@ import { AchievementService, ActivityService, GameService, ProfileService, Setti
 import { TauriSteamGateway } from "../integrations/steam/TauriSteamGateway";
 import { SteamConnectionService } from "./platform/SteamConnectionService";
 import { SteamProvider } from "./platform/SteamProvider";
+import { SteamLibrarySyncService } from "./platform/SteamLibrarySyncService";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new MockGameRepository();
@@ -14,6 +15,7 @@ const settings = persistent ? new SqliteSettingsRepository() : new MockSettingsR
 const profile = persistent ? new SqliteProfileRepository() : new MockProfileRepository();
 const sync = persistent ? new SqliteSyncMetadataRepository() : new MockSyncMetadataRepository();
 const steamConnection = new SteamConnectionService(new TauriSteamGateway());
+export const steamProvider = new SteamProvider(steamConnection);
 
 export const repositories = { games, achievements, activities, settings, profile, sync };
 export const services = {
@@ -23,7 +25,7 @@ export const services = {
   settings: new SettingsService(settings),
   profile: new ProfileService(profile),
   statistics: new StatisticsService(games, achievements, activities),
-  steam: steamConnection
+  steam: steamConnection,
+  steamLibrarySync: new SteamLibrarySyncService(steamProvider, games, sync)
 };
 export const storageMode = persistent ? "sqlite" : "mock";
-export const steamProvider = new SteamProvider(steamConnection);

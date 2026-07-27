@@ -3,14 +3,32 @@ import { isTauriRuntime } from "../../runtime/environment";
 import type {
   SteamConnectionResult,
   SteamCredentials,
+  SteamOwnedGamesResult,
   SteamProfile
 } from "../../types";
 
 export class SteamIntegrationError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly code = "unknown") {
     super(message);
     this.name = "SteamIntegrationError";
   }
+
+}
+
+function readErrorCode(error: unknown) {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  if (typeof error === "string") {
+    try {
+      const decoded = JSON.parse(error) as { code?: unknown };
+      if (typeof decoded.code === "string") return decoded.code;
+    } catch {
+      // Tauri can also return a plain string for non-structured command failures.
+    }
+  }
+  return "unknown";
 }
 
 export class TauriSteamGateway {
@@ -33,6 +51,23 @@ export class TauriSteamGateway {
     } catch {
       throw new SteamIntegrationError(
         "The desktop application could not complete the Steam connection request."
+      );
+    }
+  }
+
+  async getOwnedGames(): Promise<SteamOwnedGamesResult> {
+    if (!this.available) {
+      throw new SteamIntegrationError(
+        "Steam integration is available only in the desktop application.",
+        "tauri_required"
+      );
+    }
+    try {
+      return await invoke<SteamOwnedGamesResult>("steam_get_owned_games");
+    } catch (error) {
+      throw new SteamIntegrationError(
+        "The Steam library could not be synchronized.",
+        readErrorCode(error)
       );
     }
   }

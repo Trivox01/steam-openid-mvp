@@ -22,7 +22,8 @@ pub fn run() {
             commands::get_activities, commands::save_activities, commands::clear_activities,
             commands::get_preferences, commands::save_preferences, commands::reset_preferences,
             commands::get_profile, commands::save_profile, commands::get_sync_metadata, commands::save_sync_metadata,
-            steam_commands::validate_steam_connection, steam_commands::get_saved_steam_profile, steam_commands::disconnect_steam_account
+            steam_commands::validate_steam_connection, steam_commands::get_saved_steam_profile, steam_commands::disconnect_steam_account,
+            steam_commands::steam_get_owned_games
         ])
         .run(tauri::generate_context!())
         .expect("error while running Achievement Nexus");

@@ -1,11 +1,18 @@
 use rusqlite::{params, OptionalExtension};
+use serde::Serialize;
 use tauri::State;
 
 use crate::{
     database::DatabaseState,
     secret_store::SecretStore,
-    steam::{SteamClient, SteamConnectionResult, SteamError, SteamProfile},
+    steam::{SteamClient, SteamConnectionResult, SteamError, SteamOwnedGamesResult, SteamProfile},
 };
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamCommandError {
+    pub code: String,
+}
 
 #[tauri::command]
 pub async fn validate_steam_connection(
@@ -83,6 +90,26 @@ pub fn disconnect_steam_account(
     delete_profile(&database)
 }
 
+#[tauri::command]
+pub async fn steam_get_owned_games(
+    database: State<'_, DatabaseState>,
+    secrets: State<'_, SecretStore>,
+) -> Result<SteamOwnedGamesResult, SteamCommandError> {
+    let steam_id = read_steam_id(&database)
+        .map_err(|code| SteamCommandError { code })?
+        .ok_or_else(|| SteamCommandError { code: "steam_not_connected".to_string() })?;
+    let api_key = secrets
+        .steam_api_key()
+        .map_err(|_| SteamCommandError { code: "api_key_unavailable".to_string() })?
+        .ok_or_else(|| SteamCommandError { code: "api_key_unavailable".to_string() })?;
+    let client = SteamClient::new()
+        .map_err(|error| SteamCommandError { code: error.code().to_string() })?;
+    client
+        .get_owned_games(&steam_id, &api_key)
+        .await
+        .map_err(|error| SteamCommandError { code: error.code().to_string() })
+}
+
 fn connection_error(error: SteamError) -> SteamConnectionResult {
     SteamConnectionResult::failed(error.code(), error.user_message())
 }
@@ -120,4 +147,14 @@ fn delete_profile(database: &DatabaseState) -> Result<(), String> {
     db.execute("DELETE FROM steam_profile", [])
         .map(|_| ())
         .map_err(|_| "Unable to disconnect the Steam account.".to_string())
+}
+
+fn read_steam_id(database: &DatabaseState) -> Result<Option<String>, String> {
+    let db = database
+        .0
+        .lock()
+        .map_err(|_| "database_unavailable".to_string())?;
+    db.query_row("SELECT steam_id FROM steam_profile LIMIT 1", [], |row| row.get(0))
+        .optional()
+        .map_err(|_| "database_error".to_string())
 }

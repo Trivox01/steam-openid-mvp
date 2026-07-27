@@ -1,6 +1,6 @@
 export const common = {
   "nav.overview": "نظرة عامة",
-  "nav.dashboard": "لوحة التحكم",
+  "nav.dashboard": "رحلة الإنجازات",
   "nav.games": "ألعابي",
   "nav.achievements": "الإنجازات",
   "nav.activity": "النشاط",

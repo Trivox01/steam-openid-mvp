@@ -3,18 +3,20 @@ import { common as enCommon } from "../locales/en/common";
 import { settings as enSettings } from "../locales/en/settings";
 import { steam as enSteam } from "../locales/en/steam";
 import { gameCard as enGameCard } from "../locales/en/gameCard";
+import { intelligence as enIntelligence } from "../locales/en/intelligence";
 import { common as arCommon } from "../locales/ar/common";
 import { settings as arSettings } from "../locales/ar/settings";
 import { steam as arSteam } from "../locales/ar/steam";
 import { gameCard as arGameCard } from "../locales/ar/gameCard";
+import { intelligence as arIntelligence } from "../locales/ar/intelligence";
 
 export type Language = "en" | "ar";
 type Variables = Record<string, string | number>;
 type Dictionary = Record<string, string>;
 
 const dictionaries: Record<Language, Dictionary> = {
-  en: { ...enCommon, ...enSettings, ...enSteam, ...enGameCard },
-  ar: { ...arCommon, ...arSettings, ...arSteam, ...arGameCard }
+  en: { ...enCommon, ...enSettings, ...enSteam, ...enGameCard, ...enIntelligence },
+  ar: { ...arCommon, ...arSettings, ...arSteam, ...arGameCard, ...arIntelligence }
 };
 
 type TranslationContextValue = {

@@ -9,6 +9,9 @@ pub enum SteamError {
     Timeout,
     ApiUnavailable,
     InvalidResponse,
+    RateLimited,
+    PrivateLibrary,
+    ApiKeyUnavailable,
 }
 
 impl SteamError {
@@ -23,6 +26,9 @@ impl SteamError {
             Self::Timeout => "timeout",
             Self::ApiUnavailable => "steam_api_unavailable",
             Self::InvalidResponse => "invalid_response",
+            Self::RateLimited => "rate_limited",
+            Self::PrivateLibrary => "private_library",
+            Self::ApiKeyUnavailable => "api_key_unavailable",
         }
     }
 
@@ -37,6 +43,9 @@ impl SteamError {
             Self::Timeout => "Steam took too long to respond. Try again in a moment.",
             Self::ApiUnavailable => "Steam Web API is currently unavailable.",
             Self::InvalidResponse => "Steam returned an unexpected response.",
+            Self::RateLimited => "Steam rate limited this request. Try again later.",
+            Self::PrivateLibrary => "The Steam game library is private or unavailable.",
+            Self::ApiKeyUnavailable => "Reconnect Steam to make the API key available.",
         }
     }
 }

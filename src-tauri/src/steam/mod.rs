@@ -4,4 +4,4 @@ pub mod models;
 
 pub use client::SteamClient;
 pub use error::SteamError;
-pub use models::{SteamConnectionResult, SteamProfile};
+pub use models::{SteamConnectionResult, SteamOwnedGame, SteamOwnedGamesResult, SteamProfile};

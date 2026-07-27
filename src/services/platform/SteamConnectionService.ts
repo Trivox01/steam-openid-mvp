@@ -41,6 +41,10 @@ export class SteamConnectionService {
   disconnect() {
     return this.gateway.disconnect();
   }
+
+  getOwnedGames() {
+    return this.gateway.getOwnedGames();
+  }
 }
 
 export function steamProfileToUserProfile(profile: SteamProfile): UserProfile {

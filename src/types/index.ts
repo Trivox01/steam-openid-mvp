@@ -23,6 +23,15 @@ export interface Game {
   unlockedAchievements: number;
   completionPercentage: number;
   lastPlayedAt: string;
+  playtimeTwoWeeksMinutes?: number;
+  playtimeWindowsMinutes?: number;
+  playtimeMacMinutes?: number;
+  playtimeLinuxMinutes?: number;
+  iconUrl?: string;
+  syncedAt?: string;
+  favorite?: boolean;
+  hidden?: boolean;
+  status?: "notStarted" | "playing" | "completed" | "backlog" | "abandoned";
 }
 
 export interface Achievement {
@@ -109,5 +118,8 @@ export type {
   SteamConnectionResult,
   SteamConnectionStatus,
   SteamCredentials,
-  SteamProfile
+  SteamProfile,
+  SteamLibrarySyncResult,
+  SteamOwnedGameDto,
+  SteamOwnedGamesResult
 } from "./steam";

@@ -8,7 +8,7 @@ struct Migration {
     sql: &'static str,
 }
 
-fn migrations() -> [Migration; 3] {
+fn migrations() -> [Migration; 4] {
     [
         Migration {
             version: 1,
@@ -24,6 +24,11 @@ fn migrations() -> [Migration; 3] {
             version: 3,
             description: "steam_account",
             sql: include_str!("../migrations/003_steam_account.sql"),
+        },
+        Migration {
+            version: 4,
+            description: "steam_library_sync",
+            sql: include_str!("../migrations/004_steam_library_sync.sql"),
         },
     ]
 }

@@ -20,7 +20,28 @@ export class SteamProvider implements PlatformProvider {
   }
 
   async getOwnedGames(): Promise<Game[]> {
-    throw new Error("Steam library synchronization is not available in this phase.");
+    const result = await this.connection.getOwnedGames();
+    return result.games.map((game) => ({
+      id: `steam:${game.appId}`,
+      appId: String(game.appId),
+      platform: "steam",
+      name: game.name,
+      coverUrl: "",
+      backgroundUrl: "",
+      playtimeHours: game.playtimeForeverMinutes / 60,
+      totalAchievements: 0,
+      unlockedAchievements: 0,
+      completionPercentage: 0,
+      lastPlayedAt: game.lastPlayedUnix ? new Date(game.lastPlayedUnix * 1000).toISOString() : "",
+      playtimeTwoWeeksMinutes: game.playtimeTwoWeeksMinutes,
+      playtimeWindowsMinutes: game.playtimeWindowsMinutes,
+      playtimeMacMinutes: game.playtimeMacMinutes,
+      playtimeLinuxMinutes: game.playtimeLinuxMinutes
+    }));
+  }
+
+  getOwnedGamesWithMetadata() {
+    return this.connection.getOwnedGames();
   }
 
   async getGameAchievements(_appId: string): Promise<Achievement[]> {

@@ -4,6 +4,13 @@ use std::sync::Mutex;
 pub struct SecretStore(Mutex<Option<String>>);
 
 impl SecretStore {
+    pub fn steam_api_key(&self) -> Result<Option<String>, String> {
+        self.0
+            .lock()
+            .map(|value| value.clone())
+            .map_err(|_| "Secure credential memory is unavailable.".to_string())
+    }
+
     pub fn save_steam_api_key(&self, api_key: String) -> Result<(), String> {
         let mut value = self
             .0

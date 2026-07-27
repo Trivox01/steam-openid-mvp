@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty",
+    "test:intelligence": "node --experimental-strip-types scripts/validate-intelligence.mjs",
+    "test:steam-library": "node --experimental-strip-types scripts/validate-steam-library.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

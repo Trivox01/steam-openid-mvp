@@ -69,6 +69,63 @@ pub(crate) struct SteamApiPlayer {
     pub communityvisibilitystate: i32,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamOwnedGame {
+    pub app_id: u32,
+    pub name: String,
+    pub playtime_forever_minutes: u64,
+    pub playtime_two_weeks_minutes: Option<u64>,
+    pub playtime_windows_minutes: Option<u64>,
+    pub playtime_mac_minutes: Option<u64>,
+    pub playtime_linux_minutes: Option<u64>,
+    pub last_played_unix: Option<i64>,
+    pub icon_hash: Option<String>,
+    pub logo_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamOwnedGamesResult {
+    pub games: Vec<SteamOwnedGame>,
+    pub fetched: usize,
+    pub skipped: usize,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct SteamOwnedGamesApiResponse {
+    pub response: SteamOwnedGamesApiBody,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct SteamOwnedGamesApiBody {
+    pub game_count: Option<u64>,
+    pub games: Option<Vec<SteamOwnedGameApiItem>>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct SteamOwnedGameApiItem {
+    pub appid: Option<u32>,
+    pub name: Option<String>,
+    #[serde(default)]
+    pub playtime_forever: Option<u64>,
+    #[serde(default)]
+    pub playtime_2weeks: Option<u64>,
+    #[serde(default)]
+    pub playtime_windows_forever: Option<u64>,
+    #[serde(default)]
+    pub playtime_mac_forever: Option<u64>,
+    #[serde(default)]
+    pub playtime_linux_forever: Option<u64>,
+    #[serde(default)]
+    pub rtime_last_played: Option<i64>,
+    #[serde(default)]
+    pub img_icon_url: Option<String>,
+    #[serde(default)]
+    pub img_logo_url: Option<String>,
+}
+
 impl From<SteamApiPlayer> for SteamProfile {
     fn from(player: SteamApiPlayer) -> Self {
         Self {
