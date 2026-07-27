@@ -5,7 +5,7 @@ interface ThemeContextValue { theme: Theme; resolvedTheme: "dark" | "light"; tog
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("an-theme") as Theme) || "dark");
+  const [theme, setTheme] = useState<Theme>("dark");
   const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
   const resolvedTheme = theme === "system" ? (systemDark ? "dark" : "light") : theme;
   useEffect(() => {
@@ -16,7 +16,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", resolvedTheme === "dark");
-    localStorage.setItem("an-theme", theme);
   }, [theme, resolvedTheme]);
   const value = useMemo(() => ({
     theme, resolvedTheme, setTheme,

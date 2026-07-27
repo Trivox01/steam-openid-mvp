@@ -1,9 +1,9 @@
 import { Gem } from "lucide-react";
 import type { Achievement, Game } from "../../types";
 
-export function AchievementCard({ achievement, game }: { achievement: Achievement; game?: Game }) {
+export function AchievementCard({ achievement, game, onOpen }: { achievement: Achievement; game?: Game; onOpen?: (achievement: Achievement) => void }) {
   return (
-    <article className="achievement-card">
+    <button className="achievement-card" onClick={() => onOpen?.(achievement)}>
       <div className="achievement-icon-wrap">
         <img src={achievement.iconUrl} alt="" />
         <span><Gem size={12} /></span>
@@ -16,6 +16,6 @@ export function AchievementCard({ achievement, game }: { achievement: Achievemen
         <strong>{achievement.rarityPercentage}%</strong>
         <span>Rarity</span>
       </div>
-    </article>
+    </button>
   );
 }

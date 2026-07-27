@@ -1,11 +1,12 @@
 import { mockDashboardData } from "../data/mockData";
 import type { DashboardData } from "../types";
-import { platformProvider } from "./platform/MockPlatformProvider";
+import { repositories } from "./compositionRoot";
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [profile, games] = await Promise.all([
-    platformProvider.getUserProfile(),
-    platformProvider.getOwnedGames()
+  const [profile, games, recentAchievements] = await Promise.all([
+    repositories.profile.getProfile(),
+    repositories.games.getAllGames(),
+    repositories.achievements.getAchievements()
   ]);
-  return { ...mockDashboardData, profile, games };
+  return { ...mockDashboardData, profile: profile ?? mockDashboardData.profile, games, recentAchievements: recentAchievements.filter((item)=>item.unlockedAt).slice(0,3) };
 }

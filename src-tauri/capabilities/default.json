@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default permissions for Achievement Nexus",
   "windows": ["main"],
-  "permissions": ["core:default", "sql:default"]
+  "permissions": ["core:default"]
 }

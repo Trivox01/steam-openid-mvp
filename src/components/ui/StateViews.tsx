@@ -1,15 +1,13 @@
 import { AlertTriangle, Inbox, RotateCcw } from "lucide-react";
+import { HoloPulseLoader, type HoloPulseLoaderProps } from "./holo-pulse-loader";
 
-export function LoadingView() {
-  return (
-    <div className="dashboard-grid animate-pulse" aria-label="Loading dashboard">
-      <div className="skeleton hero-skeleton" />
-      <div className="skeleton metric-skeleton" />
-      <div className="skeleton metric-skeleton" />
-      <div className="skeleton panel-skeleton" />
-      <div className="skeleton panel-skeleton" />
-    </div>
-  );
+type LoadingViewProps = Pick<HoloPulseLoaderProps, "fullScreen" | "size" | "className" | "showDots" | "delay"> & {
+  label?: string;
+  message?: string;
+};
+
+export function LoadingView({ label, message, ...props }: LoadingViewProps) {
+  return <HoloPulseLoader label={label ?? message ?? "Loading"} {...props} />;
 }
 
 export function EmptyView({ title = "Your library is ready", description = "Connect a platform when integrations become available.", compact = false }: { title?: string; description?: string; compact?: boolean }) {

@@ -6,8 +6,9 @@ import { GameCard } from "../components/dashboard/GameCard";
 import { StatCard } from "../components/dashboard/StatCard";
 import { ErrorView, LoadingView, EmptyView } from "../components/ui/StateViews";
 import { useDashboardData } from "../hooks/useDashboardData";
+import type { AchievementId, GameId } from "../types";
 
-export function DashboardPage({ search }: { search: string }) {
+export function DashboardPage({ search, onOpenGame, onOpenAchievement }: { search: string; onOpenGame: (id: GameId) => void; onOpenAchievement: (id: AchievementId, gameId: GameId) => void }) {
   const { state, retry } = useDashboardData();
   if (state.status === "loading") return <LoadingView />;
   if (state.status === "error") return <ErrorView message={state.error} onRetry={retry} />;
@@ -42,8 +43,8 @@ export function DashboardPage({ search }: { search: string }) {
       </section>
 
       <section className="dashboard-grid">
-        <article className="panel hero-card">
-          <img src={lastGame.heroUrl} alt="" className="hero-bg" />
+        <article className="panel hero-card clickable" onClick={() => onOpenGame(lastGame.id)}>
+          <img src={lastGame.backgroundUrl} alt="" className="hero-bg" />
           <div className="hero-overlay" />
           <div className="hero-content">
             <span className="section-kicker"><span className="live-dot" /> LAST PLAYED</span>
@@ -58,7 +59,7 @@ export function DashboardPage({ search }: { search: string }) {
           <PanelHeader title="Recent achievements" action="View all" />
           <div className="achievement-list">
             {data.recentAchievements.map((achievement) => (
-              <AchievementCard key={achievement.id} achievement={achievement} game={data.games.find((game) => game.id === achievement.gameId)} />
+              <AchievementCard key={achievement.id} achievement={achievement} game={data.games.find((game) => game.id === achievement.gameId)} onOpen={(item) => onOpenAchievement(item.id, item.gameId)} />
             ))}
           </div>
         </article>
@@ -80,7 +81,7 @@ export function DashboardPage({ search }: { search: string }) {
         <article className="panel games-panel">
           <PanelHeader title="Close to completion" action="View library" />
           <div className="games-list">
-            {games.length ? games.slice(1).map((game) => <GameCard key={game.id} game={game} />) : <p className="no-results">No games match your search.</p>}
+            {games.length ? games.slice(1).map((game) => <GameCard key={game.id} game={game} onOpen={(item) => onOpenGame(item.id)} />) : <p className="no-results">No games match your search.</p>}
           </div>
         </article>
       </section>

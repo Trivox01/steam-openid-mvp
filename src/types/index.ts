@@ -1,4 +1,7 @@
 export type Platform = "steam" | "playstation" | "xbox" | "other";
+export type GameId = string;
+export type AchievementId = string;
+export type PlatformId = Platform;
 export type PageId = "dashboard" | "games" | "achievements" | "activity" | "statistics" | "settings";
 
 export interface UserProfile {
@@ -9,12 +12,12 @@ export interface UserProfile {
 }
 
 export interface Game {
-  id: string;
+  id: GameId;
   appId: string;
   platform: Platform;
   name: string;
   coverUrl: string;
-  heroUrl: string;
+  backgroundUrl: string;
   playtimeHours: number;
   totalAchievements: number;
   unlockedAchievements: number;
@@ -23,8 +26,8 @@ export interface Game {
 }
 
 export interface Achievement {
-  id: string;
-  gameId: string;
+  id: AchievementId;
+  gameId: GameId;
   title: string;
   description: string;
   iconUrl: string;
@@ -33,6 +36,42 @@ export interface Achievement {
   points: number;
   isHidden?: boolean;
 }
+
+export interface GameDetails extends Game {
+  rareAchievements: number;
+  lockedAchievements: number;
+  averageRarity: number;
+  latestAchievement?: Achievement;
+}
+
+export interface AchievementDetails extends Achievement {
+  gameName: string;
+  rarityTier: "common" | "uncommon" | "rare" | "ultra_rare";
+}
+
+export interface UserPreferences {
+  theme: "light" | "dark" | "system";
+  language: "English" | "Arabic";
+  launchAtStartup: boolean;
+  minimizeToTray: boolean;
+  automaticUpdates: boolean;
+  achievementNotifications: boolean;
+  completionNotifications: boolean;
+  weeklyGoalReminder: boolean;
+  hidePlaytime: boolean;
+  hideHiddenGames: boolean;
+}
+
+export interface SyncMetadata {
+  lastSyncedAt?: string;
+  status: "idle" | "syncing" | "success" | "error";
+  source: PlatformId | "mock";
+}
+
+export type NavigationView =
+  | { kind: "page"; page: PageId }
+  | { kind: "game"; gameId: GameId }
+  | { kind: "achievement"; achievementId: AchievementId; gameId: GameId };
 
 export type ActivityType = "achievement" | "new_game" | "completed_game" | "progress" | "weekly_goal";
 
@@ -64,3 +103,10 @@ export type AsyncState<T> =
   | { status: "success"; data: T; error?: never }
   | { status: "empty"; data?: never; error?: never }
   | { status: "error"; data?: never; error: string };
+
+export type {
+  SteamConnectionResult,
+  SteamConnectionStatus,
+  SteamCredentials,
+  SteamProfile
+} from "./steam";

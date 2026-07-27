@@ -1,29 +1,35 @@
 import { useMemo, useState } from "react";
 import { Clock3, Grid2X2, List, Trophy } from "lucide-react";
 import { motion } from "framer-motion";
-import { mockGames } from "../data/mockData";
-import { EmptyView } from "../components/ui/StateViews";
+import { EmptyView, ErrorView, LoadingView } from "../components/ui/StateViews";
 import { FilterToolbar, SearchField, SegmentedFilter, SelectControl } from "../components/ui/FilterBar";
+import { GameArtwork } from "../components/ui/GameArtwork";
 import { PageHeader } from "../components/ui/PageHeader";
-import type { Game } from "../types";
+import type { Game, GameId } from "../types";
+import { useAsyncData } from "../hooks/useAsyncData";
+import { services } from "../services/compositionRoot";
 
 type GameFilter = "all" | "completed" | "progress" | "not_started";
 type GameSort = "recent" | "completion" | "playtime" | "name";
 type ViewMode = "grid" | "list";
 
-export function GamesPage() {
+export function GamesPage({ onOpenGame }: { onOpenGame: (id: GameId) => void }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<GameFilter>("all");
   const [sort, setSort] = useState<GameSort>("recent");
   const [view, setView] = useState<ViewMode>("grid");
-  const games = useMemo(() => mockGames
+  const state = useAsyncData(() => services.games.list(), []);
+  const source = state.status === "success" ? state.data : [];
+  const games = useMemo(() => source
     .filter((game) => game.name.toLowerCase().includes(query.toLowerCase()))
     .filter((game) => filter === "all" || (filter === "completed" ? game.completionPercentage === 100 : filter === "progress" ? game.completionPercentage > 0 && game.completionPercentage < 100 : game.completionPercentage === 0))
-    .sort((a, b) => sortGames(a, b, sort)), [query, filter, sort]);
+    .sort((a, b) => sortGames(a, b, sort)), [source, query, filter, sort]);
+  if (state.status === "loading") return <LoadingView />;
+  if (state.status === "error") return <ErrorView message={state.error} onRetry={() => location.reload()} />;
 
   return (
     <section className="content-page">
-      <PageHeader eyebrow="GAME LIBRARY" title="My Games" description={`${mockGames.length} games connected across your platforms.`} />
+      <PageHeader eyebrow="GAME LIBRARY" title="My Games" description={`${source.length} games connected across your platforms.`} />
       <FilterToolbar>
         <SearchField value={query} onChange={setQuery} placeholder="Search your library..." />
         <SegmentedFilter value={filter} onChange={setFilter} options={[
@@ -38,23 +44,23 @@ export function GamesPage() {
           <div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid view"><Grid2X2 size={16} /></button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="List view"><List size={17} /></button></div>
         </div>
       </FilterToolbar>
-      {games.length ? <div className={`library-${view}`}>{games.map((game) => <LibraryGame key={game.id} game={game} view={view} />)}</div> :
+      {games.length ? <div className={`library-${view}`}>{games.map((game) => <LibraryGame key={game.id} game={game} view={view} onOpen={() => onOpenGame(game.id)} />)}</div> :
         <EmptyView compact title="No games found" description="Try a different search term or completion filter." />}
     </section>
   );
 }
 
-function LibraryGame({ game, view }: { game: Game; view: ViewMode }) {
+function LibraryGame({ game, view, onOpen }: { game: Game; view: ViewMode; onOpen: () => void }) {
   return (
-    <motion.article className={`library-game ${view}`} whileHover={{ y: view === "grid" ? -3 : 0 }}>
-      <img src={game.coverUrl} alt={`${game.name} cover`} />
+    <motion.button className={`library-game ${view}`} whileHover={{ y: view === "grid" ? -3 : 0 }} onClick={onOpen}>
+      <GameArtwork src={game.coverUrl} alt={`${game.name} cover`} variant="cover" className="library-game-artwork" />
       <div className="library-game-body">
         <div className="game-title-row"><div><span className="platform-badge">STEAM</span><h2>{game.name}</h2></div><strong>{game.completionPercentage}%</strong></div>
         <div className="game-meta"><span><Clock3 size={13} /> {game.playtimeHours}h</span><span><Trophy size={13} /> {game.unlockedAchievements}/{game.totalAchievements}</span></div>
         <div className="game-progress"><div><b style={{ width: `${game.completionPercentage}%` }} /></div></div>
         <p>Last played {formatRelativeDate(game.lastPlayedAt)}</p>
       </div>
-    </motion.article>
+    </motion.button>
   );
 }
 
