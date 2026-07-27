@@ -3,7 +3,7 @@ import { Bell, Database, Download, Eye, Gamepad2, Globe2, Monitor, RefreshCw, Ro
 import { PageHeader } from "../components/ui/PageHeader";
 import { useTheme, type Theme } from "../state/ThemeContext";
 import { services } from "../services/compositionRoot";
-import { defaultPreferences } from "../services/initializationService";
+import { preferencesEqual } from "../services/settingsPreferences";
 import type { UserPreferences } from "../types";
 import { ErrorView, LoadingView } from "../components/ui/StateViews";
 import { SteamAccountSettings } from "../components/settings/SteamAccountSettings";
@@ -19,12 +19,23 @@ export function SettingsPage({ onProfileChange }: { onProfileChange?: (profile: 
   useEffect(() => { void load(); }, []);
   const update = (patch: Partial<UserPreferences>) => {
     if (!preferences) return;
-    const next={...preferences,...patch}; setPreferences(next); if(patch.theme)setTheme(patch.theme);
+    const next={...preferences,...patch};
+    if (preferencesEqual(preferences, next)) return;
+    setPreferences(next); if(patch.theme)setTheme(patch.theme);
     void services.settings.save(next).catch((error:unknown)=>setLoadError(error instanceof Error?error.message:"Unable to save preferences."));
   };
   const toggle = (key: keyof UserPreferences) => { const value=preferences?.[key]; if(typeof value==="boolean")update({[key]:!value}); };
   const sync = () => { setSyncing(true); window.setTimeout(() => setSyncing(false), 900); };
-  const reset = async () => { await services.settings.reset(); await services.settings.save(defaultPreferences); setPreferences(defaultPreferences); setTheme(defaultPreferences.theme); setResetOpen(false); };
+  const reset = async () => {
+    try {
+      const defaults = await services.settings.reset();
+      setPreferences(defaults);
+      setTheme(defaults.theme);
+      setResetOpen(false);
+    } catch (error: unknown) {
+      setLoadError(error instanceof Error ? error.message : "Unable to reset preferences.");
+    }
+  };
   if (loadError) return <ErrorView message={loadError} onRetry={() => void load()} />;
   if (!preferences) return <LoadingView />;
 
@@ -39,17 +50,16 @@ export function SettingsPage({ onProfileChange }: { onProfileChange?: (profile: 
           <div className="choice-grid">{(["light", "dark", "system"] as Theme[]).map((option) => <button key={option} className={theme === option ? "active" : ""} onClick={() => update({theme:option})}><span className={`theme-preview ${option}`}><i /><i /><i /></span><strong>{capitalize(option)}</strong></button>)}</div>
         </SettingsSection>
         <SettingsSection icon={Globe2} title="Language" description="Select your preferred interface language.">
-          <div className="language-options">{(["English", "Arabic"] as const).map((item) => <button key={item} className={preferences.language === item ? "active" : ""} onClick={() => update({language:item})}><span>{item === "English" ? "EN" : "AR"}</span><strong>{item}</strong><i /></button>)}</div>
+          <div className="language-options">{([{value:"en",label:"English"},{value:"ar",label:"Arabic"}] as const).map((item) => <button key={item.value} className={preferences.language === item.value ? "active" : ""} onClick={() => update({language:item.value})}><span>{item.value.toUpperCase()}</span><strong>{item.label}</strong><i /></button>)}</div>
         </SettingsSection>
         <SettingsSection icon={RotateCw} title="General" description="Control startup and application behavior.">
+          {/* TODO(system integration): Apply these persisted values to the Windows startup and tray APIs. */}
           <SettingToggle label="Launch with Windows" description="Start Achievement Nexus when you sign in." checked={preferences.launchAtStartup} onChange={() => toggle("launchAtStartup")} />
           <SettingToggle label="Minimize to system tray" description="Keep the app available in the background." checked={preferences.minimizeToTray} onChange={() => toggle("minimizeToTray")} />
-          <SettingToggle label="Check for updates automatically" description="Look for new versions in the background." checked={preferences.automaticUpdates} onChange={() => toggle("automaticUpdates")} />
+          <SettingToggle label="Check for updates automatically" description="Look for new versions in the background." checked={preferences.autoCheckForUpdates} onChange={() => toggle("autoCheckForUpdates")} />
         </SettingsSection>
         <SettingsSection icon={Bell} title="Notifications" description="Choose which progress events notify you.">
-          <SettingToggle label="Achievement unlocked" description="Show a notification when an achievement unlocks." checked={preferences.achievementNotifications} onChange={() => toggle("achievementNotifications")} />
-          <SettingToggle label="Game completed" description="Celebrate when a game reaches 100%." checked={preferences.completionNotifications} onChange={() => toggle("completionNotifications")} />
-          <SettingToggle label="Weekly goal reminder" description="Remind you before your weekly goal resets." checked={preferences.weeklyGoalReminder} onChange={() => toggle("weeklyGoalReminder")} />
+          <SettingToggle label="Enable notifications" description="Allow achievement, completion, and weekly goal notifications." checked={preferences.notificationsEnabled} onChange={() => toggle("notificationsEnabled")} />
         </SettingsSection>
         <SettingsSection icon={Eye} title="Privacy" description="Control what is visible in your local profile.">
           <SettingToggle label="Hide playtime" description="Do not display total hours in the interface." checked={preferences.hidePlaytime} onChange={() => toggle("hidePlaytime")} />

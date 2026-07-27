@@ -1,5 +1,6 @@
 import type { AchievementDetails, GameDetails, GameId, AchievementId, UserPreferences } from "../types";
 import type { AchievementRepository, ActivityRepository, GameRepository, ProfileRepository, SettingsRepository } from "../repositories/contracts";
+import { defaultPreferences, normalizePreferences, preferencesEqual } from "./settingsPreferences";
 
 export class GameService {
   constructor(private games: GameRepository, private achievements: AchievementRepository) {}
@@ -24,10 +25,66 @@ export class AchievementService {
 }
 export class ActivityService { constructor(private repository: ActivityRepository) {} list() { return this.repository.getActivities(); } }
 export class SettingsService {
+  private cached?: UserPreferences;
+  private pending?: UserPreferences;
+  private saveQueue: Promise<void> = Promise.resolve();
+
   constructor(private repository: SettingsRepository) {}
-  get() { return this.repository.getPreferences(); }
-  save(value: UserPreferences) { return this.repository.savePreferences(value); }
-  reset() { return this.repository.resetPreferences(); }
+
+  async get() {
+    await this.saveQueue;
+    if (this.cached) return structuredClone(this.cached);
+    const stored = await this.repository.getPreferences();
+    const normalized = normalizePreferences(stored);
+    this.cached = normalized;
+    if (!isCurrentSchema(stored, normalized)) {
+      await this.repository.savePreferences(normalized);
+    }
+    return structuredClone(normalized);
+  }
+
+  save(value: UserPreferences) {
+    const normalized = normalizePreferences(value);
+    const latest = this.pending ?? this.cached;
+    if (latest && preferencesEqual(latest, normalized)) {
+      return Promise.resolve();
+    }
+
+    this.pending = normalized;
+    const operation = this.saveQueue.then(async () => {
+      await this.repository.savePreferences(normalized);
+      this.cached = normalized;
+    });
+    this.saveQueue = operation
+      .catch(() => undefined)
+      .then(() => {
+        if (this.pending && preferencesEqual(this.pending, normalized)) {
+          this.pending = undefined;
+        }
+      });
+    return operation;
+  }
+
+  async reset() {
+    await this.save(defaultPreferences);
+    return structuredClone(defaultPreferences);
+  }
+}
+
+function isCurrentSchema(stored: unknown, normalized: UserPreferences) {
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return false;
+  const value = stored as Partial<UserPreferences>;
+  return (
+    (value.theme === "system" || value.theme === "dark" || value.theme === "light") &&
+    (value.language === "en" || value.language === "ar") &&
+    typeof value.launchAtStartup === "boolean" &&
+    typeof value.minimizeToTray === "boolean" &&
+    typeof value.notificationsEnabled === "boolean" &&
+    typeof value.autoCheckForUpdates === "boolean" &&
+    typeof value.hidePlaytime === "boolean" &&
+    typeof value.hideHiddenGames === "boolean" &&
+    preferencesEqual(value as UserPreferences, normalized)
+  );
 }
 export class ProfileService {
   constructor(private repository: ProfileRepository) {}

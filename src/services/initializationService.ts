@@ -2,11 +2,7 @@ import { mockAchievements, mockActivities, mockDashboardData, mockGames } from "
 import type { UserPreferences, UserProfile } from "../types";
 import { repositories, services, storageMode } from "./compositionRoot";
 import { steamProfileToUserProfile } from "./platform/SteamConnectionService";
-
-export const defaultPreferences: UserPreferences = {
-  theme:"dark",language:"English",launchAtStartup:false,minimizeToTray:true,automaticUpdates:true,
-  achievementNotifications:true,completionNotifications:true,weeklyGoalReminder:true,hidePlaytime:false,hideHiddenGames:true
-};
+export { defaultPreferences } from "./settingsPreferences";
 export interface InitializationResult { preferences: UserPreferences; profile: UserProfile; storageMode: "sqlite"|"mock" }
 
 export async function initializeApplication(): Promise<InitializationResult> {
@@ -16,11 +12,8 @@ export async function initializeApplication(): Promise<InitializationResult> {
     await repositories.achievements.saveAchievements(mockAchievements);
     await repositories.activities.saveActivities(mockActivities);
     await repositories.profile.saveProfile(mockDashboardData.profile);
-    await repositories.settings.savePreferences(defaultPreferences);
   }
-  let preferences: UserPreferences;
-  try { preferences = await repositories.settings.getPreferences(); }
-  catch { preferences = defaultPreferences; await repositories.settings.savePreferences(preferences); }
+  const preferences = await services.settings.get();
   const localProfile = await repositories.profile.getProfile() ?? mockDashboardData.profile;
   let profile = localProfile;
   try {

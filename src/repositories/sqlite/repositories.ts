@@ -24,7 +24,7 @@ export class SqliteActivityRepository implements ActivityRepository {
   async clearActivities(){await invokeDatabase<void>(cmd.activities.clear)}
 }
 export class SqliteSettingsRepository implements SettingsRepository {
-  async getPreferences(){const value=await invokeDatabase<UserPreferences|null>(cmd.preferences.get);if(!value)throw new Error("Preferences have not been initialized");return value}
+  async getPreferences(){return (await invokeDatabase<unknown|null>(cmd.preferences.get))??undefined}
   async savePreferences(preferences:UserPreferences){await invokeDatabase<void>(cmd.preferences.save,{preferences})}
   async resetPreferences(){await invokeDatabase<void>(cmd.preferences.reset)}
 }

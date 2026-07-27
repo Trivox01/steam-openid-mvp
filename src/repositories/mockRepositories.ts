@@ -3,12 +3,7 @@ import type { Achievement, AchievementId, Game, GameId, PlayerActivity, UserPref
 import type { AchievementRepository, ActivityRepository, GameRepository, ProfileRepository, SettingsRepository, SyncMetadataRepository } from "./contracts";
 import type { SyncMetadata, UserProfile } from "../types";
 import { mockDashboardData } from "../data/mockData";
-
-const defaultPreferences: UserPreferences = {
-  theme: "dark", language: "English", launchAtStartup: false, minimizeToTray: true, automaticUpdates: true,
-  achievementNotifications: true, completionNotifications: true, weeklyGoalReminder: true,
-  hidePlaytime: false, hideHiddenGames: true
-};
+import { defaultPreferences } from "../services/settingsPreferences";
 
 export class MockGameRepository implements GameRepository {
   private games = structuredClone(mockGames);

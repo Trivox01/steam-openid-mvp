@@ -51,13 +51,11 @@ export interface AchievementDetails extends Achievement {
 
 export interface UserPreferences {
   theme: "light" | "dark" | "system";
-  language: "English" | "Arabic";
+  language: "en" | "ar";
   launchAtStartup: boolean;
   minimizeToTray: boolean;
-  automaticUpdates: boolean;
-  achievementNotifications: boolean;
-  completionNotifications: boolean;
-  weeklyGoalReminder: boolean;
+  notificationsEnabled: boolean;
+  autoCheckForUpdates: boolean;
   hidePlaytime: boolean;
   hideHiddenGames: boolean;
 }

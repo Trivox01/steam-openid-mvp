@@ -15,7 +15,7 @@ export interface AchievementRepository {
   clearAchievements(): Promise<void>;
 }
 export interface SettingsRepository {
-  getPreferences(): Promise<UserPreferences>;
+  getPreferences(): Promise<unknown | undefined>;
   savePreferences(preferences: UserPreferences): Promise<void>;
   resetPreferences(): Promise<void>;
 }
