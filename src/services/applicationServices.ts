@@ -66,8 +66,14 @@ export class SettingsService {
   }
 
   async reset() {
-    await this.save(defaultPreferences);
-    return structuredClone(defaultPreferences);
+    const current = await this.get();
+    const defaults = {
+      ...defaultPreferences,
+      // Resetting preferences must not turn the first-run experience back on.
+      onboardingCompleted: current.onboardingCompleted
+    };
+    await this.save(defaults);
+    return structuredClone(defaults);
   }
 }
 
@@ -77,6 +83,7 @@ function isCurrentSchema(stored: unknown, normalized: UserPreferences) {
   return (
     (value.theme === "system" || value.theme === "dark" || value.theme === "light") &&
     (value.language === "en" || value.language === "ar") &&
+    typeof value.onboardingCompleted === "boolean" &&
     typeof value.launchAtStartup === "boolean" &&
     typeof value.minimizeToTray === "boolean" &&
     typeof value.notificationsEnabled === "boolean" &&

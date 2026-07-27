@@ -3,6 +3,7 @@ import type { UserPreferences } from "../types";
 export const defaultPreferences: UserPreferences = {
   theme: "dark",
   language: "en",
+  onboardingCompleted: false,
   launchAtStartup: false,
   minimizeToTray: true,
   notificationsEnabled: true,
@@ -16,6 +17,10 @@ export function normalizePreferences(value: unknown): UserPreferences {
   return {
     theme: isTheme(source.theme) ? source.theme : defaultPreferences.theme,
     language: normalizeLanguage(source.language),
+    onboardingCompleted: booleanOrDefault(
+      source.onboardingCompleted,
+      defaultPreferences.onboardingCompleted
+    ),
     launchAtStartup: booleanOrDefault(
       source.launchAtStartup,
       defaultPreferences.launchAtStartup
@@ -41,6 +46,7 @@ export function preferencesEqual(left: UserPreferences, right: UserPreferences) 
   return (
     left.theme === right.theme &&
     left.language === right.language &&
+    left.onboardingCompleted === right.onboardingCompleted &&
     left.launchAtStartup === right.launchAtStartup &&
     left.minimizeToTray === right.minimizeToTray &&
     left.notificationsEnabled === right.notificationsEnabled &&

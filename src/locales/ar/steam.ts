@@ -1,0 +1,23 @@
+export const steam = {
+  "steam.title": "حساب Steam",
+  "steam.description": "اربط ملف Steam باستخدام واجهة Web API الرسمية للقراءة فقط.",
+  "steam.desktopRequired": "يلزم تطبيق سطح المكتب",
+  "steam.desktopDescription": "ربط حساب Steam متاح فقط داخل نسخة Tauri من Achievement Nexus.",
+  "steam.connected": "متصل",
+  "steam.disconnect": "قطع الاتصال",
+  "steam.apiKey": "مفتاح Steam Web API",
+  "steam.apiPlaceholder": "أدخل مفتاح Web API",
+  "steam.idPlaceholder": "SteamID64 مكوّن من 17 رقمًا",
+  "steam.showKey": "إظهار مفتاح Steam API",
+  "steam.hideKey": "إخفاء مفتاح Steam API",
+  "steam.passwordNotice": "لن يطلب Achievement Nexus كلمة مرور Steam مطلقًا.",
+  "steam.testing": "جارٍ اختبار الاتصال...",
+  "steam.test": "اختبار الاتصال",
+  "steam.contacting": "جارٍ الاتصال بـ Steam",
+  "steam.disconnectTitle": "قطع اتصال Steam؟",
+  "steam.disconnectDescription": "سيُحذف ملف Steam المحفوظ ومفتاح API من الذاكرة، وستبقى بيانات ألعابك المحلية.",
+  "steam.loadError": "تعذر تحميل ملف Steam المحفوظ.",
+  "steam.connectionError": "تعذر إكمال اتصال Steam.",
+  "steam.verificationError": "تعذر التحقق من اتصال Steam.",
+  "steam.disconnectError": "تعذر قطع اتصال Steam."
+} as const;

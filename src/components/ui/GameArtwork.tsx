@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ImageOff } from "lucide-react";
+import { useTranslation } from "../../i18n/TranslationContext";
 
 type GameArtworkProps = {
   src?: string;
@@ -19,6 +20,7 @@ export function GameArtwork({
   className,
   eager = false
 }: GameArtworkProps) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(
     src ? "loading" : "error"
   );
@@ -56,7 +58,7 @@ export function GameArtwork({
           aria-hidden={alt ? undefined : true}
         >
           <ImageOff aria-hidden="true" />
-          <span>Artwork unavailable</span>
+          <span>{t("common.artworkUnavailable")}</span>
         </span>
       )}
     </span>

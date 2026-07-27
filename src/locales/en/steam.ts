@@ -1,0 +1,23 @@
+export const steam = {
+  "steam.title": "Steam Account",
+  "steam.description": "Connect a Steam profile using the official read-only Web API.",
+  "steam.desktopRequired": "Desktop application required",
+  "steam.desktopDescription": "Steam account connection is available only inside Achievement Nexus for Tauri.",
+  "steam.connected": "Connected",
+  "steam.disconnect": "Disconnect",
+  "steam.apiKey": "Steam Web API Key",
+  "steam.apiPlaceholder": "Enter your Web API key",
+  "steam.idPlaceholder": "17-digit SteamID64",
+  "steam.showKey": "Show Steam API key",
+  "steam.hideKey": "Hide Steam API key",
+  "steam.passwordNotice": "Achievement Nexus never asks for your Steam password.",
+  "steam.testing": "Testing connection...",
+  "steam.test": "Test connection",
+  "steam.contacting": "Contacting Steam",
+  "steam.disconnectTitle": "Disconnect Steam?",
+  "steam.disconnectDescription": "The saved Steam profile and in-memory API key will be removed. Your local game data will remain.",
+  "steam.loadError": "The saved Steam profile could not be loaded.",
+  "steam.connectionError": "Steam connection could not be completed.",
+  "steam.verificationError": "Steam connection could not be verified.",
+  "steam.disconnectError": "Steam could not be disconnected."
+} as const;

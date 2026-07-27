@@ -49,9 +49,10 @@ export interface AchievementDetails extends Achievement {
   rarityTier: "common" | "uncommon" | "rare" | "ultra_rare";
 }
 
-export interface UserPreferences {
+export interface AppSettings {
   theme: "light" | "dark" | "system";
   language: "en" | "ar";
+  onboardingCompleted: boolean;
   launchAtStartup: boolean;
   minimizeToTray: boolean;
   notificationsEnabled: boolean;
@@ -59,6 +60,8 @@ export interface UserPreferences {
   hidePlaytime: boolean;
   hideHiddenGames: boolean;
 }
+
+export type UserPreferences = AppSettings;
 
 export interface SyncMetadata {
   lastSyncedAt?: string;

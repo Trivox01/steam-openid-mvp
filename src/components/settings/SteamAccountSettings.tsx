@@ -9,12 +9,14 @@ import type {
   UserProfile
 } from "../../types";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
+import { useTranslation } from "../../i18n/TranslationContext";
 
 export function SteamAccountSettings({
   onProfileChange
 }: {
   onProfileChange?: (profile: UserProfile) => void;
 }) {
+  const { t } = useTranslation();
   const [steamId, setSteamId] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
@@ -37,12 +39,12 @@ export function SteamAccountSettings({
       .catch(() => {
         if (!active) return;
         setStatus("error");
-        setMessage("The saved Steam profile could not be loaded.");
+        setMessage(t("steam.loadError"));
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [t]);
 
   const connect = async () => {
     if (!steamId.trim() || !apiKey.trim() || status === "validating") return;
@@ -52,7 +54,7 @@ export function SteamAccountSettings({
       const result = await services.steam.connect({ steamId, apiKey });
       if (!result.success || !result.profile) {
         setStatus("error");
-        setMessage(result.userMessage ?? "Steam connection could not be verified.");
+        setMessage(result.userMessage ?? t("steam.verificationError"));
         return;
       }
       setProfile(result.profile);
@@ -61,13 +63,9 @@ export function SteamAccountSettings({
       setShowApiKey(false);
       setStatus("connected");
       onProfileChange?.(steamProfileToUserProfile(result.profile));
-    } catch (error: unknown) {
+    } catch {
       setStatus("error");
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Steam connection could not be completed."
-      );
+      setMessage(t("steam.connectionError"));
     }
   };
 
@@ -82,11 +80,9 @@ export function SteamAccountSettings({
       setStatus("disconnected");
       setMessage("");
       setDisconnectOpen(false);
-    } catch (error: unknown) {
+    } catch {
       setStatus("error");
-      setMessage(
-        error instanceof Error ? error.message : "Steam could not be disconnected."
-      );
+      setMessage(t("steam.disconnectError"));
     }
   };
 
@@ -95,8 +91,8 @@ export function SteamAccountSettings({
       <div className="steam-unavailable" role="status">
         <Gamepad2 aria-hidden="true" />
         <div>
-          <strong>Desktop application required</strong>
-          <p>Steam account connection is available only inside Achievement Nexus for Tauri.</p>
+          <strong>{t("steam.desktopRequired")}</strong>
+          <p>{t("steam.desktopDescription")}</p>
         </div>
       </div>
     );
@@ -112,12 +108,12 @@ export function SteamAccountSettings({
             name={profile.personaName}
           />
           <div>
-            <span className="connected-badge"><CheckCircle2 /> Connected</span>
+            <span className="connected-badge"><CheckCircle2 /> {t("steam.connected")}</span>
             <strong>{profile.personaName}</strong>
             <small>{profile.steamId}</small>
           </div>
           <button className="secondary-button" type="button" onClick={() => setDisconnectOpen(true)}>
-            <Link2Off size={15} /> Disconnect
+            <Link2Off size={15} /> {t("steam.disconnect")}
           </button>
         </div>
       ) : (
@@ -130,43 +126,45 @@ export function SteamAccountSettings({
               maxLength={17}
               value={steamId}
               onChange={(event) => setSteamId(event.target.value.replace(/\D/g, ""))}
-              placeholder="17-digit SteamID64"
+              placeholder={t("steam.idPlaceholder")}
+              dir="ltr"
               disabled={status === "validating"}
               autoComplete="off"
             />
           </label>
           <label>
-            <span>Steam Web API Key</span>
+            <span>{t("steam.apiKey")}</span>
             <span className="secret-input">
               <input
                 type={showApiKey ? "text" : "password"}
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
-                placeholder="Enter your Web API key"
+                placeholder={t("steam.apiPlaceholder")}
+                dir="ltr"
                 disabled={status === "validating"}
                 autoComplete="new-password"
               />
               <button
                 type="button"
                 onClick={() => setShowApiKey((value) => !value)}
-                aria-label={showApiKey ? "Hide Steam API key" : "Show Steam API key"}
+                aria-label={showApiKey ? t("steam.hideKey") : t("steam.showKey")}
                 disabled={status === "validating"}
               >
                 {showApiKey ? <EyeOff /> : <Eye />}
               </button>
             </span>
           </label>
-          <p className="steam-password-notice"><ShieldCheck /> Achievement Nexus never asks for your Steam password.</p>
+          <p className="steam-password-notice"><ShieldCheck /> {t("steam.passwordNotice")}</p>
           <button
             className="primary-button steam-connect-button"
             type="button"
             onClick={() => void connect()}
             disabled={!steamId.trim() || !apiKey.trim() || status === "validating"}
           >
-            {status === "validating" ? "Testing connection…" : "Test connection"}
+            {status === "validating" ? t("steam.testing") : t("steam.test")}
           </button>
           {status === "validating" && (
-            <HoloPulseLoader className="steam-connect-loader" size="sm" label="Contacting Steam" showDots />
+            <HoloPulseLoader className="steam-connect-loader" size="sm" label={t("steam.contacting")} showDots />
           )}
         </div>
       )}
@@ -175,11 +173,11 @@ export function SteamAccountSettings({
         <div className="dialog-backdrop" onMouseDown={() => setDisconnectOpen(false)}>
           <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="steam-disconnect-title" onMouseDown={(event) => event.stopPropagation()}>
             <div><Link2Off size={22} /></div>
-            <h2 id="steam-disconnect-title">Disconnect Steam?</h2>
-            <p>The saved Steam profile and in-memory API key will be removed. Your local game data will remain.</p>
+            <h2 id="steam-disconnect-title">{t("steam.disconnectTitle")}</h2>
+            <p>{t("steam.disconnectDescription")}</p>
             <footer>
-              <button type="button" onClick={() => setDisconnectOpen(false)}>Cancel</button>
-              <button className="danger-button" type="button" onClick={() => void disconnect()}>Disconnect</button>
+              <button type="button" onClick={() => setDisconnectOpen(false)}>{t("common.cancel")}</button>
+              <button className="danger-button" type="button" onClick={() => void disconnect()}>{t("steam.disconnect")}</button>
             </footer>
           </div>
         </div>
