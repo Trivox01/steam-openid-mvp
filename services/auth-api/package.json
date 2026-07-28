@@ -4,14 +4,14 @@
   "version": "0.2.0-beta.0",
   "type": "module",
   "scripts": {
-    "start": "node --experimental-strip-types src/server.ts",
-    "steam-openid:live-test": "node --experimental-strip-types scripts/steam-openid-live-test.ts",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types src/server.ts",
+    "steam-openid:live-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/steam-openid-live-test.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:steam-openid": "node --experimental-strip-types --test tests/config.test.ts tests/openIdVerifier.test.ts tests/redaction.test.ts tests/requestSecurity.test.ts tests/steamOpenIdHttpClient.test.ts tests/steamAuthRoutes.test.ts",
-    "test:storage": "node --experimental-strip-types --test tests/storage.test.ts",
-    "test:postgres": "node --experimental-strip-types --test tests/postgres.integration.test.ts",
-    "test:authorization": "node --experimental-strip-types --test tests/authorization.test.ts"
+    "test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/*.test.ts",
+    "test:steam-openid": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/config.test.ts tests/openIdVerifier.test.ts tests/redaction.test.ts tests/requestSecurity.test.ts tests/steamOpenIdHttpClient.test.ts tests/steamAuthRoutes.test.ts",
+    "test:storage": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/storage.test.ts",
+    "test:postgres": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.integration.test.ts",
+    "test:authorization": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/authorization.test.ts"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
