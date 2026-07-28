@@ -18,27 +18,48 @@ const config: AuthApiConfig = {
   allowedOrigins: ["https://desktop.example.test"]
 };
 
-test("trusted proxy requires exact forwarded HTTPS and host", () => {
+test("accepts a directly encrypted HTTPS connection", () => {
+  assert.doesNotThrow(() => validatePublicAuthRequest(request(
+    { host: "auth-staging.example.test" },
+    true
+  ), { ...config, trustProxy: false }));
+});
+
+test("accepts HTTPS reported by a trusted proxy", () => {
   assert.doesNotThrow(() => validatePublicAuthRequest(request({
     "x-forwarded-proto": "https",
     "x-forwarded-host": "auth-staging.example.test"
   }), config));
+  assert.doesNotThrow(() => validatePublicAuthRequest(request({
+    "x-forwarded-proto": " https , http",
+    "x-forwarded-host": "auth-staging.example.test"
+  }), config));
+});
+
+test("rejects HTTP reported by a trusted proxy", () => {
   assert.throws(() => validatePublicAuthRequest(request({
     "x-forwarded-proto": "http",
     "x-forwarded-host": "auth-staging.example.test"
   }), config));
   assert.throws(() => validatePublicAuthRequest(request({
-    "x-forwarded-proto": "https",
-    "x-forwarded-host": "attacker.example.test"
+    "x-forwarded-proto": "http, https",
+    "x-forwarded-host": "auth-staging.example.test"
   }), config));
 });
 
-test("forwarded headers are ignored when trust proxy is disabled", () => {
+test("ignores forwarded HTTPS when proxy trust is disabled", () => {
   assert.throws(() => validatePublicAuthRequest(request({
     "x-forwarded-proto": "https",
     "x-forwarded-host": "auth-staging.example.test",
     host: "auth-staging.example.test"
   }), { ...config, trustProxy: false }));
+});
+
+test("retains the exact public host allowlist", () => {
+  assert.throws(() => validatePublicAuthRequest(request({
+    "x-forwarded-proto": "https",
+    "x-forwarded-host": "attacker.example.test"
+  }), config));
 });
 
 test("rejects an unapproved browser origin", () => {
@@ -49,9 +70,12 @@ test("rejects an unapproved browser origin", () => {
   }), config));
 });
 
-function request(headers: IncomingMessage["headers"]) {
+function request(
+  headers: IncomingMessage["headers"],
+  encrypted = false
+) {
   return {
     headers,
-    socket: {}
-  } as IncomingMessage;
+    socket: { encrypted }
+  } as unknown as IncomingMessage;
 }

@@ -9,20 +9,22 @@ export function validatePublicAuthRequest(
     return;
   }
   const expected = new URL(config.publicBaseUrl);
-  if (config.trustProxy) {
-    if (
-      singleHeader(request.headers["x-forwarded-proto"]) !== "https" ||
-      singleHeader(request.headers["x-forwarded-host"]) !== expected.host
-    ) {
-      throw new Error("https_required");
-    }
-  } else {
-    const encrypted = (request.socket as typeof request.socket & {
-      encrypted?: boolean;
-    }).encrypted;
-    if (!encrypted || request.headers.host !== expected.host) {
-      throw new Error("https_required");
-    }
+  const directConnectionIsSecure = Boolean(
+    (request.socket as typeof request.socket & { encrypted?: boolean }).encrypted
+  );
+  const trustedForwardedConnectionIsSecure =
+    config.trustProxy &&
+    firstForwardedValue(request.headers["x-forwarded-proto"]) === "https";
+
+  if (!directConnectionIsSecure && !trustedForwardedConnectionIsSecure) {
+    throw new Error("https_required");
+  }
+
+  const requestHost = directConnectionIsSecure
+    ? request.headers.host
+    : singleHostHeader(request.headers["x-forwarded-host"]);
+  if (requestHost !== expected.host) {
+    throw new Error("https_required");
   }
   const origin = request.headers.origin;
   if (
@@ -34,7 +36,12 @@ export function validatePublicAuthRequest(
   }
 }
 
-function singleHeader(value: string | string[] | undefined) {
+function firstForwardedValue(value: string | string[] | undefined) {
+  const header = Array.isArray(value) ? value[0] : value;
+  return header?.split(",", 1)[0]?.trim();
+}
+
+function singleHostHeader(value: string | string[] | undefined) {
   if (typeof value !== "string" || value.includes(",")) return undefined;
   return value.trim().toLowerCase();
 }
