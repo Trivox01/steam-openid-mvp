@@ -171,13 +171,40 @@ function parseBoolean(value: string | undefined, name: string) {
 
 function parseAllowedOrigins(value: string | undefined) {
   if (!value?.trim()) return [];
-  return value.split(",").map((entry) => {
-    const url = parseSecureUrl(entry.trim(), "ALLOWED_ORIGINS");
-    if (url.pathname !== "/" || url.search) {
-      throw new ConfigurationError("invalid_ALLOWED_ORIGINS");
-    }
-    return url.origin;
-  });
+  const origins = value.split(",").map((entry) =>
+    parseAllowedOrigin(entry.trim())
+  );
+  return [...new Set(origins)];
+}
+
+function parseAllowedOrigin(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ConfigurationError("invalid_ALLOWED_ORIGINS");
+  }
+  const isSecureWebOrigin = url.protocol === "https:";
+  const isTauriWindowsOrigin =
+    url.protocol === "http:" && url.hostname === "tauri.localhost";
+  const isLoopbackDevelopmentOrigin =
+    url.protocol === "http:" &&
+    (url.hostname === "127.0.0.1" || url.hostname === "localhost") &&
+    Boolean(url.port);
+  if (
+    (!isSecureWebOrigin &&
+      !isTauriWindowsOrigin &&
+      !isLoopbackDevelopmentOrigin) ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash ||
+    url.origin !== value
+  ) {
+    throw new ConfigurationError("invalid_ALLOWED_ORIGINS");
+  }
+  return url.origin;
 }
 
 function parseLogLevel(value: string | undefined) {

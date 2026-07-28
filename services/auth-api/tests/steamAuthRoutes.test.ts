@@ -59,7 +59,9 @@ interface Harness {
   setNow(value: number): void;
 }
 
-async function createHarness(): Promise<Harness> {
+async function createHarness(
+  config: AuthApiConfig = CONFIG
+): Promise<Harness> {
   let now = NOW;
   const repository = new InMemoryAuthTransactionRepository();
   const transactions = new AuthTransactionService(repository, {
@@ -68,10 +70,10 @@ async function createHarness(): Promise<Harness> {
   const checker = new FakeChecker();
   const logger = new CapturingLogger();
   const server = createServer(createRouter({
-    config: CONFIG,
+    config,
     transactions,
     verifier: new SteamOpenIdVerifier(checker, {
-      realm: CONFIG.openIdRealm,
+      realm: config.openIdRealm,
       now: () => now
     }),
     rateLimiter: new PollingRateLimiter({ now: () => now }),
@@ -91,6 +93,74 @@ async function createHarness(): Promise<Harness> {
     setNow(value) { now = value; }
   };
 }
+
+test("approved Tauri and Vite origins receive exact CORS headers", async () => {
+  const allowedOrigins = [
+    "http://tauri.localhost",
+    "http://127.0.0.1:1420"
+  ];
+  const harness = await createHarness({ ...CONFIG, allowedOrigins });
+  try {
+    for (const origin of allowedOrigins) {
+      const response = await fetch(`${harness.baseUrl}/v1/auth/steam/start`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin
+        },
+        body: JSON.stringify({ deviceId: DEVICE_ID })
+      });
+      assert.equal(response.status, 201);
+      assert.equal(response.headers.get("access-control-allow-origin"), origin);
+      assert.match(response.headers.get("vary") ?? "", /(?:^|,\s*)Origin(?:,|$)/i);
+      assert.notEqual(response.headers.get("access-control-allow-origin"), "*");
+    }
+  } finally {
+    await closeHarness(harness);
+  }
+});
+
+test("approved OPTIONS preflight returns 204 and unknown origin is not allowed", async () => {
+  const origin = "http://127.0.0.1:1420";
+  const harness = await createHarness({
+    ...CONFIG,
+    allowedOrigins: [origin, "http://tauri.localhost"]
+  });
+  try {
+    const approved = await fetch(`${harness.baseUrl}/v1/auth/steam/start`, {
+      method: "OPTIONS",
+      headers: {
+        origin,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "Content-Type"
+      }
+    });
+    assert.equal(approved.status, 204);
+    assert.equal(approved.headers.get("access-control-allow-origin"), origin);
+    assert.equal(
+      approved.headers.get("access-control-allow-methods"),
+      "POST, GET, OPTIONS"
+    );
+    assert.equal(
+      approved.headers.get("access-control-allow-headers"),
+      "Content-Type"
+    );
+    assert.equal(approved.headers.get("access-control-max-age"), "600");
+
+    const rejected = await fetch(`${harness.baseUrl}/v1/auth/steam/start`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://attacker.example.test",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "Content-Type"
+      }
+    });
+    assert.equal(rejected.status, 403);
+    assert.equal(rejected.headers.get("access-control-allow-origin"), null);
+  } finally {
+    await closeHarness(harness);
+  }
+});
 
 async function closeHarness(harness: Harness) {
   await new Promise<void>((resolve, reject) =>

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SteamOpenIdSignInService } from "../src/services/platform/SteamOpenIdSignInService.ts";
+import {
+  SteamOpenIdClient,
+  SteamOpenIdClientError
+} from "../src/services/platform/SteamOpenIdClient.ts";
 
 const DEVICE_ID = "f7930e64-64c0-4e25-8681-39362ac65478";
 const VERIFIED_IDENTITY = {
@@ -87,4 +91,67 @@ test("an aborted sign-in does not start a transaction or open the browser", asyn
   );
   assert.deepEqual(harness.calls, []);
   assert.deepEqual(harness.opened, []);
+});
+
+test("Desktop client distinguishes backend HTTP errors", async (context) => {
+  context.mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({ error: "invalid_device_id" }), {
+      status: 401,
+      headers: { "content-type": "application/json" }
+    })
+  );
+  const client = new SteamOpenIdClient("https://auth.example.test");
+  await assert.rejects(
+    client.start(DEVICE_ID),
+    (error) =>
+      error instanceof SteamOpenIdClientError &&
+      error.kind === "http" &&
+      error.code === "invalid_device_id" &&
+      error.httpStatus === 401
+  );
+});
+
+test("Desktop client distinguishes malformed successful responses", async (context) => {
+  context.mock.method(globalThis, "fetch", async () =>
+    new Response("<html>not json</html>", { status: 200 })
+  );
+  const client = new SteamOpenIdClient("https://auth.example.test");
+  await assert.rejects(
+    client.start(DEVICE_ID),
+    (error) =>
+      error instanceof SteamOpenIdClientError &&
+      error.kind === "malformed" &&
+      error.code === "malformed_response"
+  );
+});
+
+test("Desktop client distinguishes network and timeout failures", async (context) => {
+  context.mock.method(globalThis, "fetch", async (_input, init) => {
+    await new Promise((resolve, reject) => {
+      const signal = init?.signal;
+      signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+    throw new Error("unreachable");
+  });
+  const client = new SteamOpenIdClient("https://auth.example.test", 5);
+  await assert.rejects(
+    client.start(DEVICE_ID),
+    (error) =>
+      error instanceof SteamOpenIdClientError &&
+      error.kind === "timeout"
+  );
+});
+
+test("Desktop client reports a fetch rejection as a network or CORS failure", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  const client = new SteamOpenIdClient("https://auth.example.test");
+  await assert.rejects(
+    client.start(DEVICE_ID),
+    (error) =>
+      error instanceof SteamOpenIdClientError &&
+      error.kind === "network" &&
+      error.code === "network_or_cors_failure"
+  );
 });

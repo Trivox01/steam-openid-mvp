@@ -9,6 +9,11 @@ import {
   createSteamAuthRouteHandler,
   type SteamAuthRouteDependencies
 } from "./routes/steamAuth.ts";
+import {
+  applyCorsHeaders,
+  handleCorsPreflight,
+  safeCorsDiagnostic
+} from "./security/cors.ts";
 
 export function createRouter(
   steamAuthDependencies?: SteamAuthRouteDependencies
@@ -33,7 +38,25 @@ export function createRouter(
       );
       return;
     }
-    if (handleSteamAuth && url.pathname.startsWith("/v1/auth/steam/")) {
+    const isSteamAuthRoute =
+      Boolean(handleSteamAuth) && url.pathname.startsWith("/v1/auth/steam/");
+    if (isSteamAuthRoute) {
+      const cors = applyCorsHeaders(
+        request,
+        response,
+        steamAuthDependencies!.config.allowedOrigins
+      );
+      response.once("finish", () => {
+        process.stdout.write(
+          `${JSON.stringify(safeCorsDiagnostic(
+            request,
+            url.pathname,
+            cors,
+            response.statusCode
+          ))}\n`
+        );
+      });
+      if (handleCorsPreflight(request, response, cors)) return;
       try {
         validatePublicAuthRequest(request, steamAuthDependencies!.config);
       } catch {

@@ -1,6 +1,7 @@
 import { CheckCircle2, ExternalLink, Gamepad2, Link2Off, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { services } from "../../services/compositionRoot";
+import { SteamOpenIdClientError } from "../../services/platform/SteamOpenIdClient";
 import type { SteamOpenIdIdentity } from "../../types/steamOpenId";
 import { HoloPulseLoader } from "../ui/holo-pulse-loader";
 import { useTranslation } from "../../i18n/TranslationContext";
@@ -58,9 +59,20 @@ export function SteamOpenIdAccountSettings() {
       setViewState(result.status === "cancelled" ? "cancelled" : "error");
       setMessageKey(`steam.openId.${result.status}`);
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
+      if (
+        controller.signal.aborted ||
+        (error instanceof DOMException && error.name === "AbortError")
+      ) {
         setViewState("cancelled");
         setMessageKey("steam.openId.cancelled");
+      } else if (error instanceof SteamOpenIdClientError) {
+        setViewState("error");
+        setMessageKey({
+          network: "steam.openId.connectionError",
+          http: "steam.openId.backendError",
+          malformed: "steam.openId.malformedResponse",
+          timeout: "steam.openId.timeout"
+        }[error.kind]);
       } else {
         setViewState("error");
         setMessageKey("steam.openId.connectionError");

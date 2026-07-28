@@ -33,6 +33,29 @@ test("loads secure OpenID environment configuration", () => {
   });
 });
 
+test("parses the explicit Windows Tauri and Vite development origin allowlist", () => {
+  const config = loadAuthApiConfig({
+    ...VALID_ENV,
+    ALLOWED_ORIGINS:
+      "http://tauri.localhost,http://127.0.0.1:1420,http://127.0.0.1:1420"
+  });
+  assert.deepEqual(config.allowedOrigins, [
+    "http://tauri.localhost",
+    "http://127.0.0.1:1420"
+  ]);
+});
+
+test("rejects wildcard and non-loopback insecure allowed origins", () => {
+  for (const ALLOWED_ORIGINS of ["*", "http://example.test", "tauri://localhost"]) {
+    assert.throws(
+      () => loadAuthApiConfig({ ...VALID_ENV, ALLOWED_ORIGINS }),
+      (error: unknown) =>
+        error instanceof ConfigurationError &&
+        error.code === "invalid_ALLOWED_ORIGINS"
+    );
+  }
+});
+
 test("rejects missing OpenID environment", () => {
   assert.throws(
     () => loadAuthApiConfig({}),
