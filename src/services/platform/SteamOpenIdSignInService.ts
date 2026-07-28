@@ -9,7 +9,7 @@ import type { SteamOpenIdApi } from "./SteamOpenIdClient";
 export interface SteamOpenIdStateStore {
   getState(): Promise<SteamOpenIdDesktopState>;
   saveIdentity(identity: SteamOpenIdIdentity): Promise<void>;
-  clearIdentity(): Promise<void>;
+  clearAuthenticatedSteamIdentity(): Promise<void>;
 }
 
 export interface ExternalUrlOpener {
@@ -25,6 +25,7 @@ export class SteamOpenIdSignInService {
   private readonly store: SteamOpenIdStateStore;
   private readonly opener: ExternalUrlOpener;
   private readonly wait: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  private activeSignIn?: AbortController;
 
   constructor(
     api: SteamOpenIdApi,
@@ -43,30 +44,44 @@ export class SteamOpenIdSignInService {
     return this.store.getState().then((state) => state.identity);
   }
 
-  disconnect() {
-    return this.store.clearIdentity();
+  async signOut() {
+    this.activeSignIn?.abort();
+    await this.store.clearAuthenticatedSteamIdentity();
   }
 
   async signIn(signal: AbortSignal): Promise<SteamOpenIdSignInResult> {
-    signal.throwIfAborted();
-    const { deviceId } = await this.store.getState();
-    const started = await this.api.start(deviceId, signal);
-    signal.throwIfAborted();
-    await this.opener.open(started.steamLoginUrl);
-    signal.throwIfAborted();
+    const operation = new AbortController();
+    this.activeSignIn?.abort();
+    this.activeSignIn = operation;
+    const activeSignal = AbortSignal.any([signal, operation.signal]);
+    try {
+      activeSignal.throwIfAborted();
+      const { deviceId } = await this.store.getState();
+      const started = await this.api.start(deviceId, activeSignal);
+      activeSignal.throwIfAborted();
+      await this.opener.open(started.steamLoginUrl);
+      activeSignal.throwIfAborted();
 
-    while (!signal.aborted && Date.now() < Date.parse(started.expiresAt)) {
-      await this.wait(started.pollingInterval, signal);
-      const status = await this.api.status({
-        authRequestId: started.authRequestId,
-        pollSecret: started.pollSecret,
-        deviceId
-      }, signal);
-      const final = await this.handleStatus(status);
-      if (final) return final;
+      while (
+        !activeSignal.aborted &&
+        Date.now() < Date.parse(started.expiresAt)
+      ) {
+        await this.wait(started.pollingInterval, activeSignal);
+        const status = await this.api.status({
+          authRequestId: started.authRequestId,
+          pollSecret: started.pollSecret,
+          deviceId
+        }, activeSignal);
+        const final = await this.handleStatus(status);
+        if (final) return final;
+      }
+      if (activeSignal.aborted) {
+        throw new DOMException("cancelled", "AbortError");
+      }
+      return { status: "expired" };
+    } finally {
+      if (this.activeSignIn === operation) this.activeSignIn = undefined;
     }
-    if (signal.aborted) throw new DOMException("cancelled", "AbortError");
-    return { status: "expired" };
   }
 
   private async handleStatus(

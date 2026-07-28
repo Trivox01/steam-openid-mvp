@@ -19,9 +19,8 @@ export class SteamOpenIdDesktopRepository {
     await this.save({ deviceId: state.deviceId, identity });
   }
 
-  async clearIdentity() {
-    const state = await this.getState();
-    await this.save({ deviceId: state.deviceId });
+  async clearAuthenticatedSteamIdentity() {
+    await invoke<void>("clear_steam_openid_authenticated_identity");
   }
 
   private save(value: SteamOpenIdDesktopState) {

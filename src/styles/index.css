@@ -618,6 +618,9 @@ main { width:100%; max-width:1540px; padding:clamp(24px,2.4vw,38px) clamp(20px,2
 .steam-openid-identity dd { overflow:hidden; margin:5px 0 0; color:var(--text); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
 .steam-openid-actions { display:flex; align-items:center; gap:10px; }
 .steam-openid-actions button,.steam-openid-status button,.steam-openid-card > button { width:max-content; }
+.steam-openid-actions .secondary-button,.steam-openid-actions .danger-button { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--border); color:var(--text); background:var(--soft); cursor:pointer; }
+.steam-openid-actions .danger-button { color:var(--danger); border-color:color-mix(in srgb,var(--danger) 28%,var(--border)); background:color-mix(in srgb,var(--danger) 8%,var(--surface)); }
+.steam-openid-actions button:disabled,.confirm-dialog button:disabled { opacity:.55; cursor:not-allowed; transform:none; }
 .secret-input { position:relative; display:block; }
 .secret-input input { padding-right:44px; }
 .secret-input button { position:absolute; top:5px; right:5px; width:32px; height:32px; display:grid; place-items:center; border:0; border-radius:7px; color:var(--text-secondary); background:transparent; cursor:pointer; }

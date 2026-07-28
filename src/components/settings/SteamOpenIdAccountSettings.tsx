@@ -1,5 +1,5 @@
-import { CheckCircle2, ExternalLink, Gamepad2, Link2Off, RefreshCw, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, ExternalLink, Gamepad2, LogOut, RefreshCw, Repeat2, ShieldAlert, X } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { services } from "../../services/compositionRoot";
 import { SteamOpenIdClientError } from "../../services/platform/SteamOpenIdClient";
 import type { SteamOpenIdIdentity } from "../../types/steamOpenId";
@@ -7,6 +7,7 @@ import { HoloPulseLoader } from "../ui/holo-pulse-loader";
 import { useTranslation } from "../../i18n/TranslationContext";
 
 type ViewState = "loading" | "idle" | "connecting" | "connected" | "cancelled" | "error";
+type AccountAction = "signOut" | "changeAccount";
 
 export function SteamOpenIdAccountSettings() {
   const { t } = useTranslation();
@@ -15,6 +16,8 @@ export function SteamOpenIdAccountSettings() {
   const [viewState, setViewState] = useState<ViewState>("loading");
   const [identity, setIdentity] = useState<SteamOpenIdIdentity>();
   const [messageKey, setMessageKey] = useState<string>();
+  const [accountAction, setAccountAction] = useState<AccountAction>();
+  const [processingAccountAction, setProcessingAccountAction] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -84,16 +87,28 @@ export function SteamOpenIdAccountSettings() {
 
   const cancel = () => abortController.current?.abort();
 
-  const disconnect = async () => {
-    if (!service) return;
+  const confirmAccountAction = async () => {
+    if (!service || !accountAction || processingAccountAction) return;
+    const action = accountAction;
+    abortController.current?.abort();
+    setProcessingAccountAction(true);
+    setMessageKey(undefined);
     try {
-      await service.disconnect();
+      await service.signOut();
       setIdentity(undefined);
-      setMessageKey(undefined);
-      setViewState("idle");
+      setAccountAction(undefined);
+      if (action === "changeAccount") {
+        setProcessingAccountAction(false);
+        await connect();
+      } else {
+        setViewState("idle");
+      }
     } catch {
-      setViewState("error");
+      setViewState("connected");
       setMessageKey("steam.openId.disconnectError");
+      setAccountAction(undefined);
+    } finally {
+      setProcessingAccountAction(false);
     }
   };
 
@@ -120,31 +135,60 @@ export function SteamOpenIdAccountSettings() {
 
   if (viewState === "connected" && identity) {
     return (
-      <div className="steam-openid-card">
-        <div className="steam-openid-heading">
-          <span className="steam-openid-icon steam-openid-icon-success">
-            <CheckCircle2 aria-hidden="true" />
-          </span>
-          <div>
-            <strong>{t("steam.openId.connected")}</strong>
-            <p>{t("steam.openId.connectedDescription")}</p>
+      <>
+        <div className="steam-openid-card">
+          <div className="steam-openid-heading">
+            <span className="steam-openid-icon steam-openid-icon-success">
+              <CheckCircle2 aria-hidden="true" />
+            </span>
+            <div>
+              <strong>{t("steam.openId.connected")}</strong>
+              <p>{t("steam.openId.connectedDescription")}</p>
+            </div>
+          </div>
+          <dl className="steam-openid-identity">
+            <div>
+              <dt>SteamID64</dt>
+              <dd dir="ltr">{identity.steamId}</dd>
+            </div>
+            <div>
+              <dt>{t("steam.openId.authenticatedAt")}</dt>
+              <dd>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(identity.authenticatedAt))}</dd>
+            </div>
+          </dl>
+          {messageKey ? <p className="form-error" role="alert">{t(messageKey)}</p> : null}
+          <div className="steam-openid-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={processingAccountAction}
+              onClick={() => setAccountAction("changeAccount")}
+            >
+              <Repeat2 size={16} aria-hidden="true" />
+              {t("steam.openId.changeAccount")}
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              disabled={processingAccountAction}
+              onClick={() => setAccountAction("signOut")}
+            >
+              <LogOut size={16} aria-hidden="true" />
+              {t("steam.openId.signOut")}
+            </button>
           </div>
         </div>
-        <dl className="steam-openid-identity">
-          <div>
-            <dt>SteamID64</dt>
-            <dd dir="ltr">{identity.steamId}</dd>
-          </div>
-          <div>
-            <dt>{t("steam.openId.authenticatedAt")}</dt>
-            <dd>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(identity.authenticatedAt))}</dd>
-          </div>
-        </dl>
-        <button className="secondary-button" type="button" onClick={disconnect}>
-          <Link2Off size={16} aria-hidden="true" />
-          {t("steam.disconnect")}
-        </button>
-      </div>
+        {accountAction ? (
+          <SteamAccountActionDialog
+            action={accountAction}
+            processing={processingAccountAction}
+            onCancel={() => {
+              if (!processingAccountAction) setAccountAction(undefined);
+            }}
+            onConfirm={confirmAccountAction}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -192,6 +236,85 @@ export function SteamOpenIdAccountSettings() {
         </>
       )}
       <p className="steam-password-notice">{t("steam.openId.securityNotice")}</p>
+    </div>
+  );
+}
+
+function SteamAccountActionDialog({
+  action,
+  processing,
+  onCancel,
+  onConfirm
+}: {
+  action: AccountAction;
+  processing: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { t } = useTranslation();
+  const titleId = useId();
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  const isSignOut = action === "signOut";
+
+  useEffect(() => {
+    cancelButton.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !processing) onCancel();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onCancel, processing]);
+
+  return (
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onMouseDown={() => {
+        if (!processing) onCancel();
+      }}
+    >
+      <div
+        className="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-busy={processing}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div><ShieldAlert size={22} aria-hidden="true" /></div>
+        <h2 id={titleId}>
+          {t(isSignOut
+            ? "steam.openId.signOutDialog.title"
+            : "steam.openId.changeAccountDialog.title")}
+        </h2>
+        <p>
+          {t(isSignOut
+            ? "steam.openId.signOutDialog.message"
+            : "steam.openId.changeAccountDialog.message")}
+        </p>
+        <footer>
+          <button
+            ref={cancelButton}
+            type="button"
+            disabled={processing}
+            onClick={onCancel}
+          >
+            {t("steam.openId.dialog.cancel")}
+          </button>
+          <button
+            className={isSignOut ? "danger-button" : "primary-button"}
+            type="button"
+            disabled={processing}
+            onClick={onConfirm}
+          >
+            {processing
+              ? t("steam.openId.processing")
+              : t(isSignOut
+                ? "steam.openId.signOutDialog.confirm"
+                : "steam.openId.changeAccountDialog.confirm")}
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }

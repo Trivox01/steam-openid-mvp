@@ -97,6 +97,20 @@ pub fn save_steam_openid_desktop_state(value: SteamOpenIdDesktopStateRecord, sta
 }
 
 #[tauri::command]
+pub fn clear_steam_openid_authenticated_identity(state: State<DatabaseState>) -> Result<(), String> {
+    let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;
+    let encoded:Option<String>=db.query_row("SELECT value_json FROM preferences WHERE key='steam_openid_desktop'",[],|r|r.get(0)).optional().map_err(|e|db_error("Unable to read Steam sign-in state",e))?;
+    let sanitized=encoded.ok_or_else(||"Stored Steam sign-in state is unavailable".to_string()).and_then(|raw|steam_openid_state_without_identity(&raw))?;
+    db.execute("UPDATE preferences SET value_json=?1,updated_at=CURRENT_TIMESTAMP WHERE key='steam_openid_desktop'",[sanitized]).map(|_|()).map_err(|e|db_error("Unable to clear Steam identity",e))
+}
+
+fn steam_openid_state_without_identity(raw:&str)->Result<String,String>{
+    let mut value:SteamOpenIdDesktopStateRecord=serde_json::from_str(raw).map_err(|_|"Stored Steam sign-in state is invalid".to_string())?;
+    value.identity=None;
+    serde_json::to_string(&value).map_err(|_|"Unable to encode Steam sign-in state".to_string())
+}
+
+#[tauri::command]
 pub fn get_profile(state: State<DatabaseState>) -> Result<Option<ProfileRecord>, String> { let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?; db.query_row("SELECT id,display_name,avatar_url,active_platform FROM profile LIMIT 1",[],|r|Ok(ProfileRecord{id:r.get(0)?,display_name:r.get(1)?,avatar_url:r.get(2)?,active_platform:r.get(3)?})).optional().map_err(|e|db_error("Unable to read profile",e)) }
 #[tauri::command]
 pub fn save_profile(profile: ProfileRecord,state:State<DatabaseState>)->Result<(),String>{let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;db.execute("INSERT INTO profile(id,display_name,avatar_url,active_platform) VALUES(?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,avatar_url=excluded.avatar_url,active_platform=excluded.active_platform,updated_at=CURRENT_TIMESTAMP",params![profile.id,profile.display_name,profile.avatar_url,profile.active_platform]).map(|_|()).map_err(|e|db_error("Unable to save profile",e))}
@@ -110,3 +124,25 @@ fn map_achievement(row:&rusqlite::Row)->rusqlite::Result<AchievementRecord>{Ok(A
 fn upsert_game(db:&rusqlite::Connection,g:&GameRecord)->rusqlite::Result<usize>{db.execute("INSERT INTO games(id,platform_id,platform_game_id,name,cover_url,background_url,playtime_minutes,achievements_unlocked,achievements_total,completion_percentage,last_played_at,playtime_two_weeks_minutes,playtime_windows_minutes,playtime_mac_minutes,playtime_linux_minutes,icon_url,synced_at,favorite,hidden,game_status,achievements_synced_at,achievements_sync_status,achievements_sync_error) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23) ON CONFLICT(id) DO UPDATE SET platform_id=excluded.platform_id,platform_game_id=excluded.platform_game_id,name=excluded.name,cover_url=excluded.cover_url,background_url=excluded.background_url,playtime_minutes=excluded.playtime_minutes,achievements_unlocked=excluded.achievements_unlocked,achievements_total=excluded.achievements_total,completion_percentage=excluded.completion_percentage,last_played_at=excluded.last_played_at,playtime_two_weeks_minutes=excluded.playtime_two_weeks_minutes,playtime_windows_minutes=excluded.playtime_windows_minutes,playtime_mac_minutes=excluded.playtime_mac_minutes,playtime_linux_minutes=excluded.playtime_linux_minutes,icon_url=excluded.icon_url,synced_at=excluded.synced_at,favorite=excluded.favorite,hidden=excluded.hidden,game_status=excluded.game_status,achievements_synced_at=excluded.achievements_synced_at,achievements_sync_status=excluded.achievements_sync_status,achievements_sync_error=excluded.achievements_sync_error,updated_at=CURRENT_TIMESTAMP",params![g.id,g.platform_id,g.platform_game_id,g.name,g.cover_url,g.background_url,g.playtime_minutes,g.achievements_unlocked,g.achievements_total,g.completion_percentage,g.last_played_at,g.playtime_two_weeks_minutes,g.playtime_windows_minutes,g.playtime_mac_minutes,g.playtime_linux_minutes,g.icon_url,g.synced_at,g.favorite,g.hidden,g.game_status,g.achievements_synced_at,g.achievements_sync_status,g.achievements_sync_error])}
 fn query_achievements(state:&State<DatabaseState>,game_id:Option<String>)->Result<Vec<AchievementRecord>,String>{let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;let sql=if game_id.is_some(){"SELECT id,game_id,platform_achievement_id,name,description,icon_url,is_unlocked,is_hidden,rarity_percentage,unlocked_at,locked_icon_url,source,global_unlock_percent,synced_at,unlock_state_known FROM achievements WHERE game_id=?1 ORDER BY rarity_percentage"}else{"SELECT id,game_id,platform_achievement_id,name,description,icon_url,is_unlocked,is_hidden,rarity_percentage,unlocked_at,locked_icon_url,source,global_unlock_percent,synced_at,unlock_state_known FROM achievements ORDER BY unlocked_at DESC"};let mut s=db.prepare(sql).map_err(|e|db_error("Unable to query achievements",e))?;let rows=if let Some(id)=game_id{s.query_map([id],map_achievement)}else{s.query_map([],map_achievement)}.map_err(|e|db_error("Unable to read achievements",e))?;rows.collect::<Result<Vec<_>,_>>().map_err(|e|db_error("Unable to decode achievements",e))}
 fn execute_clear(state:&State<DatabaseState>,sql:&str,label:&str)->Result<(),String>{let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;db.execute(sql,[]).map(|_|()).map_err(|e|db_error(&format!("Unable to clear {label}"),e))}
+
+#[cfg(test)]
+mod steam_openid_identity_tests {
+    use super::steam_openid_state_without_identity;
+    use serde_json::Value;
+
+    #[test]
+    fn removes_only_identity_and_preserves_device_id() {
+        let device_id="f7930e64-64c0-4e25-8681-39362ac65478";
+        let raw=format!(r#"{{"deviceId":"{device_id}","identity":{{"steamId":"76561198000000000","authenticatedAt":"2026-07-28T12:00:00.000Z","authMethod":"steam_openid"}}}}"#);
+        let sanitized=steam_openid_state_without_identity(&raw).unwrap();
+        let value:Value=serde_json::from_str(&sanitized).unwrap();
+        assert_eq!(value["deviceId"],device_id);
+        assert!(value["identity"].is_null());
+    }
+
+    #[test]
+    fn closed_schema_rejects_transaction_secrets() {
+        let raw=r#"{"deviceId":"f7930e64-64c0-4e25-8681-39362ac65478","identity":null,"pollSecret":"must-not-be-stored"}"#;
+        assert!(steam_openid_state_without_identity(raw).is_err());
+    }
+}
