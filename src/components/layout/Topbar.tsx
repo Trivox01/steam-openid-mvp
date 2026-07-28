@@ -6,7 +6,7 @@ import { ProfileAvatar } from "../ui/ProfileAvatar";
 import { useTranslation } from "../../i18n/TranslationContext";
 import { CurrentUserProfileCardTrigger } from "../profile/CurrentUserProfileCardTrigger";
 
-export function Topbar({ profile, search, onSearch, onOpenProfile }: { profile?: UserProfile; search: string; onSearch: (value: string) => void; onOpenProfile?: () => void }) {
+export function Topbar({ profile, search, onSearch }: { profile?: UserProfile; search: string; onSearch: (value: string) => void }) {
   const { t } = useTranslation();
   const displayName = profile?.id !== "local-player" && profile?.displayName.trim()
     ? profile.displayName.trim()
@@ -23,7 +23,7 @@ export function Topbar({ profile, search, onSearch, onOpenProfile }: { profile?:
       <div className="topbar-actions">
         <ThemeToggle />
         <button className="icon-button notification-button" aria-label={t("topbar.notifications")}><Bell size={18} /><span /></button>
-        <CurrentUserProfileCardTrigger profile={profile} onAction={onOpenProfile}>
+        <CurrentUserProfileCardTrigger profile={profile}>
           <span className="profile">
             <ProfileAvatar src={profile?.avatarUrl} name={displayName} />
             <span>

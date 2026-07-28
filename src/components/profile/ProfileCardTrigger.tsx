@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { UserProfileSummary } from "../../features/profile/types";
 import { useTranslation } from "../../i18n/TranslationContext";
 import { ProfileCard } from "./ProfileCard";
@@ -42,7 +43,8 @@ export function ProfileCardTrigger({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !cardRef.current?.contains(target)) {
         setOpen(false);
         triggerRef.current?.focus();
       }
@@ -82,7 +84,7 @@ export function ProfileCardTrigger({
       >
         {children}
       </button>
-      {open && (
+      {open && createPortal(
         <div ref={cardRef} className="profile-card-popover" role="dialog" aria-modal="false" aria-label={t("profile.cardLabel")} tabIndex={-1}>
           {status === "loading" && <ProfileCardSkeleton />}
           {status === "error" && (
@@ -93,7 +95,7 @@ export function ProfileCardTrigger({
           )}
           {status === "ready" && summary && <ProfileCard summary={summary} onAction={onAction ? () => { setOpen(false); onAction(); } : undefined} />}
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }

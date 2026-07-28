@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 type Position = { left: number; top: number; ready: boolean };
@@ -15,8 +15,23 @@ export function BadgeTooltip({
   const tooltipId = useId();
   const triggerRef = useRef<HTMLSpanElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const openTimerRef = useRef<number | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<Position>({ left: 0, top: 0, ready: false });
+
+  const cancelScheduledOpen = () => {
+    if (openTimerRef.current !== undefined) window.clearTimeout(openTimerRef.current);
+    openTimerRef.current = undefined;
+  };
+  const scheduleOpen = () => {
+    cancelScheduledOpen();
+    openTimerRef.current = window.setTimeout(() => {
+      setOpen(true);
+      openTimerRef.current = undefined;
+    }, 150);
+  };
+
+  useEffect(() => cancelScheduledOpen, []);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -43,8 +58,8 @@ export function BadgeTooltip({
         tabIndex={0}
         aria-label={label}
         aria-describedby={open ? tooltipId : undefined}
-        onPointerEnter={() => setOpen(true)}
-        onPointerLeave={() => setOpen(false)}
+        onPointerEnter={scheduleOpen}
+        onPointerLeave={() => { cancelScheduledOpen(); setOpen(false); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={(event) => {
@@ -73,7 +88,7 @@ export function BadgeTooltip({
 }
 
 function placeTooltip(trigger: HTMLElement, tooltip: HTMLElement): Position {
-  const padding = 12;
+  const padding = 16;
   const offset = 8;
   const anchor = trigger.getBoundingClientRect();
   const card = trigger.closest(".profile-card-popover")?.getBoundingClientRect() ?? anchor;
