@@ -22,6 +22,7 @@
     "steam-openid:live-test": "npm --prefix services/auth-api run steam-openid:live-test",
     "test:steam-signin-ui": "node --experimental-strip-types scripts/validate-steam-signin-phase1.mjs",
     "test:steam-openid-desktop": "node --experimental-strip-types --test scripts/validate-steam-openid-desktop.mjs",
+    "test:profile": "node --experimental-strip-types scripts/validate-profile-card.mjs",
     "typecheck:backend": "npm --prefix services/auth-api run typecheck",
     "tauri": "tauri"
   },

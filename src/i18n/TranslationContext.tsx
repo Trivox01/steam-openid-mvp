@@ -7,6 +7,7 @@ import { intelligence as enIntelligence } from "../locales/en/intelligence";
 import { gameDetails as enGameDetails } from "../locales/en/gameDetails";
 import { onboarding as enOnboarding } from "../locales/en/onboarding";
 import { statistics as enStatistics } from "../locales/en/statistics";
+import { profile as enProfile } from "../locales/en/profile";
 import { common as arCommon } from "../locales/ar/common";
 import { settings as arSettings } from "../locales/ar/settings";
 import { steam as arSteam } from "../locales/ar/steam";
@@ -15,14 +16,15 @@ import { intelligence as arIntelligence } from "../locales/ar/intelligence";
 import { gameDetails as arGameDetails } from "../locales/ar/gameDetails";
 import { onboarding as arOnboarding } from "../locales/ar/onboarding";
 import { statistics as arStatistics } from "../locales/ar/statistics";
+import { profile as arProfile } from "../locales/ar/profile";
 
 export type Language = "en" | "ar";
 type Variables = Record<string, string | number>;
 type Dictionary = Record<string, string>;
 
 const dictionaries: Record<Language, Dictionary> = {
-  en: { ...enCommon, ...enSettings, ...enSteam, ...enGameCard, ...enIntelligence, ...enGameDetails, ...enOnboarding, ...enStatistics },
-  ar: { ...arCommon, ...arSettings, ...arSteam, ...arGameCard, ...arIntelligence, ...arGameDetails, ...arOnboarding, ...arStatistics }
+  en: { ...enCommon, ...enSettings, ...enSteam, ...enGameCard, ...enIntelligence, ...enGameDetails, ...enOnboarding, ...enStatistics, ...enProfile },
+  ar: { ...arCommon, ...arSettings, ...arSteam, ...arGameCard, ...arIntelligence, ...arGameDetails, ...arOnboarding, ...arStatistics, ...arProfile }
 };
 
 type TranslationContextValue = {
