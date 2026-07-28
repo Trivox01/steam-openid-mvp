@@ -57,7 +57,7 @@ async function main() {
     })
   );
 
-  server.listen(config.port, "127.0.0.1", () => {
+  server.listen(config.port, "0.0.0.0", () => {
     process.stdout.write(
       JSON.stringify({
         event: "auth_api_started",
