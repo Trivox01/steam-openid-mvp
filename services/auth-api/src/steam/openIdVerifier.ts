@@ -9,8 +9,10 @@ import {
 
 const DEFAULT_NONCE_MAX_AGE_MS = 10 * 60_000;
 const DEFAULT_CLOCK_SKEW_MS = 2 * 60_000;
+const NONCE_MAX_LENGTH = 255;
 const NONCE_TIMESTAMP =
-  /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z)[A-Za-z0-9._~-]{0,255}$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z/;
+const PRINTABLE_ASCII_SUFFIX = /^[\x21-\x7e]*$/;
 
 export class SteamOpenIdVerifier {
   readonly #checker: SteamAssertionChecker;
@@ -118,16 +120,47 @@ function validateNonce(
   now: number,
   maxAgeMs: number,
   clockSkewMs: number
-): "invalid_nonce" | "nonce_expired" | undefined {
-  if (!nonce) return "invalid_nonce";
+): "malformed_nonce" | "nonce_too_old" | "nonce_from_future" | undefined {
+  if (!nonce || nonce.length > NONCE_MAX_LENGTH) return "malformed_nonce";
   const match = NONCE_TIMESTAMP.exec(nonce);
-  if (!match) return "invalid_nonce";
-  const timestamp = Date.parse(match[1]);
-  if (!Number.isFinite(timestamp)) return "invalid_nonce";
-  if (timestamp < now - maxAgeMs || timestamp > now + clockSkewMs) {
-    return "nonce_expired";
+  if (!match || !PRINTABLE_ASCII_SUFFIX.test(nonce.slice(20))) {
+    return "malformed_nonce";
   }
+  const timestamp = parseUtcTimestamp(match);
+  if (timestamp === undefined) return "malformed_nonce";
+  if (timestamp < now - maxAgeMs) return "nonce_too_old";
+  if (timestamp > now + clockSkewMs) return "nonce_from_future";
   return undefined;
+}
+
+function parseUtcTimestamp(match: RegExpExecArray) {
+  const [year, month, day, hour, minute, second] =
+    match.slice(1, 7).map(Number);
+  if (
+    year < 1970 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return undefined;
+  }
+  const timestamp = Date.UTC(year, month - 1, day, hour, minute, second);
+  const parsed = new Date(timestamp);
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day ||
+    parsed.getUTCHours() !== hour ||
+    parsed.getUTCMinutes() !== minute ||
+    parsed.getUTCSeconds() !== second
+  ) {
+    return undefined;
+  }
+  return timestamp;
 }
 
 function failure(

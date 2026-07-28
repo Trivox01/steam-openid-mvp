@@ -100,16 +100,41 @@ test("rejects a return URL outside the expected realm", async () => {
   });
 });
 
-test("rejects malformed and expired response nonces", async () => {
+test("accepts a Steam-style nonce with printable suffix after the UTC timestamp", async () => {
+  const { verifier } = makeVerifier();
+  const responseNonce = "2026-07-28T12:00:00ZwHqUwFMm+Q/9=:!$";
+  assert.deepEqual(await verifier.verify({
+    ...validFields,
+    "openid.response_nonce": responseNonce
+  }, RETURN_TO), {
+    ok: true,
+    steamId: STEAM_ID,
+    responseNonce
+  });
+});
+
+test("distinguishes malformed, old, and future response nonces", async () => {
   const { verifier } = makeVerifier();
   assert.deepEqual(await verifier.verify({
     ...validFields,
     "openid.response_nonce": "not-a-nonce"
-  }, RETURN_TO), { ok: false, reason: "invalid_nonce" });
+  }, RETURN_TO), { ok: false, reason: "malformed_nonce" });
+  assert.deepEqual(await verifier.verify({
+    ...validFields,
+    "openid.response_nonce": "2026-02-30T12:00:00Zinvalid-date"
+  }, RETURN_TO), { ok: false, reason: "malformed_nonce" });
+  assert.deepEqual(await verifier.verify({
+    ...validFields,
+    "openid.response_nonce": "2026-07-28T12:00:00Zcontains space"
+  }, RETURN_TO), { ok: false, reason: "malformed_nonce" });
   assert.deepEqual(await verifier.verify({
     ...validFields,
     "openid.response_nonce": "2026-07-28T11:40:00Zold"
-  }, RETURN_TO), { ok: false, reason: "nonce_expired" });
+  }, RETURN_TO), { ok: false, reason: "nonce_too_old" });
+  assert.deepEqual(await verifier.verify({
+    ...validFields,
+    "openid.response_nonce": "2026-07-28T12:02:01Zfuture"
+  }, RETURN_TO), { ok: false, reason: "nonce_from_future" });
 });
 
 test("rejects missing signature and unsigned security-critical fields", async () => {

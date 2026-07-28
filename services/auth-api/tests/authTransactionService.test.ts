@@ -70,6 +70,22 @@ test("consumes a verified transaction only once", async () => {
   );
 });
 
+test("reports a replayed nonce without weakening nonce reservation", async () => {
+  const service = new AuthTransactionService(
+    new InMemoryAuthTransactionRepository()
+  );
+  const first = await service.start(START_INPUT);
+  const second = await service.start(START_INPUT);
+  const nonce = "2026-07-28T12:00:00ZwHqUwFMm+Q/9=:!$";
+  await service.markVerified(first.authRequestId, "76561198000000000", nonce);
+  await assert.rejects(
+    service.markVerified(second.authRequestId, "76561198000000001", nonce),
+    (error: unknown) =>
+      error instanceof AuthTransactionError &&
+      error.code === "nonce_replayed"
+  );
+});
+
 test("accepts only HTTPS return URLs without credentials", async () => {
   const service = new AuthTransactionService(new InMemoryAuthTransactionRepository());
   await assert.rejects(service.start({

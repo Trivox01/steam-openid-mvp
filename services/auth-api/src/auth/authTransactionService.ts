@@ -116,7 +116,7 @@ export class AuthTransactionService {
       verifiedAt
     });
     if (result === "nonce_reused") {
-      throw new AuthTransactionError("response_nonce_reused");
+      throw new AuthTransactionError("nonce_replayed");
     }
     if (result !== "verified") {
       throw new AuthTransactionError(
