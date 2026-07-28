@@ -22,15 +22,17 @@ export function ProfileCard({ summary, onAction }: { summary: UserProfileSummary
     <article className="profile-card">
       <ProfileBanner src={summary.bannerUrl} />
       <div className="profile-card__identity">
-        <div className="profile-card__avatar-wrap">
-          <ProfileAvatar src={summary.avatarUrl} name={summary.displayName} className="profile-card__avatar" />
-          {summary.status && <span className={`profile-card__status profile-card__status--${summary.status}`} aria-label={t(`profile.status.${summary.status}`)} />}
-        </div>
-        <div className="profile-card__heading">
-          <div className="profile-card__name">
-            <h2 dir="auto">{summary.displayName}</h2>
-            <ProfileBadges badges={summary.badges} />
-            {summary.username && <p dir="auto">@{summary.username}</p>}
+        <div className="profile-card__identity-row">
+          <div className="profile-card__avatar-wrap">
+            <ProfileAvatar src={summary.avatarUrl} name={summary.displayName} className="profile-card__avatar" />
+            {summary.status && <span className={`profile-card__status profile-card__status--${summary.status}`} aria-label={t(`profile.status.${summary.status}`)} />}
+          </div>
+          <div className="profile-card__heading">
+            <div className="profile-card__name">
+              <h2 dir="auto">{summary.displayName}</h2>
+              <ProfileBadges badges={summary.badges} />
+              {summary.username && <p dir="auto">@{summary.username}</p>}
+            </div>
           </div>
         </div>
       </div>

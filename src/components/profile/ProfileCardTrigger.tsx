@@ -65,7 +65,7 @@ export function ProfileCardTrigger({
 
   useEffect(() => {
     if (open && status !== "loading") {
-      cardRef.current?.querySelector<HTMLElement>("button,[tabindex='0']")?.focus();
+      cardRef.current?.focus();
     }
   }, [open, status]);
 
@@ -83,7 +83,7 @@ export function ProfileCardTrigger({
         {children}
       </button>
       {open && (
-        <div ref={cardRef} className="profile-card-popover" role="dialog" aria-modal="false" aria-label={t("profile.cardLabel")}>
+        <div ref={cardRef} className="profile-card-popover" role="dialog" aria-modal="false" aria-label={t("profile.cardLabel")} tabIndex={-1}>
           {status === "loading" && <ProfileCardSkeleton />}
           {status === "error" && (
             <div className="profile-card__error" role="alert">
