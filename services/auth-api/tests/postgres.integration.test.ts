@@ -8,6 +8,8 @@ import {
   runPostgresMigrations
 } from "../src/storage/postgres/migrationRunner.ts";
 import { PostgresAuthTransactionRepository } from "../src/storage/postgres/postgresAuthRepository.ts";
+import { PostgresAuthorizationRepository } from "../src/storage/postgres/postgresAuthorizationRepository.ts";
+import { AuthorizationService } from "../src/authorization/authorizationService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -27,6 +29,23 @@ test("PostgreSQL repository integration and concurrency", {
     await runPostgresMigrations(pool);
     const repository = new PostgresAuthTransactionRepository(pool);
     await repository.validateSchema();
+    const authorizationRepository = new PostgresAuthorizationRepository(pool);
+    const authorization = new AuthorizationService(authorizationRepository);
+    const user = await authorizationRepository.ensureAuthenticatedUser(
+      "76561198000000000",
+      "2026-07-28T12:00:00.000Z"
+    );
+    assert.equal(await authorization.bootstrapOwner("76561198000000000"), "assigned");
+    assert.equal(await authorization.bootstrapOwner("76561198000000000"), "owner_exists");
+    assert.equal(await authorization.hasPermission(user.id, "admin.access"), true);
+    const roleCount = await pool.query<{ count: string }>(
+      "SELECT count(*) FROM roles WHERE is_system = true"
+    );
+    const permissionCount = await pool.query<{ count: string }>(
+      "SELECT count(*) FROM permissions"
+    );
+    assert.equal(Number(roleCount.rows[0].count), 5);
+    assert.equal(Number(permissionCount.rows[0].count), 18);
     const serviceA = new AuthTransactionService(repository);
     const serviceB = new AuthTransactionService(
       new PostgresAuthTransactionRepository(pool)

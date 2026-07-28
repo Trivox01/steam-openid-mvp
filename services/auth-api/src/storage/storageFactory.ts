@@ -9,9 +9,15 @@ import {
   runPostgresMigrations
 } from "./postgres/migrationRunner.ts";
 import { PostgresAuthTransactionRepository } from "./postgres/postgresAuthRepository.ts";
+import {
+  InMemoryAuthorizationRepository,
+  type AuthorizationRepository
+} from "../authorization/authorizationRepository.ts";
+import { PostgresAuthorizationRepository } from "./postgres/postgresAuthorizationRepository.ts";
 
 export interface InitializedStorage {
   repository: AuthTransactionRepository;
+  authorizationRepository: AuthorizationRepository;
   close(): Promise<void>;
 }
 
@@ -21,7 +27,13 @@ export async function initializeStorage(
   if (config.storageDriver === "memory") {
     const repository = new InMemoryAuthTransactionRepository();
     await repository.validateSchema();
-    return { repository, async close() {} };
+    const authorizationRepository = new InMemoryAuthorizationRepository();
+    await authorizationRepository.validateSchema();
+    return {
+      repository,
+      authorizationRepository,
+      async close() {}
+    };
   }
 
   if (!config.databaseUrl) throw new Error("invalid_configuration");
@@ -37,8 +49,11 @@ export async function initializeStorage(
     await runPostgresMigrations(pool);
     const repository = new PostgresAuthTransactionRepository(pool);
     await repository.validateSchema();
+    const authorizationRepository = new PostgresAuthorizationRepository(pool);
+    await authorizationRepository.validateSchema();
     return {
       repository,
+      authorizationRepository,
       async close() {
         await pool.end();
       }

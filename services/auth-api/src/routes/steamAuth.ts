@@ -15,6 +15,8 @@ import { SteamOpenIdVerifier } from "../steam/openIdVerifier.ts";
 import { buildSteamLoginUrl } from "../steam/steamLoginUrl.ts";
 import type { OpenIdFields } from "../steam/openIdTypes.ts";
 import { StorageError } from "../storage/authRepository.ts";
+import type { AuthorizationService } from "../authorization/authorizationService.ts";
+import type { SessionTokenService } from "../authorization/sessionTokenService.ts";
 
 const MAX_JSON_BODY_BYTES = 4_096;
 const POLLING_INTERVAL_MS = 3_000;
@@ -27,6 +29,8 @@ export interface SteamAuthRouteDependencies {
   verifier: SteamOpenIdVerifier;
   rateLimiter: PollingRateLimiter;
   logger: SafeLogger;
+  authorization?: AuthorizationService;
+  sessions?: SessionTokenService;
   now?: () => number;
 }
 
@@ -186,7 +190,30 @@ async function handleStatus(
       deviceId
     );
     dependencies.rateLimiter.assertAllowed(authRequestId);
-    writeJson(response, 200, status);
+    const session = status.status === "verified" &&
+      status.steamId &&
+      status.authenticatedAt &&
+      dependencies.authorization &&
+      dependencies.sessions
+      ? await dependencies.sessions.issueForSteamIdentity(
+          status.steamId,
+          status.authenticatedAt
+        )
+      : undefined;
+    if (session && dependencies.config.bootstrapOwnerSteamId64) {
+      await dependencies.authorization!.bootstrapOwner(
+        dependencies.config.bootstrapOwnerSteamId64
+      );
+    }
+    writeJson(response, 200, {
+      ...status,
+      ...(session
+        ? {
+            sessionToken: session.token,
+            sessionExpiresAt: session.expiresAt
+          }
+        : {})
+    });
     context.finish("success");
   } catch (error) {
     const code = safeErrorCode(error);

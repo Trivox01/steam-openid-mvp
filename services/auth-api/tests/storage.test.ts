@@ -4,6 +4,8 @@ import type { AuthTransaction } from "../src/auth/authTransaction.ts";
 import { InMemoryAuthTransactionRepository } from "../src/storage/authRepository.ts";
 import { startStorageCleanup } from "../src/storage/cleanupJob.ts";
 import { loadPostgresMigrations } from "../src/storage/postgres/migrationRunner.ts";
+import { PERMISSION_KEYS } from "../src/authorization/permissions.ts";
+import { rolePresets } from "../src/authorization/roles.ts";
 
 function transaction(overrides: Partial<AuthTransaction> = {}): AuthTransaction {
   return {
@@ -49,10 +51,15 @@ test("cleanup is bounded and removes retained terminal memory records", async ()
 
 test("PostgreSQL migrations are ordered and contain no secret-bearing columns", async () => {
   const migrations = await loadPostgresMigrations();
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3]);
   const sql = migrations.map((item) => item.sql).join("\n").toLowerCase();
   assert.match(sql, /poll_secret_hash/);
   assert.match(sql, /nonce_hash/);
   assert.doesNotMatch(sql, /\bpoll_secret\b(?!_hash)/);
   assert.doesNotMatch(sql, /assertion|api_key|session_token|access_token/);
+  assert.match(sql, /create table roles/);
+  assert.match(sql, /create table permissions/);
+  assert.match(sql, /create table audit_events/);
+  for (const key of PERMISSION_KEYS) assert.match(sql, new RegExp(`'${key.replace(".", "\\.")}'`));
+  for (const role of rolePresets) assert.match(sql, new RegExp(`'${role.slug}'`));
 });

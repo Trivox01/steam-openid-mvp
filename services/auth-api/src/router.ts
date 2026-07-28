@@ -14,6 +14,10 @@ import {
   handleCorsPreflight,
   safeCorsDiagnostic
 } from "./security/cors.ts";
+import {
+  handleMeAuthorization,
+  ME_AUTHORIZATION_PATH
+} from "./routes/meAuthorization.ts";
 
 export function createRouter(
   steamAuthDependencies?: SteamAuthRouteDependencies
@@ -40,7 +44,11 @@ export function createRouter(
     }
     const isSteamAuthRoute =
       Boolean(handleSteamAuth) && url.pathname.startsWith("/v1/auth/steam/");
-    if (isSteamAuthRoute) {
+    const isAuthorizationRoute =
+      url.pathname === ME_AUTHORIZATION_PATH &&
+      Boolean(steamAuthDependencies?.authorization) &&
+      Boolean(steamAuthDependencies?.sessions);
+    if (isSteamAuthRoute || isAuthorizationRoute) {
       const cors = applyCorsHeaders(
         request,
         response,
@@ -77,6 +85,13 @@ export function createRouter(
         return;
       }
     }
+    if (
+      isAuthorizationRoute &&
+      await handleMeAuthorization(request, response, {
+        authorization: steamAuthDependencies!.authorization!,
+        sessions: steamAuthDependencies!.sessions!
+      })
+    ) return;
     if (handleSteamAuth && await handleSteamAuth(request, response, url)) return;
     const body = JSON.stringify({ error: "not_found" });
     response.writeHead(404, {

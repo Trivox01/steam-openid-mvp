@@ -144,3 +144,20 @@ test("requires a strong session secret without exposing its value", () => {
       !error.message.includes("short-secret")
   );
 });
+
+test("accepts an optional valid bootstrap owner and rejects malformed values", () => {
+  const config = loadAuthApiConfig({
+    ...VALID_ENV,
+    BOOTSTRAP_OWNER_STEAM_ID64: "76561198000000000"
+  });
+  assert.equal(config.bootstrapOwnerSteamId64, "76561198000000000");
+  assert.throws(
+    () => loadAuthApiConfig({
+      ...VALID_ENV,
+      BOOTSTRAP_OWNER_STEAM_ID64: "not-a-steam-id"
+    }),
+    (error: unknown) =>
+      error instanceof ConfigurationError &&
+      error.code === "invalid_BOOTSTRAP_OWNER_STEAM_ID64"
+  );
+});

@@ -28,4 +28,6 @@ export interface AuthTransactionStatusView {
   errorCode?: string;
   steamId?: string;
   authenticatedAt?: string;
+  sessionToken?: string;
+  sessionExpiresAt?: string;
 }

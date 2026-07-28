@@ -9,6 +9,8 @@ import { SteamOpenIdHttpClient } from "./steam/steamOpenIdHttpClient.ts";
 import { startStorageCleanup } from "./storage/cleanupJob.ts";
 import { MigrationError } from "./storage/postgres/migrationRunner.ts";
 import { initializeStorage } from "./storage/storageFactory.ts";
+import { AuthorizationService } from "./authorization/authorizationService.ts";
+import { SessionTokenService } from "./authorization/sessionTokenService.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -30,6 +32,14 @@ async function main() {
   const config = loadAuthApiConfig();
   const storage = await initializeStorage(config);
   const transactions = new AuthTransactionService(storage.repository);
+  const authorization = new AuthorizationService(storage.authorizationRepository);
+  const sessions = new SessionTokenService(
+    config.sessionSecret,
+    storage.authorizationRepository
+  );
+  const bootstrapResult = await authorization.bootstrapOwner(
+    config.bootstrapOwnerSteamId64
+  );
   const verifier = new SteamOpenIdVerifier(new SteamOpenIdHttpClient(), {
     realm: config.openIdRealm
   });
@@ -53,7 +63,9 @@ async function main() {
       transactions,
       verifier,
       rateLimiter: new PollingRateLimiter(),
-      logger: jsonSafeLogger
+      logger: jsonSafeLogger,
+      authorization,
+      sessions
     })
   );
 
@@ -63,7 +75,8 @@ async function main() {
         event: "auth_api_started",
         port: config.port,
         storageDriver: config.storageDriver,
-        trustProxy: config.trustProxy
+        trustProxy: config.trustProxy,
+        bootstrapOwner: bootstrapResult
       }) + "\n"
     );
   });

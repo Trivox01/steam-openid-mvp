@@ -17,6 +17,7 @@ export interface AuthApiConfig {
   logLevel: "error" | "warn" | "info" | "debug";
   trustProxy: boolean;
   allowedOrigins: string[];
+  bootstrapOwnerSteamId64?: string;
 }
 
 export class ConfigurationError extends Error {
@@ -46,6 +47,9 @@ export function loadAuthApiConfig(
   const databaseUrl = environment.DATABASE_URL?.trim();
   const sessionSecret = environment.SESSION_SECRET ?? "";
   const trustProxy = parseBoolean(environment.TRUST_PROXY, "TRUST_PROXY");
+  const bootstrapOwnerSteamId64 = parseOptionalSteamId(
+    environment.BOOTSTRAP_OWNER_STEAM_ID64
+  );
 
   if (publicBaseUrl.search || openIdRealm.search || openIdRealm.hash) {
     throw new ConfigurationError("invalid_OPENID_REALM");
@@ -93,8 +97,18 @@ export function loadAuthApiConfig(
     sessionSecret,
     logLevel: parseLogLevel(environment.LOG_LEVEL),
     trustProxy,
-    allowedOrigins: parseAllowedOrigins(environment.ALLOWED_ORIGINS)
+    allowedOrigins: parseAllowedOrigins(environment.ALLOWED_ORIGINS),
+    ...(bootstrapOwnerSteamId64 ? { bootstrapOwnerSteamId64 } : {})
   };
+}
+
+function parseOptionalSteamId(value: string | undefined) {
+  if (!value?.trim()) return undefined;
+  const steamId = value.trim();
+  if (!/^\d{17}$/.test(steamId)) {
+    throw new ConfigurationError("invalid_BOOTSTRAP_OWNER_STEAM_ID64");
+  }
+  return steamId;
 }
 
 export function returnToBelongsToRealm(returnTo: string, realm: string) {
