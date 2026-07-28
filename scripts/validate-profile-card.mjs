@@ -1,23 +1,27 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { resolveProfileBadges, visibleProfileBadges } from "../src/features/profile/badges/resolveProfileBadges.ts";
+import { profileBadgeRegistry } from "../src/features/profile/badges/badgeRegistry.ts";
+import { resolveBadges, visibleBadges } from "../src/features/profile/badges/badgeResolver.ts";
 
-const translate = (key) => key;
-const verified = resolveProfileBadges({ steamVerified: true, perfectGames: 3, rareAchievementsUnlocked: 10 }, translate);
-assert.equal(verified.some((badge) => badge.id === "steam-verified"), true, "verified identity receives Steam badge");
-assert.equal(verified.some((badge) => badge.id === "developer"), false, "editable profile evidence cannot grant developer");
+assert.equal(profileBadgeRegistry.length, 10, "the Phase 1 registry contains exactly ten badges");
+assert.equal(new Set(profileBadgeRegistry.map((badge) => badge.id)).size, 10, "badge ids are unique");
+assert.equal(profileBadgeRegistry.every((badge) => typeof badge.icon === "string"), true, "registry stores icon filenames, not components");
+const earned = resolveBadges({ perfectGames: 3, achievementsUnlocked: 100 });
+assert.equal(earned.some((badge) => badge.id === "completionist"), true);
+assert.equal(earned.some((badge) => badge.id === "quest-master"), true);
+assert.equal(earned.some((badge) => badge.id === "developer"), false, "automatic evidence cannot grant staff badges");
 assert.deepEqual(
-  verified.map((badge) => badge.priority),
-  [...verified].map((badge) => badge.priority).sort((a, b) => b - a),
+  earned.map((badge) => badge.priority),
+  [...earned].map((badge) => badge.priority).sort((a, b) => b - a),
   "badges are sorted by priority"
 );
-assert.equal(resolveProfileBadges({ steamVerified: false }, translate).some((badge) => badge.id === "steam-verified"), false);
-assert.equal(resolveProfileBadges({ steamVerified: false, trustedRoleIds: ["developer"] }, translate).some((badge) => badge.id === "developer"), true);
+assert.equal(resolveBadges({ manualBadgeIds: ["developer"] }).some((badge) => badge.id === "developer"), true);
 
-const overflow = visibleProfileBadges([
-  ...verified,
-  ...resolveProfileBadges({ steamVerified: false, trustedRoleIds: ["developer"], trustedEventIds: ["early-supporter"] }, translate)
-]);
+const overflow = visibleBadges(resolveBadges({
+  perfectGames: 3,
+  achievementsUnlocked: 100,
+  manualBadgeIds: ["founder", "developer", "staff"]
+}));
 assert.equal(overflow.visible.length, 3);
 assert.equal(overflow.remaining, 2);
 
@@ -29,6 +33,7 @@ assert.match(trigger, /event\.key === "Escape"/);
 assert.match(trigger, /aria-haspopup="dialog"/);
 assert.match(trigger, /pointerdown/);
 assert.match(card, /ProfileAvatar/);
+assert.match(card, /profile-card__name[\s\S]*ProfileBadges/, "badges render beside the profile name");
 assert.doesNotMatch(card, /steamId64|authRequestId|pollSecret|deviceId|apiKey/i);
 assert.doesNotMatch(adapter, /steamLibrarySync|steamAchievementSync|\.sync\(/);
 assert.match(css, /prefers-reduced-motion:reduce[\s\S]*profile-card-popover/);

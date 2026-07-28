@@ -1,28 +1,34 @@
-import { visibleProfileBadges } from "../../features/profile/badges/resolveProfileBadges";
+import { resolveBadgeIcon } from "../../features/profile/badges/badgeIcons";
+import { badgeRarity } from "../../features/profile/badges/badgeRarity";
+import { visibleBadges } from "../../features/profile/badges/badgeResolver";
 import type { UserBadge } from "../../features/profile/badges/types";
 import { useTranslation } from "../../i18n/TranslationContext";
 
 export function ProfileBadges({ badges }: { badges: readonly UserBadge[] }) {
   const { t } = useTranslation();
-  const { visible, remaining } = visibleProfileBadges(badges);
+  const { visible, remaining } = visibleBadges(badges);
   if (!visible.length) return null;
 
   return (
     <div className="profile-card__badges" aria-label={t("profile.badges")}>
       {visible.map((badge) => {
-        const Icon = badge.icon;
+        const Icon = resolveBadgeIcon(badge.icon);
+        const rarity = badgeRarity[badge.rarity];
+        const name = t(`profile.badge.${badge.id}.name`);
+        const description = t(`profile.badge.${badge.id}.description`);
         return (
           <span
             key={badge.id}
-            className={`profile-badge profile-badge--${badge.rarity}`}
+            className={`profile-badge ${rarity.className}`}
             tabIndex={0}
-            aria-label={`${badge.name}. ${badge.description}. ${t(`profile.rarity.${badge.rarity}`)}`}
+            aria-label={`${name}. ${description}. ${t(rarity.labelKey)}`}
           >
             <Icon size={15} aria-hidden={true} />
-            <span className="profile-badge__rarity" aria-hidden="true">{t(`profile.rarity.${badge.rarity}`)}</span>
+            <span className="profile-badge__rarity" aria-hidden="true">{t(rarity.labelKey)}</span>
             <span className="profile-badge__tooltip" role="tooltip">
-              <strong>{badge.name}</strong>
-              <span>{badge.description}</span>
+              <strong>{name}</strong>
+              <span>{description}</span>
+              <small>{t(rarity.labelKey)}</small>
             </span>
           </span>
         );

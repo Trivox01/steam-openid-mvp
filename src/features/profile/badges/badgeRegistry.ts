@@ -1,10 +1,14 @@
-import { BadgeCheck, Code2, Gem, Sparkles, Trophy } from "lucide-react";
-import type { BadgeDefinition } from "./types";
+import type { UserBadge } from "./types";
 
-export const profileBadgeRegistry: readonly BadgeDefinition[] = [
-  { id: "developer", nameKey: "profile.badge.developer", descriptionKey: "profile.badge.developerDescription", icon: Code2, source: "role", rarity: "legendary", priority: 100 },
-  { id: "steam-verified", nameKey: "profile.badge.steamVerified", descriptionKey: "profile.badge.steamVerifiedDescription", icon: BadgeCheck, source: "system", rarity: "common", priority: 90 },
-  { id: "early-supporter", nameKey: "profile.badge.earlySupporter", descriptionKey: "profile.badge.earlySupporterDescription", icon: Sparkles, source: "event", rarity: "epic", priority: 70 },
-  { id: "completionist", nameKey: "profile.badge.completionist", descriptionKey: "profile.badge.completionistDescription", icon: Trophy, source: "achievement", rarity: "rare", priority: 60 },
-  { id: "rare-hunter", nameKey: "profile.badge.rareHunter", descriptionKey: "profile.badge.rareHunterDescription", icon: Gem, source: "achievement", rarity: "rare", priority: 50 }
+export const profileBadgeRegistry: readonly UserBadge[] = [
+  { id: "founder", name: "Founder", description: "Helped establish Achievement Nexus from its earliest foundation.", icon: "crown.svg", rarity: "exclusive", source: "staff", grantMode: "manual", priority: 100, visible: true },
+  { id: "developer", name: "Developer", description: "Member of the Achievement Nexus development team.", icon: "code-2.svg", rarity: "exclusive", source: "staff", grantMode: "manual", priority: 95, visible: true },
+  { id: "staff", name: "Staff", description: "Official member of the Achievement Nexus team.", icon: "shield-check.svg", rarity: "exclusive", source: "staff", grantMode: "manual", priority: 90, visible: true },
+  { id: "moderator", name: "Moderator", description: "Trusted moderator of the Achievement Nexus community.", icon: "shield.svg", rarity: "legendary", source: "staff", grantMode: "manual", priority: 85, visible: true },
+  { id: "tournament-supervisor", name: "Tournament Supervisor", description: "Supervises official Achievement Nexus tournaments.", icon: "swords.svg", rarity: "epic", source: "staff", grantMode: "manual", priority: 80, visible: true },
+  { id: "bug-hunter", name: "Bug Hunter", description: "Reported a verified issue that improved Achievement Nexus.", icon: "bug.svg", rarity: "rare", source: "event", grantMode: "manual", priority: 70, visible: true },
+  { id: "early-supporter", name: "Early Supporter", description: "Joined Achievement Nexus during its early release period.", icon: "sparkles.svg", rarity: "epic", source: "event", grantMode: "manual", priority: 65, visible: true },
+  { id: "completionist", name: "Completionist", description: "Completed multiple games at 100%.", icon: "trophy.svg", rarity: "rare", source: "achievement", grantMode: "automatic", priority: 60, visible: true },
+  { id: "quest-master", name: "Quest Master", description: "Unlocked a remarkable collection of achievements.", icon: "scroll-text.svg", rarity: "uncommon", source: "achievement", grantMode: "automatic", priority: 50, visible: true },
+  { id: "legacy-username", name: "Legacy Username", description: "Preserved a recognized username from an earlier era.", icon: "history.svg", rarity: "common", source: "system", grantMode: "manual", priority: 40, visible: true }
 ] as const;

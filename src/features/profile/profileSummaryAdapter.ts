@@ -1,7 +1,7 @@
 import type { Achievement, Game, UserProfile } from "../../types";
 import type { SteamOpenIdIdentity } from "../../types/steamOpenId";
-import { isAchievementUnlocked, knownAchievementRarity } from "../../services/achievementData";
-import { resolveProfileBadges } from "./badges/resolveProfileBadges";
+import { isAchievementUnlocked } from "../../services/achievementData";
+import { resolveBadges } from "./badges/badgeResolver";
 import type { UserProfileSummary } from "./types";
 
 type Translate = (key: string) => string;
@@ -14,7 +14,6 @@ export function createCurrentUserProfileSummary(input: {
   translate: Translate;
 }): UserProfileSummary {
   const unlocked = input.achievements.filter(isAchievementUnlocked);
-  const rareUnlocked = unlocked.filter((achievement) => (knownAchievementRarity(achievement) ?? 101) < 10).length;
   const perfectGames = input.games.filter((game) => game.completionPercentage >= 100).length;
   const completionRate = input.games.length
     ? input.games.reduce((sum, game) => sum + game.completionPercentage, 0) / input.games.length
@@ -37,13 +36,11 @@ export function createCurrentUserProfileSummary(input: {
       perfectGames,
       completionRate
     },
-    badges: resolveProfileBadges({
-      steamVerified: true,
+    badges: resolveBadges({
       perfectGames,
-      rareAchievementsUnlocked: rareUnlocked,
-      // Role and event badges require trusted evidence that the Desktop does not own.
-      trustedRoleIds: [],
-      trustedEventIds: []
-    }, input.translate)
+      achievementsUnlocked: unlocked.length,
+      // Manual staff/event grants require a future trusted authority.
+      manualBadgeIds: []
+    })
   };
 }

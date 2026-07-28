@@ -26,13 +26,13 @@ export function ProfileCard({ summary, onAction }: { summary: UserProfileSummary
           {summary.status && <span className={`profile-card__status profile-card__status--${summary.status}`} aria-label={t(`profile.status.${summary.status}`)} />}
         </div>
         <div className="profile-card__heading">
-          <div>
+          <div className="profile-card__name">
             <h2 dir="auto">{summary.displayName}</h2>
+            <ProfileBadges badges={summary.badges} />
             {summary.username && <p dir="auto">@{summary.username}</p>}
           </div>
           {summary.isSteamVerified && <BadgeCheck size={18} aria-label={t("profile.steamVerified")} />}
         </div>
-        <ProfileBadges badges={summary.badges} />
       </div>
       <div className="profile-card__body">
         {summary.bio && <p className="profile-card__bio" dir="auto">{summary.bio}</p>}

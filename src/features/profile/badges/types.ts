@@ -1,20 +1,15 @@
-import type { ComponentType } from "react";
-
-export type BadgeSource = "system" | "role" | "achievement" | "event";
-export type BadgeRarity = "common" | "rare" | "epic" | "legendary";
+export type BadgeSource = "system" | "achievement" | "event" | "staff";
+export type BadgeRarity = "common" | "uncommon" | "rare" | "epic" | "legendary" | "exclusive";
+export type BadgeGrantMode = "automatic" | "manual";
 
 export interface UserBadge {
   id: string;
   name: string;
   description: string;
-  icon: ComponentType<{ className?: string; size?: number; "aria-hidden"?: boolean }>;
-  source: BadgeSource;
+  icon: string;
   rarity: BadgeRarity;
-  earnedAt?: string;
+  source: BadgeSource;
+  grantMode: BadgeGrantMode;
   priority: number;
-}
-
-export interface BadgeDefinition extends Omit<UserBadge, "name" | "description" | "earnedAt"> {
-  nameKey: string;
-  descriptionKey: string;
+  visible: boolean;
 }
