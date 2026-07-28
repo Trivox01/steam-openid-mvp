@@ -4,6 +4,7 @@ import {
   SteamConnectionService,
   steamProfileToUserProfile
 } from "./SteamConnectionService";
+import { steamArtworkUrls } from "./steamArtwork";
 
 export class SteamProvider implements PlatformProvider {
   constructor(private connection: SteamConnectionService) {}
@@ -21,23 +22,27 @@ export class SteamProvider implements PlatformProvider {
 
   async getOwnedGames(): Promise<Game[]> {
     const result = await this.connection.getOwnedGames();
-    return result.games.map((game) => ({
+    return result.games.map((game) => {
+      const artwork = steamArtworkUrls(game.appId, game.iconHash);
+      return ({
       id: `steam:${game.appId}`,
       appId: String(game.appId),
       platform: "steam",
       name: game.name,
-      coverUrl: "",
-      backgroundUrl: "",
+      coverUrl: artwork.coverUrl,
+      backgroundUrl: artwork.backgroundUrl,
+      iconUrl: artwork.iconUrl || undefined,
       playtimeHours: game.playtimeForeverMinutes / 60,
       totalAchievements: 0,
       unlockedAchievements: 0,
       completionPercentage: 0,
       lastPlayedAt: game.lastPlayedUnix ? new Date(game.lastPlayedUnix * 1000).toISOString() : "",
-      playtimeTwoWeeksMinutes: game.playtimeTwoWeeksMinutes,
-      playtimeWindowsMinutes: game.playtimeWindowsMinutes,
-      playtimeMacMinutes: game.playtimeMacMinutes,
-      playtimeLinuxMinutes: game.playtimeLinuxMinutes
-    }));
+      playtimeTwoWeeksMinutes: game.playtimeTwoWeeksMinutes ?? undefined,
+      playtimeWindowsMinutes: game.playtimeWindowsMinutes ?? undefined,
+      playtimeMacMinutes: game.playtimeMacMinutes ?? undefined,
+      playtimeLinuxMinutes: game.playtimeLinuxMinutes ?? undefined
+      });
+    });
   }
 
   getOwnedGamesWithMetadata() {
@@ -45,7 +50,33 @@ export class SteamProvider implements PlatformProvider {
   }
 
   async getGameAchievements(_appId: string): Promise<Achievement[]> {
-    throw new Error("Steam achievement synchronization is not available in this phase.");
+    const appId = Number(_appId);
+    const result = await this.connection.getGameAchievements(appId);
+    return result.achievements.map((item) => ({
+      id: `steam:${appId}:${item.apiName}`,
+      gameId: "",
+      title: item.displayName,
+      description: item.description,
+      iconUrl: item.iconUrl,
+      lockedIconUrl: item.lockedIconUrl,
+      unlocked: item.unlocked,
+      unlockedAt: item.unlockedAt,
+      rarityPercentage: item.globalUnlockPercent ?? 0,
+      globalUnlockPercent: item.globalUnlockPercent,
+      points: 0,
+      isHidden: item.hidden,
+      externalId: item.apiName,
+      source: "steam",
+      syncedAt: result.fetchedAt
+    }));
+  }
+
+  getGameAchievementsWithMetadata(appId: string) {
+    const numeric = Number(appId);
+    if (!Number.isSafeInteger(numeric) || numeric <= 0) {
+      throw new Error("game_unsupported");
+    }
+    return this.connection.getGameAchievements(numeric);
   }
 
   async syncData(): Promise<void> {

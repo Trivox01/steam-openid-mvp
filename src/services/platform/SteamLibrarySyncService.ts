@@ -43,6 +43,15 @@ export class SteamLibrarySyncService {
       const syncedAt = new Date().toISOString();
       const merged = mergeSteamLibrary(local, remote, syncedAt);
       if (merged.changedGames.length) await this.games.saveGames(merged.changedGames);
+      if (import.meta.env.DEV) {
+        console.info("[steam-library] merged_into_sqlite", {
+          fetched: remote.fetched,
+          inserted: merged.inserted,
+          updated: merged.updated,
+          unchanged: merged.unchanged,
+          skipped: remote.skipped + merged.skipped
+        });
+      }
       await this.metadata.saveSyncMetadata({ source: "steam", status: "success", lastSyncedAt: syncedAt });
       return {
         fetched: remote.fetched,

@@ -93,6 +93,101 @@ pub struct SteamOwnedGamesResult {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamAchievement {
+    pub api_name: String,
+    pub display_name: String,
+    pub description: String,
+    pub hidden: bool,
+    pub icon_url: String,
+    pub locked_icon_url: String,
+    pub unlocked: bool,
+    pub unlocked_at: Option<String>,
+    pub global_unlock_percent: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamGameAchievements {
+    pub app_id: u32,
+    pub game_name: String,
+    pub achievements: Vec<SteamAchievement>,
+    pub warnings: Vec<String>,
+    pub fetched_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamSchemaResponse {
+    pub game: Option<SteamSchemaGame>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamSchemaGame {
+    #[serde(default, rename = "gameName")]
+    pub game_name: String,
+    #[serde(rename = "availableGameStats")]
+    pub available_game_stats: Option<SteamAvailableGameStats>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamAvailableGameStats {
+    pub achievements: Option<Vec<SteamSchemaAchievement>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamSchemaAchievement {
+    pub name: Option<String>,
+    #[serde(default, rename = "displayName")]
+    pub display_name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub hidden: i32,
+    #[serde(default)]
+    pub icon: String,
+    #[serde(default)]
+    pub icongray: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamPlayerAchievementsResponse {
+    pub playerstats: Option<SteamPlayerStats>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamPlayerStats {
+    #[serde(default)]
+    pub success: bool,
+    pub achievements: Option<Vec<SteamPlayerAchievement>>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamPlayerAchievement {
+    pub apiname: Option<String>,
+    #[serde(default)]
+    pub achieved: i32,
+    #[serde(default)]
+    pub unlocktime: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamGlobalAchievementsResponse {
+    pub achievementpercentages: Option<SteamGlobalAchievementList>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamGlobalAchievementList {
+    pub achievements: Option<Vec<SteamGlobalAchievement>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SteamGlobalAchievement {
+    pub name: Option<String>,
+    pub percent: Option<f64>,
+}
+
 #[derive(Deserialize)]
 pub(crate) struct SteamOwnedGamesApiResponse {
     pub response: SteamOwnedGamesApiBody,

@@ -32,6 +32,8 @@ export function validateSteamLibrarySync() {
   assert(updated?.favorite === true && updated.hidden === true, "user flags must be preserved");
   assert(updated?.status === "backlog", "user status must be preserved");
   assert(updated?.totalAchievements === 12 && updated.unlockedAchievements === 4, "achievement state must be preserved");
+  assert(updated?.name === "Updated title", "Steam name must replace an existing placeholder or stale title");
+  assert(updated?.appId === "10", "Steam appid must become platformGameId");
 
   const unchangedRemote = {
     games: [gameDto(10, existing.name, existing.playtimeHours * 60)],
@@ -43,12 +45,32 @@ export function validateSteamLibrarySync() {
   const normalizedExisting = { ...existing, coverUrl: artwork.coverUrl, backgroundUrl: artwork.backgroundUrl };
   const unchanged = mergeSteamLibrary([normalizedExisting], unchangedRemote, timestamp);
   assert(unchanged.unchanged === 1 && unchanged.changedGames.length === 0, "unchanged games must not be rewritten");
+  const nullableRemote = {
+    games: [{ ...gameDto(10, existing.name, existing.playtimeHours * 60), playtimeTwoWeeksMinutes: null }],
+    fetched: 1,
+    skipped: 0,
+    warnings: []
+  };
+  const normalizedNulls = mergeSteamLibrary([normalizedExisting], nullableRemote, timestamp);
+  assert(normalizedNulls.unchanged === 1, "Rust null optionals must normalize before equality checks");
 
   const empty = mergeSteamLibrary([existing], { games: [], fetched: 0, skipped: 0, warnings: [] }, timestamp);
   assert(empty.changedGames.length === 0, "empty remote library must not delete local games");
   assert(steamArtworkUrls(-1).coverUrl === "", "invalid app ids must not create URLs");
   assert(steamArtworkUrls(10, "../secret").iconUrl === "", "invalid hashes must not enter URLs");
-  return 12;
+  const artworkWithFallbacks = steamArtworkUrls(10, "abc123");
+  assert(artworkWithFallbacks.coverUrl.includes("/10/library_600x900_2x.jpg"), "primary cover must be a vertical Steam library capsule");
+  assert(artworkWithFallbacks.coverFallbackUrls.length === 2, "cover fallback chain must be available");
+  assert(artworkWithFallbacks.coverFallbackUrls.every((url) => url.startsWith("https://")), "cover fallbacks must use HTTPS");
+  assert(artworkWithFallbacks.iconUrl.includes("/10/abc123.jpg"), "icon hash must only build an icon URL");
+
+  const secondSync = mergeSteamLibrary(
+    result.changedGames,
+    { ...remote, games: remote.games.filter((game) => game.appId > 0 && Boolean(game.name)) },
+    timestamp
+  );
+  assert(secondSync.inserted === 0, "a second sync must not insert duplicate Steam games");
+  return 20;
 }
 
 function createGame(overrides: Partial<Game> = {}): Game {

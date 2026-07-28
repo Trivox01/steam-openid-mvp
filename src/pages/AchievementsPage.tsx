@@ -6,6 +6,7 @@ import { PageHeader } from "../components/ui/PageHeader";
 import type { AchievementId, GameId } from "../types";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { services } from "../services/compositionRoot";
+import { isAchievementUnlocked, knownAchievementRarity } from "../services/achievementData";
 
 type AchievementFilter = "all" | "unlocked" | "locked" | "rare" | "hidden";
 type AchievementSort = "date" | "rarity" | "name";
@@ -23,7 +24,7 @@ export function AchievementsPage({ onOpenAchievement }: { onOpenAchievement: (id
       const game = games.find((item) => item.id === achievement.gameId);
       return `${achievement.title} ${game?.name}`.toLowerCase().includes(query.toLowerCase());
     })
-    .filter((achievement) => filter === "all" || (filter === "unlocked" ? !!achievement.unlockedAt : filter === "locked" ? !achievement.unlockedAt : filter === "rare" ? achievement.rarityPercentage < 10 : !!achievement.isHidden))
+    .filter((achievement) => filter === "all" || (filter === "unlocked" ? isAchievementUnlocked(achievement) : filter === "locked" ? achievement.unlockStateKnown !== false && !isAchievementUnlocked(achievement) : filter === "rare" ? (knownAchievementRarity(achievement) ?? 101) < 10 : !!achievement.isHidden))
     .sort((a, b) => sortAchievements(a, b, sort)), [source, games, query, filter, sort]);
   if (state.status === "loading" || gamesState.status === "loading") return <LoadingView />;
   if (state.status === "error") return <ErrorView message={state.error} onRetry={() => location.reload()} />;
@@ -49,7 +50,7 @@ export function AchievementsPage({ onOpenAchievement }: { onOpenAchievement: (id
 }
 
 function sortAchievements(a: import("../types").Achievement, b: import("../types").Achievement, sort: AchievementSort) {
-  if (sort === "rarity") return a.rarityPercentage - b.rarityPercentage;
+  if (sort === "rarity") return (knownAchievementRarity(a) ?? 101) - (knownAchievementRarity(b) ?? 101);
   if (sort === "name") return a.title.localeCompare(b.title);
   return achievementTime(b.unlockedAt) - achievementTime(a.unlockedAt);
 }

@@ -4,13 +4,14 @@ import { Settings as SettingsIcon } from "lucide-react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Topbar } from "./components/layout/Topbar";
 import { ErrorView, LoadingView } from "./components/ui/StateViews";
-import { Onboarding } from "./components/onboarding/Onboarding";
+import { FirstLaunchExperience } from "./features/onboarding/FirstLaunchExperience";
 import type { AchievementId, GameId, NavigationView, PageId, UserPreferences, UserProfile } from "./types";
 import { initializeApplication } from "./services/initializationService";
 import { services } from "./services/compositionRoot";
 import { useTheme } from "./state/ThemeContext";
 import { useTranslation } from "./i18n/TranslationContext";
 import type { SettingsPageHandle } from "./pages/SettingsPage";
+import { activeNavigationPage } from "./components/layout/navigationState";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const GamesPage = lazy(() => import("./pages/GamesPage").then((module) => ({ default: module.GamesPage })));
@@ -37,6 +38,7 @@ export function App() {
   const [navigationSaving, setNavigationSaving] = useState(false);
   const [navigationSaveFailed, setNavigationSaveFailed] = useState(false);
   const settingsRef = useRef<SettingsPageHandle>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const initialize = useCallback(async () => {
     setInitialization("loading");
     try {
@@ -54,6 +56,7 @@ export function App() {
   useEffect(() => { void initialize(); }, [initialize]);
 
   const performPageNavigation = (page: PageId) => {
+    mainRef.current?.scrollTo({ top: 0 });
     setActivePage(page);
     setHistory([]);
     setView({ kind: "page", page });
@@ -75,8 +78,14 @@ export function App() {
     setNavigationSaveFailed(false);
     performPageNavigation(target);
   };
-  const openGame = useCallback((gameId: GameId) => { setView((current) => { setHistory((items) => [...items, current]); return { kind: "game", gameId }; }); }, []);
-  const openAchievement = useCallback((achievementId: AchievementId, gameId: GameId) => { setView((current) => { setHistory((items) => [...items, current]); return { kind: "achievement", achievementId, gameId }; }); }, []);
+  const openGame = useCallback((gameId: GameId) => {
+    mainRef.current?.scrollTo({ top: 0 });
+    setView((current) => { setHistory((items) => [...items, current]); return { kind: "game", gameId }; });
+  }, []);
+  const openAchievement = useCallback((achievementId: AchievementId, gameId: GameId) => {
+    mainRef.current?.scrollTo({ top: 0 });
+    setView((current) => { setHistory((items) => [...items, current]); return { kind: "achievement", achievementId, gameId }; });
+  }, []);
   const goBack = useCallback(() => {
     setHistory((items) => {
       const previous = items.at(-1) ?? { kind: "page", page: activePage } as NavigationView;
@@ -84,33 +93,41 @@ export function App() {
       return items.slice(0, -1);
     });
   }, [activePage]);
-  const completeOnboarding = async (destination?: "steam-settings") => {
-    if (!preferences) return;
-    const next = { ...preferences, onboardingCompleted: true };
+  const updateOnboardingPreferences = async (next: UserPreferences) => {
     await services.settings.save(next);
     setPreferences(next);
-    if (destination === "steam-settings") navigatePage("settings");
+    setTheme(next.theme);
+    setLanguage(next.language);
+  };
+  const completeOnboarding = async (current: UserPreferences) => {
+    const next = { ...current, onboardingCompleted: true };
+    await services.settings.save(next);
+    setPreferences(next);
   };
 
   if (initialization === "loading") return <LoadingView fullScreen size="lg" label={t("state.initializing")} />;
   if (initialization === "error") return <main className="initialization-state"><ErrorView message={initializationError} onRetry={() => void initialize()} /></main>;
   if (!preferences) return <main className="initialization-state"><ErrorView message={t("state.settingsMissing")} onRetry={() => void initialize()} /></main>;
   if (!preferences.onboardingCompleted) {
-    return <Onboarding onComplete={completeOnboarding} />;
+    return <FirstLaunchExperience preferences={preferences} onPreferencesChange={updateOnboardingPreferences} onComplete={completeOnboarding} />;
   }
   return (
-    <div className="app-shell">
-      <Sidebar activePage={activePage} onNavigate={navigatePage} />
+    <div className={`app-shell ${preferences.sidebarCollapsed ? "app-shell--sidebar-collapsed" : ""}`}>
+      <Sidebar activePage={activeNavigationPage(view, activePage)} collapsed={preferences.sidebarCollapsed} onCollapsedChange={(sidebarCollapsed) => {
+        const next = { ...preferences, sidebarCollapsed };
+        setPreferences(next);
+        void services.settings.save(next).catch(() => undefined);
+      }} onNavigate={navigatePage} />
       <div className="main-column">
         <Topbar profile={profile} search={search} onSearch={setSearch} />
-        <main>
+        <main ref={mainRef}>
           <Suspense fallback={<LoadingView size="md" label={t("state.loadingPage")} delay={150} />}>
             <div className={view.kind === "page" ? "" : "preserved-page"} aria-hidden={view.kind !== "page"}>
               {activePage === "dashboard" && <DashboardPage search={search} onOpenGame={openGame} onOpenAchievement={openAchievement} />}
               {activePage === "games" && <GamesPage onOpenGame={openGame} />}
               {activePage === "achievements" && <AchievementsPage onOpenAchievement={openAchievement} />}
               {activePage === "activity" && <ActivityPage />}
-              {activePage === "statistics" && <StatisticsPage onOpenGame={openGame} />}
+              {activePage === "statistics" && <StatisticsPage onOpenGame={openGame} onOpenSettings={() => navigatePage("settings")} />}
               {activePage === "settings" && (
                 <SettingsPage
                   ref={settingsRef}

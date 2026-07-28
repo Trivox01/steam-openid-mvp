@@ -38,13 +38,13 @@ export function toAchievementJourneyInput(
   return {
     now: source.analyzedAt,
     games: source.games.map((game) => toGameInput(game, achievementsByGame.get(game.id) ?? [], source.analyzedAt)),
-    achievements: source.achievements.map((achievement) => ({
+    achievements: source.achievements.filter((achievement) => achievement.unlockStateKnown !== false).map((achievement) => ({
       achievementId: achievement.id,
       gameId: achievement.gameId,
       title: achievement.title,
-      unlocked: Boolean(achievement.unlockedAt),
+      unlocked: achievement.unlocked ?? Boolean(achievement.unlockedAt),
       unlockDate: achievement.unlockedAt,
-      globalUnlockPercent: achievement.rarityPercentage,
+      globalUnlockPercent: achievement.globalUnlockPercent ?? (achievement.source === "steam" ? null : achievement.rarityPercentage),
       progressCurrent: null,
       progressTarget: null,
       hidden: achievement.isHidden
@@ -61,6 +61,7 @@ export function toAchievementJourneyInput(
 export function toJourneyGameCard(game: Game): GameCardData {
   return {
     id: game.id,
+    platformGameId: game.appId,
     title: game.name,
     coverUrl: game.coverUrl,
     backgroundUrl: game.backgroundUrl,
@@ -103,7 +104,10 @@ function toGameInput(
   achievements: Achievement[],
   now: string
 ): GameIntelligenceInput {
-  const rare = achievements.filter((achievement) => achievement.rarityPercentage < 10);
+  const rare = achievements.filter((achievement) => {
+    const rarity = achievement.globalUnlockPercent ?? (achievement.source === "steam" ? undefined : achievement.rarityPercentage);
+    return typeof rarity === "number" && rarity < 10;
+  });
   const recentlyUnlocked = achievements.filter((achievement) => {
     if (!achievement.unlockedAt) return false;
     const unlockedAt = new Date(achievement.unlockedAt).getTime();
@@ -123,7 +127,7 @@ function toGameInput(
     favorite: game.favorite ?? false,
     hidden: game.hidden ?? false,
     status: game.status ?? inferStatus(game),
-    rareAchievementsUnlocked: rare.filter((achievement) => achievement.unlockedAt).length,
+    rareAchievementsUnlocked: rare.filter((achievement) => achievement.unlocked ?? Boolean(achievement.unlockedAt)).length,
     rareAchievementsAvailable: rare.length,
     recentlyUnlockedAchievements: recentlyUnlocked.length
   };

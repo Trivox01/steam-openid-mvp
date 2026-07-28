@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ImageOff } from "lucide-react";
 import { useTranslation } from "../../i18n/TranslationContext";
 
 type GameArtworkProps = {
   src?: string;
+  fallbackSources?: readonly string[];
   alt: string;
   variant: "cover" | "background";
   className?: string;
@@ -15,19 +16,40 @@ const mergeClassNames = (...values: Array<string | false | undefined>) =>
 
 export function GameArtwork({
   src,
+  fallbackSources = [],
   alt,
   variant,
   className,
   eager = false
 }: GameArtworkProps) {
   const { t } = useTranslation();
+  const sourceSignature = [src, ...fallbackSources].filter(Boolean).join("\n");
+  const sources = useMemo(() => sourceSignature.split("\n").filter(Boolean), [sourceSignature]);
+  const [sourceIndex, setSourceIndex] = useState(0);
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(
-    src ? "loading" : "error"
+    sources.length ? "loading" : "error"
   );
+  const imageRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
-    setStatus(src ? "loading" : "error");
-  }, [src]);
+    setSourceIndex(0);
+    setStatus(sources.length ? "loading" : "error");
+  }, [sources]);
+
+  const activeSource = sources[sourceIndex];
+
+  useEffect(() => {
+    const image = imageRef.current;
+    if (!activeSource || !image?.complete) return;
+    if (image.naturalWidth > 0) {
+      setStatus("loaded");
+    } else if (sourceIndex + 1 < sources.length) {
+      setSourceIndex((index) => index + 1);
+      setStatus("loading");
+    } else {
+      setStatus("error");
+    }
+  }, [activeSource, sourceIndex, sources.length]);
 
   return (
     <span
@@ -40,14 +62,23 @@ export function GameArtwork({
       )}
     >
       {status === "loading" && <span className="game-artwork__skeleton" aria-hidden="true" />}
-      {status !== "error" && src && (
+      {status !== "error" && activeSource && (
         <img
-          src={src}
+          ref={imageRef}
+          key={activeSource}
+          src={activeSource}
           alt={alt}
           loading={eager ? "eager" : "lazy"}
           decoding="async"
           onLoad={() => setStatus("loaded")}
-          onError={() => setStatus("error")}
+          onError={() => {
+            if (sourceIndex + 1 < sources.length) {
+              setSourceIndex((index) => index + 1);
+              setStatus("loading");
+            } else {
+              setStatus("error");
+            }
+          }}
         />
       )}
       {status === "error" && (

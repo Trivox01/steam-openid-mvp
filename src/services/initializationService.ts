@@ -2,7 +2,7 @@ import type { UserPreferences, UserProfile } from "../types";
 import { repositories, services, storageMode } from "./compositionRoot";
 import { steamProfileToUserProfile } from "./platform/SteamConnectionService";
 export { defaultPreferences } from "./settingsPreferences";
-export interface InitializationResult { preferences: UserPreferences; profile: UserProfile; storageMode: "sqlite"|"mock" }
+export interface InitializationResult { preferences: UserPreferences; profile: UserProfile; storageMode: "sqlite"|"ephemeral" }
 
 export async function initializeApplication(): Promise<InitializationResult> {
   const preferences = await services.settings.get();

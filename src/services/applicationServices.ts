@@ -1,6 +1,7 @@
 import type { AchievementDetails, GameDetails, GameId, AchievementId, UserPreferences } from "../types";
 import type { AchievementRepository, ActivityRepository, GameRepository, ProfileRepository, SettingsRepository } from "../repositories/contracts";
 import { defaultPreferences, normalizePreferences, preferencesEqual } from "./settingsPreferences";
+import { isAchievementUnlocked } from "./achievementData";
 
 export class GameService {
   constructor(private games: GameRepository, private achievements: AchievementRepository) {}
@@ -8,8 +9,9 @@ export class GameService {
   async details(id: GameId): Promise<GameDetails | undefined> {
     const game = await this.games.getGameById(id); if (!game) return undefined;
     const items = await this.achievements.getAchievementsByGame(id);
-    const unlocked = items.filter((item) => item.unlockedAt);
-    return { ...game, rareAchievements: unlocked.filter((item) => item.rarityPercentage < 10).length, lockedAchievements: items.filter((item) => !item.unlockedAt).length, averageRarity: items.length ? items.reduce((sum, item) => sum + item.rarityPercentage, 0) / items.length : 0, latestAchievement: unlocked[0] };
+    const unlocked = items.filter(isAchievementUnlocked);
+    const knownRarities = items.map((item) => item.globalUnlockPercent ?? (item.source === "steam" ? undefined : item.rarityPercentage)).filter((value): value is number => typeof value === "number");
+    return { ...game, rareAchievements: unlocked.filter((item) => (item.globalUnlockPercent ?? (item.source === "steam" ? 101 : item.rarityPercentage)) < 10).length, lockedAchievements: items.filter((item) => item.unlockStateKnown !== false && !isAchievementUnlocked(item)).length, averageRarity: knownRarities.length ? knownRarities.reduce((sum, item) => sum + item, 0) / knownRarities.length : 0, latestAchievement: unlocked.filter((item) => item.unlockedAt)[0] };
   }
 }
 export class AchievementService {
@@ -84,6 +86,7 @@ function isCurrentSchema(stored: unknown, normalized: UserPreferences) {
     (value.theme === "system" || value.theme === "dark" || value.theme === "light") &&
     (value.language === "en" || value.language === "ar") &&
     typeof value.onboardingCompleted === "boolean" &&
+    typeof value.sidebarCollapsed === "boolean" &&
     typeof value.launchAtStartup === "boolean" &&
     typeof value.minimizeToTray === "boolean" &&
     typeof value.notificationsEnabled === "boolean" &&
@@ -99,10 +102,12 @@ export class ProfileService {
   save(profile: import("../types").UserProfile) { return this.repository.saveProfile(profile); }
 }
 export class StatisticsService {
-  constructor(private games: GameRepository, private achievements: AchievementRepository, private activities: ActivityRepository) {}
+  constructor(private games: GameRepository, private achievements: AchievementRepository) {}
   async get() {
-    const [games, achievements, activities] = await Promise.all([this.games.getAllGames(), this.achievements.getAchievements(), this.activities.getActivities()]);
-    const weeklyActivity = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((day,index)=>({day,hours:activities.filter((_,itemIndex)=>itemIndex%7===index).length*1.5}));
-    return { games, achievements, weeklyActivity };
+    const [games, achievements] = await Promise.all([
+      this.games.getAllGames(),
+      this.achievements.getAchievements()
+    ]);
+    return { games, achievements };
   }
 }

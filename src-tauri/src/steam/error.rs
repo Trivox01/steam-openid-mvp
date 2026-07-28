@@ -12,6 +12,8 @@ pub enum SteamError {
     RateLimited,
     PrivateLibrary,
     ApiKeyUnavailable,
+    GameUnsupported,
+    NoAchievements,
 }
 
 impl SteamError {
@@ -29,6 +31,8 @@ impl SteamError {
             Self::RateLimited => "rate_limited",
             Self::PrivateLibrary => "private_library",
             Self::ApiKeyUnavailable => "api_key_unavailable",
+            Self::GameUnsupported => "game_unsupported",
+            Self::NoAchievements => "no_achievements",
         }
     }
 
@@ -46,6 +50,8 @@ impl SteamError {
             Self::RateLimited => "Steam rate limited this request. Try again later.",
             Self::PrivateLibrary => "The Steam game library is private or unavailable.",
             Self::ApiKeyUnavailable => "Reconnect Steam to make the API key available.",
+            Self::GameUnsupported => "This game does not expose achievements through Steam Web API.",
+            Self::NoAchievements => "This game has no Steam achievements.",
         }
     }
 }

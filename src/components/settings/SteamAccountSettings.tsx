@@ -10,9 +10,13 @@ import type {
 } from "../../types";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
 import { useTranslation } from "../../i18n/TranslationContext";
-import type { SteamLibrarySyncResult } from "../../types";
+import type { SteamAchievementSyncResult, SteamLibrarySyncResult } from "../../types";
 import { SteamLibrarySyncError } from "../../services/platform/SteamLibrarySyncService";
 import { publishLibraryChange } from "../../services/dataEvents";
+import {
+  achievementFailureCounts,
+  retryableAchievementGameIds
+} from "../../services/platform/SteamAchievementSyncCore";
 
 export function SteamAccountSettings({
   onProfileChange
@@ -30,6 +34,10 @@ export function SteamAccountSettings({
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SteamLibrarySyncResult>();
   const [lastSyncedAt, setLastSyncedAt] = useState<string>();
+  const [achievementSyncing, setAchievementSyncing] = useState(false);
+  const [achievementProgress, setAchievementProgress] = useState({ processed: 0, total: 0 });
+  const [achievementResult, setAchievementResult] = useState<SteamAchievementSyncResult>();
+  const [lastAchievementSync, setLastAchievementSync] = useState<string>();
   const available = services.steam.available;
 
   useEffect(() => {
@@ -50,6 +58,11 @@ export function SteamAccountSettings({
     services.steamLibrarySync.getLastSync()
       .then((metadata) => {
         if (active) setLastSyncedAt(metadata?.lastSyncedAt);
+      })
+      .catch(() => undefined);
+    services.steamAchievementSync.getLastSync()
+      .then((metadata) => {
+        if (active) setLastAchievementSync(metadata?.lastSyncedAt);
       })
       .catch(() => undefined);
     return () => {
@@ -123,6 +136,26 @@ export function SteamAccountSettings({
     }
   };
 
+  const syncAchievements = async (gameIds?: string[]) => {
+    if (achievementSyncing) return;
+    setAchievementSyncing(true);
+    setAchievementResult(undefined);
+    setMessage("");
+    try {
+      const result = await services.steamAchievementSync.sync({
+        gameIds,
+        onProgress: (processed, total) => setAchievementProgress({ processed, total })
+      });
+      setAchievementResult(result);
+      if (result.gamesSucceeded > 0) setLastAchievementSync(result.syncedAt);
+      publishLibraryChange();
+    } catch {
+      setMessage(t("steam.sync.error"));
+    } finally {
+      setAchievementSyncing(false);
+    }
+  };
+
   if (!available) {
     return (
       <div className="steam-unavailable" role="status">
@@ -172,6 +205,48 @@ export function SteamAccountSettings({
             .replace("{updated}", String(syncResult.updated))
             .replace("{unchanged}", String(syncResult.unchanged))
             .replace("{skipped}", String(syncResult.skipped))}</p>}
+          <div className="steam-sync-row">
+            <div>
+              <strong>{t("steam.achievements.title")}</strong>
+              <small>{lastAchievementSync
+                ? `${t("steam.achievements.lastSync")} ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(lastAchievementSync))}`
+                : t("steam.achievements.noData")}</small>
+              {achievementSyncing && <small aria-live="polite">{t("steam.achievements.gamesProcessed")
+                .replace("{processed}", String(achievementProgress.processed))
+                .replace("{total}", String(achievementProgress.total))}</small>}
+            </div>
+            <button className="primary-button" type="button" onClick={() => void syncAchievements()} disabled={achievementSyncing}>
+              <RefreshCw size={15} className={achievementSyncing ? "steam-sync-spinning" : ""} />
+              {achievementSyncing ? t("steam.achievements.syncing") : t("steam.achievements.sync")}
+            </button>
+          </div>
+          {achievementResult && (
+            <div className={achievementResult.partial ? "steam-sync-warning" : "steam-sync-result"} role="status">
+              <span>{t("steam.achievements.result")
+                .replace("{games}", String(achievementResult.gamesSucceeded))
+                .replace("{inserted}", String(achievementResult.inserted))
+                .replace("{updated}", String(achievementResult.updated))
+                .replace("{unchanged}", String(achievementResult.unchanged))}</span>
+              <small>{t("steam.achievements.fetched").replace("{count}", String(achievementResult.achievementsFetched))}</small>
+              <small>{t("steam.achievements.summaryCounts", {
+                completed: achievementResult.gamesSucceeded,
+                failed: achievementResult.gamesFailed,
+                unsupported: achievementResult.gamesUnsupported
+              })}</small>
+              {achievementResult.partial && <small>{t("steam.achievements.libraryUnaffected")}</small>}
+              {achievementResult.gamesSucceeded === 0 && achievementResult.gamesUnsupported > 0 && <small>{t("steam.achievements.noSupported")}</small>}
+              {Object.entries(achievementFailureCounts(achievementResult.games)).map(([code, count]) => (
+                <small key={code}>{achievementErrorLabel(code, count, t)}</small>
+              ))}
+              {retryableAchievementGameIds(achievementResult.games).length > 0 && (
+                <button type="button" onClick={() => void syncAchievements(
+                  retryableAchievementGameIds(achievementResult.games)
+                )}>{t("steam.achievements.retryFailedCount", {
+                  count: retryableAchievementGameIds(achievementResult.games).length
+                })}</button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="steam-connection-form">
@@ -241,4 +316,24 @@ export function SteamAccountSettings({
       )}
     </>
   );
+}
+
+function achievementErrorLabel(
+  code: string,
+  count: number,
+  t: ReturnType<typeof useTranslation>["t"]
+) {
+  const keys: Record<string, Parameters<typeof t>[0]> = {
+    no_achievements: "steam.achievements.noSchema",
+    game_unsupported: "steam.achievements.unsupportedCount",
+    private_library: "steam.achievements.privateCount",
+    rate_limited: "steam.achievements.rateLimitedCount",
+    timeout: "steam.achievements.temporaryCount",
+    no_internet: "steam.achievements.networkCount",
+    steam_api_unavailable: "steam.achievements.temporaryCount",
+    invalid_response: "steam.achievements.invalidResponseCount",
+    invalid_api_key: "steam.achievements.authenticationCount",
+    api_key_unavailable: "steam.achievements.authenticationCount"
+  };
+  return t(keys[code] ?? "steam.achievements.unknownCount", { count });
 }

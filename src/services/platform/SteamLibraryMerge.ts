@@ -25,8 +25,10 @@ function mapSteamGame(item: SteamOwnedGameDto, existing: Game | undefined, synce
     id: existing?.id ?? `steam:${item.appId}`, appId: String(item.appId), platform: "steam",
     name: item.name.trim(), coverUrl: artwork.coverUrl, backgroundUrl: artwork.backgroundUrl,
     iconUrl: artwork.iconUrl || existing?.iconUrl, playtimeHours: item.playtimeForeverMinutes / 60,
-    playtimeTwoWeeksMinutes: item.playtimeTwoWeeksMinutes, playtimeWindowsMinutes: item.playtimeWindowsMinutes,
-    playtimeMacMinutes: item.playtimeMacMinutes, playtimeLinuxMinutes: item.playtimeLinuxMinutes,
+    playtimeTwoWeeksMinutes: optionalNumber(item.playtimeTwoWeeksMinutes),
+    playtimeWindowsMinutes: optionalNumber(item.playtimeWindowsMinutes),
+    playtimeMacMinutes: optionalNumber(item.playtimeMacMinutes),
+    playtimeLinuxMinutes: optionalNumber(item.playtimeLinuxMinutes),
     totalAchievements: existing?.totalAchievements ?? 0, unlockedAchievements: existing?.unlockedAchievements ?? 0,
     completionPercentage: existing?.completionPercentage ?? 0,
     lastPlayedAt: unixToIso(item.lastPlayedUnix) || existing?.lastPlayedAt || "", syncedAt,
@@ -48,8 +50,12 @@ function isValidSteamGame(item: SteamOwnedGameDto) {
     item.name.trim().length > 0 && Number.isFinite(item.playtimeForeverMinutes) && item.playtimeForeverMinutes >= 0;
 }
 
-function unixToIso(value?: number) {
+function unixToIso(value?: number | null) {
   if (!value || !Number.isFinite(value) || value < 0) return "";
   const date = new Date(value * 1000);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function optionalNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

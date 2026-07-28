@@ -31,7 +31,7 @@ export const settings = {
   "settings.hideGamesDescription": "استبعد الألعاب المحددة من مكتبتك.",
   "settings.data": "البيانات",
   "settings.dataDescription": "أدر بيانات مكتبتك المحلية.",
-  "settings.onboarding": "عرض المقدمة مرة أخرى",
+  "settings.onboarding": "إعادة تشغيل تجربة الترحيب",
   "settings.sync": "مزامنة البيانات المحلية",
   "settings.syncing": "جارٍ المزامنة...",
   "settings.export": "تصدير البيانات",

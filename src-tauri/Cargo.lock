@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "achievement-nexus"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "reqwest 0.12.28",
  "rusqlite",

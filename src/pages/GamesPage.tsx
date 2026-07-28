@@ -36,12 +36,12 @@ export function GamesPage({ onOpenGame }: { onOpenGame: (id: GameId) => void }) 
 
   return (
     <section className="content-page">
-      <PageHeader eyebrow="GAME LIBRARY" title="My Games" description={`${source.length} games connected across your platforms.`} />
+      <PageHeader eyebrow={t("games.eyebrow")} title={t("games.title")} description={t("games.description", { count: source.length })} />
       <FilterToolbar>
-        <SearchField value={query} onChange={setQuery} placeholder="Search your library..." />
+        <SearchField value={query} onChange={setQuery} placeholder={t("games.search")} />
         <SegmentedFilter value={filter} onChange={setFilter} options={[
-          { value: "all", label: "All games" }, { value: "completed", label: "100% complete" },
-          { value: "progress", label: "In progress" }, { value: "not_started", label: "Not started" }
+          { value: "all", label: t("games.filters.all") }, { value: "completed", label: t("games.filters.completed") },
+          { value: "progress", label: t("games.filters.progress") }, { value: "not_started", label: t("games.filters.notStarted") }
         ]} />
         <div className="toolbar-end">
           {view === "grid" && <SelectControl value={density} onChange={setDensity} label={t("gameCard.density")} options={[
@@ -49,18 +49,18 @@ export function GamesPage({ onOpenGame }: { onOpenGame: (id: GameId) => void }) 
             { value: "comfortable", label: t("gameCard.density.comfortable") },
             { value: "large", label: t("gameCard.density.large") }
           ]} />}
-          <SelectControl value={sort} onChange={setSort} label="Sort" options={[
-            { value: "recent", label: "Last played" }, { value: "completion", label: "Completion" },
-            { value: "playtime", label: "Playtime" }, { value: "name", label: "Name" }
+          <SelectControl value={sort} onChange={setSort} label={t("games.sort.label")} options={[
+            { value: "recent", label: t("games.sort.recent") }, { value: "completion", label: t("games.sort.completion") },
+            { value: "playtime", label: t("games.sort.playtime") }, { value: "name", label: t("games.sort.name") }
           ]} />
-          <div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid view"><Grid2X2 size={16} /></button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="List view"><List size={17} /></button></div>
+          <div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label={t("games.view.grid")}><Grid2X2 size={16} /></button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label={t("games.view.list")}><List size={17} /></button></div>
         </div>
       </FilterToolbar>
       {cardGames.length ? <div className={`library-${view} library-density-${density}`}>{cardGames.map((card) => {
         const Card = view === "grid" ? GameCard : GameCardCompact;
         return <Card key={card.id} game={card} onOpen={onOpenGame} onViewAchievements={onOpenGame} onViewDetails={onOpenGame} />;
       })}</div> :
-        <EmptyView compact title="No games found" description="Try a different search term or completion filter." />}
+        <EmptyView compact title={t("games.empty.title")} description={t("games.empty.description")} />}
     </section>
   );
 }
@@ -68,6 +68,7 @@ export function GamesPage({ onOpenGame }: { onOpenGame: (id: GameId) => void }) 
 function toGameCardData(game: Game): GameCardData {
   return {
     id: game.id,
+    platformGameId: game.appId,
     title: game.name,
     coverUrl: game.coverUrl,
     backgroundUrl: game.backgroundUrl,

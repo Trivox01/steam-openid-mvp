@@ -4,6 +4,7 @@ import type {
   SteamConnectionResult,
   SteamCredentials,
   SteamOwnedGamesResult,
+  SteamGameAchievementsDto,
   SteamProfile
 } from "../../types";
 
@@ -69,6 +70,17 @@ export class TauriSteamGateway {
         "The Steam library could not be synchronized.",
         readErrorCode(error)
       );
+    }
+  }
+
+  async getGameAchievements(appId: number): Promise<SteamGameAchievementsDto> {
+    if (!this.available) {
+      throw new SteamIntegrationError("Steam integration is available only in the desktop application.", "tauri_required");
+    }
+    try {
+      return await invoke<SteamGameAchievementsDto>("steam_get_game_achievements", { appId });
+    } catch (error) {
+      throw new SteamIntegrationError("Steam achievements could not be synchronized.", readErrorCode(error));
     }
   }
 

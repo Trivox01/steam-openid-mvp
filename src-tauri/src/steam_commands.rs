@@ -6,6 +6,7 @@ use crate::{
     database::DatabaseState,
     secret_store::SecretStore,
     steam::{SteamClient, SteamConnectionResult, SteamError, SteamOwnedGamesResult, SteamProfile},
+    steam::SteamGameAchievements,
 };
 
 #[derive(Debug, Serialize)]
@@ -104,9 +105,34 @@ pub async fn steam_get_owned_games(
         .ok_or_else(|| SteamCommandError { code: "api_key_unavailable".to_string() })?;
     let client = SteamClient::new()
         .map_err(|error| SteamCommandError { code: error.code().to_string() })?;
-    client
+    let result = client
         .get_owned_games(&steam_id, &api_key)
         .await
+        .map_err(|error| SteamCommandError { code: error.code().to_string() })?;
+    #[cfg(debug_assertions)]
+    eprintln!(
+        "[steam-library] SteamID64={} returned_games={}",
+        steam_id,
+        result.games.len()
+    );
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn steam_get_game_achievements(
+    app_id: u32,
+    database: State<'_, DatabaseState>,
+    secrets: State<'_, SecretStore>,
+) -> Result<SteamGameAchievements, SteamCommandError> {
+    let steam_id = read_steam_id(&database)
+        .map_err(|code| SteamCommandError { code })?
+        .ok_or_else(|| SteamCommandError { code: "steam_not_connected".to_string() })?;
+    let api_key = secrets.steam_api_key()
+        .map_err(|_| SteamCommandError { code: "api_key_unavailable".to_string() })?
+        .ok_or_else(|| SteamCommandError { code: "api_key_unavailable".to_string() })?;
+    let client = SteamClient::new()
+        .map_err(|error| SteamCommandError { code: error.code().to_string() })?;
+    client.get_game_achievements(&steam_id, &api_key, app_id).await
         .map_err(|error| SteamCommandError { code: error.code().to_string() })
 }
 

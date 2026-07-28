@@ -60,7 +60,45 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
     const [resetOpen, setResetOpen] = useState(false);
     const successTimer = useRef<number | null>(null);
     const syncTimer = useRef<number | null>(null);
+    const confirmDialogRef = useRef<HTMLDivElement>(null);
+    const confirmTriggerRef = useRef<HTMLElement | null>(null);
     const dirty = Boolean(saved && draft && !preferencesEqual(saved, draft));
+
+    useEffect(() => {
+      if (!dialogOpen && !resetOpen) return;
+      const dialog = confirmDialogRef.current;
+      const focusable = [...(dialog?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? [])];
+      focusable[0]?.focus();
+      const handleDialogKey = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setDialogOpen(false);
+          setResetOpen(false);
+          return;
+        }
+        if (event.key !== "Tab" || focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      };
+      document.addEventListener("keydown", handleDialogKey);
+      return () => {
+        document.removeEventListener("keydown", handleDialogKey);
+        confirmTriggerRef.current?.focus();
+      };
+    }, [dialogOpen, resetOpen]);
+
+    const openConfirmDialog = (kind: "delete" | "reset") => {
+      confirmTriggerRef.current = document.activeElement as HTMLElement | null;
+      if (kind === "delete") setDialogOpen(true);
+      else setResetOpen(true);
+    };
 
     const load = useCallback(async () => {
       try {
@@ -213,8 +251,8 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
               <button type="button" onClick={() => void showOnboarding()}><PlayCircle size={16} />{t("settings.onboarding")}</button>
               <button type="button" onClick={sync} disabled={syncing}><RefreshCw className={syncing ? "spinning" : ""} size={16} />{syncing ? t("settings.syncing") : t("settings.sync")}</button>
               <button type="button" onClick={() => window.alert(t("settings.exportFuture"))}><Download size={16} />{t("settings.export")}</button>
-              <button type="button" onClick={() => setResetOpen(true)}><RotateCw size={16} />{t("settings.reset")}</button>
-              <button type="button" className="danger" onClick={() => setDialogOpen(true)}><Trash2 size={16} />{t("settings.delete")}</button>
+              <button type="button" onClick={() => openConfirmDialog("reset")}><RotateCw size={16} />{t("settings.reset")}</button>
+              <button type="button" className="danger" onClick={() => openConfirmDialog("delete")}><Trash2 size={16} />{t("settings.delete")}</button>
             </div>
           </SettingsSection>
         </div>
@@ -237,8 +275,8 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
         </div>
         {saveError && <p className="settings-save-error" role="alert">{saveError}</p>}
 
-        {dialogOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={() => setDialogOpen(false)}><div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title" onMouseDown={(event) => event.stopPropagation()}><div><Trash2 size={22} /></div><h2 id="delete-title">{t("settings.deleteTitle")}</h2><p>{t("settings.deleteDescription")}</p><footer><button type="button" onClick={() => setDialogOpen(false)}>{t("common.cancel")}</button><button type="button" className="danger-button" onClick={() => setDialogOpen(false)}>{t("settings.confirmPreview")}</button></footer></div></div>}
-        {resetOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={() => setResetOpen(false)}><div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-title" onMouseDown={(event) => event.stopPropagation()}><div><RotateCw size={22} /></div><h2 id="reset-title">{t("settings.resetTitle")}</h2><p>{t("settings.resetDescription")}</p><footer><button type="button" onClick={() => setResetOpen(false)}>{t("common.cancel")}</button><button type="button" className="danger-button" onClick={resetDraft}>{t("settings.reset")}</button></footer></div></div>}
+        {dialogOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={() => setDialogOpen(false)}><div ref={confirmDialogRef} className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title" onMouseDown={(event) => event.stopPropagation()}><div><Trash2 size={22} /></div><h2 id="delete-title">{t("settings.deleteTitle")}</h2><p>{t("settings.deleteDescription")}</p><footer><button type="button" onClick={() => setDialogOpen(false)}>{t("common.cancel")}</button><button type="button" className="danger-button" onClick={() => setDialogOpen(false)}>{t("settings.confirmPreview")}</button></footer></div></div>}
+        {resetOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={() => setResetOpen(false)}><div ref={confirmDialogRef} className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-title" onMouseDown={(event) => event.stopPropagation()}><div><RotateCw size={22} /></div><h2 id="reset-title">{t("settings.resetTitle")}</h2><p>{t("settings.resetDescription")}</p><footer><button type="button" onClick={() => setResetOpen(false)}>{t("common.cancel")}</button><button type="button" className="danger-button" onClick={resetDraft}>{t("settings.reset")}</button></footer></div></div>}
       </section>
     );
   }

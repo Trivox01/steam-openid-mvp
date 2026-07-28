@@ -1,6 +1,6 @@
 [package]
 name = "achievement-nexus"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 description = "A personal achievement tracker for gamers"
 authors = ["Achievement Nexus"]
 edition = "2021"

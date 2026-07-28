@@ -1,0 +1,5 @@
+-- Idempotent repair migration executed by database.rs.
+--
+-- SQLite does not support ADD COLUMN IF NOT EXISTS on all supported versions,
+-- so the runner checks PRAGMA table_info for each column before executing the
+-- corresponding ALTER TABLE. Column definitions intentionally match 005.

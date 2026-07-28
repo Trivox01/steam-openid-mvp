@@ -4,6 +4,7 @@ export const defaultPreferences: UserPreferences = {
   theme: "dark",
   language: "en",
   onboardingCompleted: false,
+  sidebarCollapsed: false,
   launchAtStartup: false,
   minimizeToTray: true,
   notificationsEnabled: true,
@@ -21,6 +22,7 @@ export function normalizePreferences(value: unknown): UserPreferences {
       source.onboardingCompleted,
       defaultPreferences.onboardingCompleted
     ),
+    sidebarCollapsed: booleanOrDefault(source.sidebarCollapsed, defaultPreferences.sidebarCollapsed),
     launchAtStartup: booleanOrDefault(
       source.launchAtStartup,
       defaultPreferences.launchAtStartup
@@ -47,6 +49,7 @@ export function preferencesEqual(left: UserPreferences, right: UserPreferences) 
     left.theme === right.theme &&
     left.language === right.language &&
     left.onboardingCompleted === right.onboardingCompleted &&
+    left.sidebarCollapsed === right.sidebarCollapsed &&
     left.launchAtStartup === right.launchAtStartup &&
     left.minimizeToTray === right.minimizeToTray &&
     left.notificationsEnabled === right.notificationsEnabled &&

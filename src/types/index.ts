@@ -32,6 +32,9 @@ export interface Game {
   favorite?: boolean;
   hidden?: boolean;
   status?: "notStarted" | "playing" | "completed" | "backlog" | "abandoned";
+  achievementsSyncedAt?: string;
+  achievementsSyncStatus?: "idle" | "success" | "partial" | "unsupported" | "error";
+  achievementsSyncError?: string;
 }
 
 export interface Achievement {
@@ -40,10 +43,17 @@ export interface Achievement {
   title: string;
   description: string;
   iconUrl: string;
+  unlocked?: boolean;
   unlockedAt?: string;
   rarityPercentage: number;
   points: number;
   isHidden?: boolean;
+  externalId?: string;
+  source?: Platform | "local" | "mock";
+  lockedIconUrl?: string;
+  globalUnlockPercent?: number;
+  syncedAt?: string;
+  unlockStateKnown?: boolean;
 }
 
 export interface GameDetails extends Game {
@@ -62,6 +72,7 @@ export interface AppSettings {
   theme: "light" | "dark" | "system";
   language: "en" | "ar";
   onboardingCompleted: boolean;
+  sidebarCollapsed: boolean;
   launchAtStartup: boolean;
   minimizeToTray: boolean;
   notificationsEnabled: boolean;
@@ -75,7 +86,7 @@ export type UserPreferences = AppSettings;
 export interface SyncMetadata {
   lastSyncedAt?: string;
   status: "idle" | "syncing" | "success" | "error";
-  source: PlatformId | "mock";
+  source: PlatformId | "mock" | "steam-achievements";
 }
 
 export type NavigationView =
@@ -121,5 +132,9 @@ export type {
   SteamProfile,
   SteamLibrarySyncResult,
   SteamOwnedGameDto,
-  SteamOwnedGamesResult
+  SteamOwnedGamesResult,
+  SteamAchievementDto,
+  SteamGameAchievementsDto,
+  SteamAchievementGameSyncResult,
+  SteamAchievementSyncResult
 } from "./steam";

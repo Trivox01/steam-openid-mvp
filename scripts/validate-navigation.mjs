@@ -1,0 +1,29 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { activeNavigationPage, isNavigationItemActive, navigationItems } from "../src/components/layout/navigationState.ts";
+
+assert.equal(activeNavigationPage({ kind:"page", page:"games" }, "dashboard"), "games");
+assert.equal(activeNavigationPage({ kind:"game", gameId:"game-1" }, "dashboard"), "games");
+assert.equal(activeNavigationPage({ kind:"achievement", achievementId:"a-1", gameId:"game-1" }, "dashboard"), "achievements");
+assert.equal(navigationItems.filter(item => isNavigationItemActive(item, "statistics")).length, 1);
+assert.equal(isNavigationItemActive("games", "statistics"), false);
+
+const sidebar = fs.readFileSync("src/components/layout/Sidebar.tsx", "utf8");
+const styles = fs.readFileSync("src/styles/index.css", "utf8");
+const app = fs.readFileSync("src/App.tsx", "utf8");
+assert.match(sidebar, /aria-expanded=\{!collapsed\}/);
+assert.match(sidebar, /aria-current=\{active \? "page"/);
+assert.match(sidebar, /data-tooltip=\{label\}/);
+assert.doesNotMatch(sidebar, /framer-motion/);
+assert.match(sidebar, /nav-moving-indicator/);
+assert.match(sidebar, /className="sidebar-header"/);
+assert.match(sidebar, /<ChevronLeft/);
+assert.doesNotMatch(sidebar, /PanelLeft(Open|Close)/);
+assert.match(styles, /prefers-reduced-motion:reduce/);
+assert.match(styles, /--active-nav-index/);
+assert.match(styles, /inset-inline-start/);
+assert.match(app, /services\.settings\.save\(next\)/);
+assert.match(app, /mainRef\.current\?\.scrollTo\(\{ top: 0 \}\)/);
+assert.match(app, /<main ref=\{mainRef\}>/);
+assert.deepEqual(navigationItems, ["dashboard","games","achievements","activity","statistics","settings"]);
+console.log("Navigation polish validation passed.");

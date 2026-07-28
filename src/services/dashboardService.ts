@@ -1,4 +1,3 @@
-import { mockDashboardData } from "../data/mockData";
 import type { DashboardData } from "../types";
 import { repositories } from "./compositionRoot";
 import type { AchievementJourneySource } from "./intelligence/achievementJourneyAdapter";
@@ -9,7 +8,13 @@ export async function getDashboardData(): Promise<DashboardData> {
     repositories.games.getAllGames(),
     repositories.achievements.getAchievements()
   ]);
-  return { ...mockDashboardData, profile: profile ?? mockDashboardData.profile, games, recentAchievements: recentAchievements.filter((item)=>item.unlockedAt).slice(0,3) };
+  return {
+    profile: profile ?? localProfile,
+    games,
+    recentAchievements: recentAchievements.filter((item) => item.unlockedAt).slice(0, 3),
+    weeklyActivity: [],
+    weeklyGoalHours: 0
+  };
 }
 
 export async function getAchievementJourneySource(): Promise<AchievementJourneySource> {
@@ -20,7 +25,7 @@ export async function getAchievementJourneySource(): Promise<AchievementJourneyS
     repositories.activities.getActivities()
   ]);
   return {
-    profile: profile ?? mockDashboardData.profile,
+    profile: profile ?? localProfile,
     games,
     achievements,
     activity,
@@ -31,3 +36,10 @@ export async function getAchievementJourneySource(): Promise<AchievementJourneyS
     }
   };
 }
+
+const localProfile = {
+  id: "local-player",
+  displayName: "Player",
+  avatarUrl: "",
+  level: 0
+};

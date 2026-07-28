@@ -31,7 +31,7 @@ export const settings = {
   "settings.hideGamesDescription": "Exclude marked games from your library.",
   "settings.data": "Data",
   "settings.dataDescription": "Manage your local library data.",
-  "settings.onboarding": "Show onboarding again",
+  "settings.onboarding": "Restart Welcome Experience",
   "settings.sync": "Sync local data",
   "settings.syncing": "Syncing...",
   "settings.export": "Export data",

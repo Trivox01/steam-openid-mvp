@@ -1,7 +1,7 @@
 {
   "name": "achievement-nexus",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,19 @@
     "typecheck": "tsc -b --pretty",
     "test:intelligence": "node --experimental-strip-types scripts/validate-intelligence.mjs",
     "test:steam-library": "node --experimental-strip-types scripts/validate-steam-library.mjs",
+    "test:steam-achievements": "node --experimental-strip-types scripts/validate-steam-achievements.mjs",
+    "test:game-details": "node --experimental-strip-types scripts/validate-game-details.mjs",
+    "test:onboarding": "node --experimental-strip-types scripts/validate-onboarding.mjs",
+    "test:navigation": "node --experimental-strip-types scripts/validate-navigation.mjs",
+    "test:quality": "node --experimental-strip-types scripts/validate-quality.mjs",
+    "test:statistics": "node --experimental-strip-types scripts/validate-statistics.mjs",
+    "test:backend-auth": "npm --prefix services/auth-api test",
+    "test:backend-storage": "npm --prefix services/auth-api run test:storage",
+    "test:backend-postgres": "npm --prefix services/auth-api run test:postgres",
+    "test:steam-openid": "npm --prefix services/auth-api run test:steam-openid",
+    "steam-openid:live-test": "npm --prefix services/auth-api run steam-openid:live-test",
+    "test:steam-signin-ui": "node --experimental-strip-types scripts/validate-steam-signin-phase1.mjs",
+    "typecheck:backend": "npm --prefix services/auth-api run typecheck",
     "tauri": "tauri"
   },
   "dependencies": {

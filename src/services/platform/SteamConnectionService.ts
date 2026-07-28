@@ -45,6 +45,10 @@ export class SteamConnectionService {
   getOwnedGames() {
     return this.gateway.getOwnedGames();
   }
+
+  getGameAchievements(appId: number) {
+    return this.gateway.getGameAchievements(appId);
+  }
 }
 
 export function steamProfileToUserProfile(profile: SteamProfile): UserProfile {

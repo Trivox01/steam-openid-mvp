@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { completeOnboardingPreferences, directionForLanguage, moveStep, shouldShowOnboarding, steamErrorTranslationKey, vortexMode } from "../src/features/onboarding/onboardingFlow.ts";
+
+const preferences = { theme:"dark", language:"en", onboardingCompleted:false, launchAtStartup:false, minimizeToTray:false, notificationsEnabled:true, autoCheckForUpdates:true, hidePlaytime:false, hideHiddenGames:false };
+assert.equal(shouldShowOnboarding(false), true);
+assert.equal(shouldShowOnboarding(true), false);
+assert.equal(moveStep("welcome", -1), "welcome");
+assert.equal(moveStep("welcome", 1), "personalization");
+assert.equal(moveStep("library", 1), "library");
+assert.equal(completeOnboardingPreferences(preferences).onboardingCompleted, true);
+assert.equal(preferences.onboardingCompleted, false);
+assert.equal(directionForLanguage("ar"), "rtl");
+assert.equal(directionForLanguage("en"), "ltr");
+assert.equal(vortexMode(false, false), "static");
+assert.equal(vortexMode(true, true), "static");
+assert.equal(vortexMode(true, false), "animated");
+assert.equal(steamErrorTranslationKey("invalid_api_key"), "onboarding.steam.error.invalidKey");
+assert.equal(steamErrorTranslationKey("private_profile"), "onboarding.steam.error.private");
+assert.equal(steamErrorTranslationKey("network_error"), "onboarding.steam.error.network");
+console.log("Onboarding flow validation passed.");
+

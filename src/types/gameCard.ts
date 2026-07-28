@@ -16,6 +16,7 @@ export type GameCardAccent = {
 
 export type GameCardData = {
   id: GameId;
+  platformGameId?: string;
   title: string;
   coverUrl?: string;
   backgroundUrl?: string;

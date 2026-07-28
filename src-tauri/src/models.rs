@@ -11,6 +11,8 @@ pub struct GameRecord {
     pub playtime_mac_minutes: Option<i64>, pub playtime_linux_minutes: Option<i64>,
     pub icon_url: String, pub synced_at: Option<String>, pub favorite: bool, pub hidden: bool,
     pub game_status: String,
+    pub achievements_synced_at: Option<String>, pub achievements_sync_status: String,
+    pub achievements_sync_error: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,6 +20,9 @@ pub struct AchievementRecord {
     pub id: String, pub game_id: String, pub platform_achievement_id: String, pub name: String,
     pub description: String, pub icon_url: String, pub is_unlocked: bool, pub is_hidden: bool,
     pub rarity_percentage: f64, pub unlocked_at: Option<String>,
+    pub locked_icon_url: String, pub source: String,
+    pub global_unlock_percent: Option<f64>, pub synced_at: Option<String>,
+    pub unlock_state_known: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
