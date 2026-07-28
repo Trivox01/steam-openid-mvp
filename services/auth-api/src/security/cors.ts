@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 const CORS_METHODS = "POST, GET, OPTIONS";
-const CORS_HEADERS = "Content-Type";
+const CORS_HEADERS = "Content-Type, Authorization";
 const CORS_MAX_AGE_SECONDS = 600;
 
 export interface CorsDecision {
@@ -42,7 +42,9 @@ export function handleCorsPreflight(
     requestedHeaders === undefined ||
     requestedHeaders
       .split(",")
-      .every((header) => header.trim().toLowerCase() === "content-type");
+      .every((header) =>
+        ["content-type", "authorization"].includes(header.trim().toLowerCase())
+      );
   if (
     !decision.originAllowed ||
     (requestedMethod !== "POST" && requestedMethod !== "GET") ||

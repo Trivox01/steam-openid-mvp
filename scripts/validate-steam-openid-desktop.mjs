@@ -13,6 +13,12 @@ const VERIFIED_IDENTITY = {
   authenticatedAt: "2026-07-28T12:00:00.000Z",
   authMethod: "steam_openid"
 };
+const verifiedStatus = (identity = VERIFIED_IDENTITY, token = "session-token-1") => ({
+  status: "verified",
+  ...identity,
+  sessionToken: token,
+  sessionExpiresAt: new Date(Date.now() + 60_000).toISOString()
+});
 
 function createHarness(statuses, options = {}) {
   const calls = [];
@@ -76,7 +82,7 @@ function createHarness(statuses, options = {}) {
 test("polls with the stable device id, stops on verified, and persists identity only", async () => {
   const harness = createHarness([
     { status: "pending" },
-    { status: "verified", ...VERIFIED_IDENTITY }
+    verifiedStatus()
   ]);
   const result = await harness.service.signIn(new AbortController().signal);
   assert.deepEqual(result, { status: "verified", identity: VERIFIED_IDENTITY });
@@ -136,8 +142,8 @@ test("Change Account clears the old identity and starts a fresh transaction", as
     authenticatedAt: "2026-07-28T13:00:00.000Z"
   };
   const harness = createHarness([
-    { status: "verified", ...VERIFIED_IDENTITY },
-    { status: "verified", ...secondIdentity }
+    verifiedStatus(),
+    verifiedStatus(secondIdentity, "session-token-2")
   ]);
   await harness.service.signIn(new AbortController().signal);
   const firstTransaction = harness.calls.find(([name]) => name === "start")[2];

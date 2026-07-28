@@ -12,6 +12,8 @@ import { useTheme } from "./state/ThemeContext";
 import { useTranslation } from "./i18n/TranslationContext";
 import type { SettingsPageHandle } from "./pages/SettingsPage";
 import { activeNavigationPage } from "./components/layout/navigationState";
+import { useAuthorization } from "./features/developer-center/AuthorizationContext";
+import { DeveloperCenterRoute } from "./features/developer-center/DeveloperCenterRoute";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const GamesPage = lazy(() => import("./pages/GamesPage").then((module) => ({ default: module.GamesPage })));
@@ -25,12 +27,14 @@ const AchievementDetailsView = lazy(() => import("./pages/AchievementDetailsView
 export function App() {
   const { setTheme } = useTheme();
   const { setLanguage, t } = useTranslation();
+  const { state: authorizationState } = useAuthorization();
+  const initialPage = initialPageFromLocation();
   const [initialization, setInitialization] = useState<"loading"|"ready"|"error">("loading");
   const [initializationError, setInitializationError] = useState("");
   const [profile, setProfile] = useState<UserProfile>();
   const [preferences, setPreferences] = useState<UserPreferences>();
-  const [activePage, setActivePage] = useState<PageId>("dashboard");
-  const [view, setView] = useState<NavigationView>({ kind: "page", page: "dashboard" });
+  const [activePage, setActivePage] = useState<PageId>(initialPage);
+  const [view, setView] = useState<NavigationView>({ kind: "page", page: initialPage });
   const [, setHistory] = useState<NavigationView[]>([]);
   const [search, setSearch] = useState("");
   const [settingsDirty, setSettingsDirty] = useState(false);
@@ -60,6 +64,7 @@ export function App() {
     setActivePage(page);
     setHistory([]);
     setView({ kind: "page", page });
+    syncDeveloperRoute(page);
   };
   const navigatePage = (page: PageId) => {
     if (activePage === "settings" && page !== "settings" && settingsDirty) {
@@ -113,7 +118,14 @@ export function App() {
   }
   return (
     <div className={`app-shell ${preferences.sidebarCollapsed ? "app-shell--sidebar-collapsed" : ""}`}>
-      <Sidebar activePage={activeNavigationPage(view, activePage)} collapsed={preferences.sidebarCollapsed} onCollapsedChange={(sidebarCollapsed) => {
+      <Sidebar
+        activePage={activeNavigationPage(view, activePage)}
+        collapsed={preferences.sidebarCollapsed}
+        canAccessDeveloperCenter={
+          authorizationState.status === "authenticated" &&
+          authorizationState.snapshot.canAccessDeveloperCenter
+        }
+        onCollapsedChange={(sidebarCollapsed) => {
         const next = { ...preferences, sidebarCollapsed };
         setPreferences(next);
         void services.settings.save(next).catch(() => undefined);
@@ -128,6 +140,7 @@ export function App() {
               {activePage === "achievements" && <AchievementsPage onOpenAchievement={openAchievement} />}
               {activePage === "activity" && <ActivityPage />}
               {activePage === "statistics" && <StatisticsPage onOpenGame={openGame} onOpenSettings={() => navigatePage("settings")} />}
+              {activePage === "developer" && <DeveloperCenterRoute onOpenSettings={() => navigatePage("settings")} />}
               {activePage === "settings" && (
                 <SettingsPage
                   ref={settingsRef}
@@ -173,4 +186,14 @@ export function App() {
       )}
     </div>
   );
+}
+
+function initialPageFromLocation(): PageId {
+  return window.location.hash === "#/developer" ? "developer" : "dashboard";
+}
+
+function syncDeveloperRoute(page: PageId) {
+  const hash = page === "developer" ? "#/developer" : "";
+  if (window.location.hash === hash) return;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
 }

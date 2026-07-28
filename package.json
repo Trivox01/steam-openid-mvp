@@ -24,6 +24,7 @@
     "test:steam-openid-desktop": "node --experimental-strip-types --test scripts/validate-steam-openid-desktop.mjs",
     "test:profile": "node --experimental-strip-types scripts/validate-profile-card.mjs",
     "test:badges": "node --experimental-strip-types scripts/validate-profile-badges.mjs",
+    "test:developer-center": "node --experimental-strip-types --test scripts/validate-developer-center.mjs",
     "typecheck:backend": "npm --prefix services/auth-api run typecheck",
     "tauri": "tauri"
   },

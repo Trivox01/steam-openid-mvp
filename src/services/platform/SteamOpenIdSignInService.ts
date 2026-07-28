@@ -1,5 +1,6 @@
 import type {
   SteamOpenIdDesktopState,
+  SteamBackendSession,
   SteamOpenIdFinalStatus,
   SteamOpenIdIdentity,
   SteamOpenIdStatus
@@ -26,6 +27,10 @@ export class SteamOpenIdSignInService {
   private readonly opener: ExternalUrlOpener;
   private readonly wait: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   private activeSignIn?: AbortController;
+  private activeSession?: SteamBackendSession;
+  private readonly sessionListeners = new Set<
+    (session: SteamBackendSession | undefined) => void
+  >();
 
   constructor(
     api: SteamOpenIdApi,
@@ -44,9 +49,30 @@ export class SteamOpenIdSignInService {
     return this.store.getState().then((state) => state.identity);
   }
 
+  getActiveSession() {
+    if (
+      this.activeSession &&
+      Date.parse(this.activeSession.expiresAt) > Date.now()
+    ) return this.activeSession;
+    this.clearActiveSession();
+    return undefined;
+  }
+
+  subscribeSession(
+    listener: (session: SteamBackendSession | undefined) => void
+  ) {
+    this.sessionListeners.add(listener);
+    return () => this.sessionListeners.delete(listener);
+  }
+
+  expireSession() {
+    this.clearActiveSession();
+  }
+
   async signOut() {
     this.activeSignIn?.abort();
     await this.store.clearAuthenticatedSteamIdentity();
+    this.clearActiveSession();
   }
 
   async signIn(signal: AbortSignal): Promise<SteamOpenIdSignInResult> {
@@ -95,6 +121,11 @@ export class SteamOpenIdSignInService {
         authMethod: "steam_openid"
       };
       await this.store.saveIdentity(identity);
+      this.activeSession = {
+        token: status.sessionToken,
+        expiresAt: status.sessionExpiresAt
+      };
+      this.notifySession();
       return { status: "verified", identity };
     }
     return {
@@ -103,6 +134,18 @@ export class SteamOpenIdSignInService {
         ? { errorCode: status.errorCode }
         : {})
     };
+  }
+
+  private clearActiveSession() {
+    if (!this.activeSession) return;
+    this.activeSession = undefined;
+    this.notifySession();
+  }
+
+  private notifySession() {
+    for (const listener of this.sessionListeners) {
+      listener(this.activeSession);
+    }
   }
 }
 

@@ -143,7 +143,7 @@ test("approved OPTIONS preflight returns 204 and unknown origin is not allowed",
     );
     assert.equal(
       approved.headers.get("access-control-allow-headers"),
-      "Content-Type"
+      "Content-Type, Authorization"
     );
     assert.equal(approved.headers.get("access-control-max-age"), "600");
 

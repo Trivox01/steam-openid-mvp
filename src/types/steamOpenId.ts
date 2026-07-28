@@ -10,6 +10,8 @@ export type SteamOpenIdStatus =
       status: "verified";
       steamId: string;
       authenticatedAt: string;
+      sessionToken: string;
+      sessionExpiresAt: string;
     }
   | { status: "expired" | "cancelled" }
   | { status: "failed"; errorCode?: string };
@@ -31,4 +33,9 @@ export interface SteamOpenIdStartResult {
   steamLoginUrl: string;
   expiresAt: string;
   pollingInterval: number;
+}
+
+export interface SteamBackendSession {
+  token: string;
+  expiresAt: string;
 }

@@ -2,7 +2,7 @@ export type Platform = "steam" | "playstation" | "xbox" | "other";
 export type GameId = string;
 export type AchievementId = string;
 export type PlatformId = Platform;
-export type PageId = "dashboard" | "games" | "achievements" | "activity" | "statistics" | "settings";
+export type PageId = "dashboard" | "games" | "achievements" | "activity" | "statistics" | "developer" | "settings";
 
 export interface UserProfile {
   id: string;

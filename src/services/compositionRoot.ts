@@ -20,6 +20,8 @@ import { SteamOpenIdDesktopRepository } from "../repositories/steamOpenIdDesktop
 import { TauriExternalUrlOpener } from "../integrations/steam/TauriExternalUrlOpener";
 import { getSteamAuthApiBaseUrl } from "../config/steamAuthApi";
 import { featureFlags } from "../config/featureFlags";
+import { AuthorizationClient } from "../features/developer-center/AuthorizationClient";
+import { AuthorizationStore } from "../features/developer-center/AuthorizationStore";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -30,6 +32,12 @@ const profile = persistent ? new SqliteProfileRepository() : new EphemeralProfil
 const sync = persistent ? new SqliteSyncMetadataRepository() : new EphemeralSyncMetadataRepository();
 const steamConnection = new SteamConnectionService(new TauriSteamGateway());
 const steamOpenId = createSteamOpenIdService();
+const authorization = steamOpenId
+  ? new AuthorizationStore(
+      new AuthorizationClient(getSteamAuthApiBaseUrl()),
+      steamOpenId
+    )
+  : undefined;
 
 function createSteamOpenIdService() {
   if (!persistent || !featureFlags.steamOpenIdEnabled) return undefined;
@@ -55,6 +63,7 @@ export const services = {
   statistics: new StatisticsService(games, achievements),
   steam: steamConnection,
   steamOpenId,
+  authorization,
   steamLibrarySync: new SteamLibrarySyncService(steamProvider, games, sync),
   steamAchievementSync: new SteamAchievementSyncService(steamProvider, games, achievements, sync)
 };

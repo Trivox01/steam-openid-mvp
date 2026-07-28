@@ -204,6 +204,32 @@ test("/api/me/authorization requires authentication and returns only current-use
   }
 });
 
+test("/api/me/authorization accepts approved Authorization-header preflight", async () => {
+  const { service, sessions } = setup();
+  const harness = await startAuthorizationHarness(service, sessions);
+  try {
+    const response = await fetch(`${harness.baseUrl}${ME_AUTHORIZATION_PATH}`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "http://tauri.localhost",
+        "access-control-request-method": "GET",
+        "access-control-request-headers": "Authorization"
+      }
+    });
+    assert.equal(response.status, 204);
+    assert.equal(
+      response.headers.get("access-control-allow-origin"),
+      "http://tauri.localhost"
+    );
+    assert.equal(
+      response.headers.get("access-control-allow-headers"),
+      "Content-Type, Authorization"
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test("session authentication ignores client supplied roles and permissions", async () => {
   const { repository, sessions } = setup();
   const user = await repository.ensureAuthenticatedUser(USER_STEAM_ID, AUTHENTICATED_AT);

@@ -1,4 +1,4 @@
-import { Activity, BarChart3, ChevronLeft, Gamepad2, LayoutDashboard, Medal, Settings, Sparkles } from "lucide-react";
+import { Activity, BarChart3, ChevronLeft, Code2, Gamepad2, LayoutDashboard, Medal, Settings, Sparkles } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "../../i18n/TranslationContext";
 import type { PageId } from "../../types";
@@ -11,8 +11,12 @@ const navItems = [
   { id: "statistics" as const, icon: BarChart3 }
 ];
 
-export function Sidebar({ activePage, collapsed, onCollapsedChange, onNavigate }: {
-  activePage: PageId; collapsed: boolean; onCollapsedChange: (collapsed: boolean) => void; onNavigate: (page: PageId) => void;
+export function Sidebar({ activePage, collapsed, canAccessDeveloperCenter, onCollapsedChange, onNavigate }: {
+  activePage: PageId;
+  collapsed: boolean;
+  canAccessDeveloperCenter: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+  onNavigate: (page: PageId) => void;
 }) {
   const { t } = useTranslation();
   const item = (id: PageId, Icon: typeof LayoutDashboard) => {
@@ -59,6 +63,7 @@ export function Sidebar({ activePage, collapsed, onCollapsedChange, onNavigate }
         </div>
       </nav>
       <div className="sidebar-spacer" />
+      {canAccessDeveloperCenter ? item("developer", Code2) : null}
       {item("settings", Settings)}
       <div className="sync-card">
         <div><span className="status-dot" /> {t("nav.synced")}</div>

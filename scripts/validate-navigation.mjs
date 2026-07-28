@@ -25,5 +25,5 @@ assert.match(styles, /inset-inline-start/);
 assert.match(app, /services\.settings\.save\(next\)/);
 assert.match(app, /mainRef\.current\?\.scrollTo\(\{ top: 0 \}\)/);
 assert.match(app, /<main ref=\{mainRef\}>/);
-assert.deepEqual(navigationItems, ["dashboard","games","achievements","activity","statistics","settings"]);
+assert.deepEqual(navigationItems, ["dashboard","games","achievements","activity","statistics","developer","settings"]);
 console.log("Navigation polish validation passed.");

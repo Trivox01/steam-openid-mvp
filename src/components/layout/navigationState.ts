@@ -1,7 +1,7 @@
 import type { NavigationView, PageId } from "../../types";
 
 export const navigationItems: readonly PageId[] = [
-  "dashboard", "games", "achievements", "activity", "statistics", "settings"
+  "dashboard", "games", "achievements", "activity", "statistics", "developer", "settings"
 ];
 
 export function activeNavigationPage(view: NavigationView, fallback: PageId): PageId {

@@ -130,7 +130,11 @@ function isSteamOpenIdStatus(value: unknown): value is SteamOpenIdStatus {
   return value.status === "verified" &&
     /^\d{17}$/.test(String(value.steamId)) &&
     typeof value.authenticatedAt === "string" &&
-    Number.isFinite(Date.parse(value.authenticatedAt));
+    Number.isFinite(Date.parse(value.authenticatedAt)) &&
+    typeof value.sessionToken === "string" &&
+    value.sessionToken.length > 0 &&
+    typeof value.sessionExpiresAt === "string" &&
+    Number.isFinite(Date.parse(value.sessionExpiresAt));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
