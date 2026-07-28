@@ -1,25 +1,26 @@
-import { BadgeCheck } from "lucide-react";
+import { BadgeCheck, CalendarDays, CircleCheck, Gamepad2, Target, Trophy } from "lucide-react";
 import type { UserProfileSummary } from "../../features/profile/types";
 import { useTranslation } from "../../i18n/TranslationContext";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
 import { ProfileBadges } from "./ProfileBadges";
+import { ProfileBanner } from "./ProfileBanner";
 
 export function ProfileCard({ summary, onAction }: { summary: UserProfileSummary; onAction?: () => void }) {
   const { language, t } = useTranslation();
   const locale = language === "ar" ? "ar" : "en";
   const stats = summary.stats
     ? [
-        ["gamesOwned", "profile.games", summary.stats.gamesOwned],
-        ["achievementsUnlocked", "profile.achievements", summary.stats.achievementsUnlocked],
-        ["perfectGames", "profile.perfectGames", summary.stats.perfectGames],
-        ["completionRate", "profile.completion", summary.stats.completionRate]
-      ].filter((entry) => entry[2] !== undefined)
+        { id: "gamesOwned", label: "profile.games", value: summary.stats.gamesOwned, icon: Gamepad2 },
+        { id: "achievementsUnlocked", label: "profile.achievements", value: summary.stats.achievementsUnlocked, icon: Trophy },
+        { id: "perfectGames", label: "profile.perfectGames", value: summary.stats.perfectGames, icon: CircleCheck },
+        { id: "completionRate", label: "profile.completion", value: summary.stats.completionRate, icon: Target }
+      ]
     : [];
   const date = summary.memberSince ?? summary.authenticatedAt;
 
   return (
     <article className="profile-card">
-      <div className="profile-card__banner" style={summary.bannerUrl ? { backgroundImage: `url("${summary.bannerUrl}")` } : undefined} />
+      <ProfileBanner src={summary.bannerUrl} />
       <div className="profile-card__identity">
         <div className="profile-card__avatar-wrap">
           <ProfileAvatar src={summary.avatarUrl} name={summary.displayName} className="profile-card__avatar" />
@@ -31,29 +32,41 @@ export function ProfileCard({ summary, onAction }: { summary: UserProfileSummary
             <ProfileBadges badges={summary.badges} />
             {summary.username && <p dir="auto">@{summary.username}</p>}
           </div>
-          {summary.isSteamVerified && <BadgeCheck size={18} aria-label={t("profile.steamVerified")} />}
         </div>
       </div>
       <div className="profile-card__body">
         {summary.bio && <p className="profile-card__bio" dir="auto">{summary.bio}</p>}
         {stats.length > 0 && (
           <dl className="profile-card__stats">
-            {stats.map(([id, label, rawValue]) => (
-              <div key={String(id)}>
-                <dt>{t(String(label))}</dt>
-                <dd>{id === "completionRate"
-                  ? `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Number(rawValue))}%`
-                  : new Intl.NumberFormat(locale).format(Number(rawValue))}
+            {stats.map(({ id, label, value, icon: Icon }) => (
+              <div key={id}>
+                <Icon size={17} aria-hidden={true} />
+                <dt>{t(label)}</dt>
+                <dd>{value === undefined
+                  ? "—"
+                  : id === "completionRate"
+                    ? `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value)}%`
+                    : new Intl.NumberFormat(locale).format(value)}
                 </dd>
               </div>
             ))}
           </dl>
         )}
-        {date && (
-          <p className="profile-card__date">
-            <span>{summary.memberSince ? t("profile.memberSince") : t("profile.authenticatedAt")}</span>
-            <time dateTime={date}>{formatDate(date, locale)}</time>
-          </p>
+        {(summary.isSteamVerified || date) && (
+          <div className="profile-card__verification">
+            {summary.isSteamVerified && (
+              <div>
+                <span className="profile-card__verification-icon"><BadgeCheck size={19} aria-hidden={true} /></span>
+                <span><strong>{t("profile.steamVerified")}</strong><small>{t("profile.verifiedIdentity")}</small></span>
+              </div>
+            )}
+            {date && (
+              <div>
+                <span className="profile-card__verification-icon"><CalendarDays size={19} aria-hidden={true} /></span>
+                <span><strong>{t("profile.joined")}</strong><time dateTime={date}>{formatDate(date, locale)}</time></span>
+              </div>
+            )}
+          </div>
         )}
         {onAction && (
           <button className="primary-button profile-card__action" type="button" onClick={onAction}>

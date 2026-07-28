@@ -26,7 +26,10 @@ export function ProfileBadges({ badges }: { badges: readonly UserBadge[] }) {
             <Icon size={15} aria-hidden={true} />
             <span className="profile-badge__rarity" aria-hidden="true">{t(rarity.labelKey)}</span>
             <span className="profile-badge__tooltip" role="tooltip">
-              <strong>{name}</strong>
+              <span className="profile-badge__tooltip-title">
+                <Icon size={24} aria-hidden={true} />
+                <strong>{name}</strong>
+              </span>
               <span>{description}</span>
               <small>{t(rarity.labelKey)}</small>
             </span>
