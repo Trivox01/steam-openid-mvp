@@ -76,13 +76,29 @@ export class AuthTransactionService {
     };
   }
 
-  async status(authRequestId: string, pollSecret: string): Promise<AuthTransactionStatusView> {
+  async status(
+    authRequestId: string,
+    pollSecret: string,
+    deviceId?: string
+  ): Promise<AuthTransactionStatusView> {
     const transaction = await this.authorize(authRequestId, pollSecret);
+    if (deviceId !== undefined) {
+      assertDeviceId(deviceId);
+      if (!secretMatches(transaction.deviceIdHash, deviceId)) {
+        throw new AuthTransactionError("invalid_device_id");
+      }
+    }
     await this.expireIfNeeded(transaction);
     return {
       status: transaction.status,
       ...(transaction.status === "failed" && transaction.errorCode
         ? { errorCode: transaction.errorCode }
+        : {}),
+      ...(transaction.status === "verified" && transaction.steamId
+        ? {
+            steamId: transaction.steamId,
+            authenticatedAt: transaction.verifiedAt
+          }
         : {})
     };
   }

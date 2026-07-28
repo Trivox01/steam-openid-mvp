@@ -17,8 +17,22 @@ import {
   achievementFailureCounts,
   retryableAchievementGameIds
 } from "../../services/platform/SteamAchievementSyncCore";
+import { featureFlags } from "../../config/featureFlags";
+import { SteamOpenIdAccountSettings } from "./SteamOpenIdAccountSettings";
 
 export function SteamAccountSettings({
+  onProfileChange
+}: {
+  onProfileChange?: (profile: UserProfile) => void;
+}) {
+  if (featureFlags.steamOpenIdEnabled) {
+    return <SteamOpenIdAccountSettings />;
+  }
+
+  return <LegacySteamAccountSettings onProfileChange={onProfileChange} />;
+}
+
+function LegacySteamAccountSettings({
   onProfileChange
 }: {
   onProfileChange?: (profile: UserProfile) => void;

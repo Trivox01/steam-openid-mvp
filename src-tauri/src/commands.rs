@@ -83,6 +83,20 @@ pub fn save_preferences(preferences: Value, state: State<DatabaseState>) -> Resu
 pub fn reset_preferences(state: State<DatabaseState>) -> Result<(), String> { execute_clear(&state, "DELETE FROM preferences WHERE key='user_preferences'", "preferences") }
 
 #[tauri::command]
+pub fn get_steam_openid_desktop_state(state: State<DatabaseState>) -> Result<Option<SteamOpenIdDesktopStateRecord>, String> {
+    let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;
+    let value:Option<String>=db.query_row("SELECT value_json FROM preferences WHERE key='steam_openid_desktop'",[],|r|r.get(0)).optional().map_err(|e|db_error("Unable to read Steam sign-in state",e))?;
+    value.map(|v|serde_json::from_str(&v).map_err(|_|"Stored Steam sign-in state is invalid".to_string())).transpose()
+}
+
+#[tauri::command]
+pub fn save_steam_openid_desktop_state(value: SteamOpenIdDesktopStateRecord, state: State<DatabaseState>) -> Result<(), String> {
+    let encoded=serde_json::to_string(&value).map_err(|_|"Unable to encode Steam sign-in state".to_string())?;
+    let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;
+    db.execute("INSERT INTO preferences(key,value_json) VALUES('steam_openid_desktop',?1) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP",[encoded]).map(|_|()).map_err(|e|db_error("Unable to save Steam sign-in state",e))
+}
+
+#[tauri::command]
 pub fn get_profile(state: State<DatabaseState>) -> Result<Option<ProfileRecord>, String> { let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?; db.query_row("SELECT id,display_name,avatar_url,active_platform FROM profile LIMIT 1",[],|r|Ok(ProfileRecord{id:r.get(0)?,display_name:r.get(1)?,avatar_url:r.get(2)?,active_platform:r.get(3)?})).optional().map_err(|e|db_error("Unable to read profile",e)) }
 #[tauri::command]
 pub fn save_profile(profile: ProfileRecord,state:State<DatabaseState>)->Result<(),String>{let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;db.execute("INSERT INTO profile(id,display_name,avatar_url,active_platform) VALUES(?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,avatar_url=excluded.avatar_url,active_platform=excluded.active_platform,updated_at=CURRENT_TIMESTAMP",params![profile.id,profile.display_name,profile.avatar_url,profile.active_platform]).map(|_|()).map_err(|e|db_error("Unable to save profile",e))}

@@ -9,10 +9,11 @@ if (!baseUrl || new URL(baseUrl).protocol !== "https:") {
   throw new Error("STEAM_OPENID_TEST_BASE_URL_must_be_public_https");
 }
 
+const deviceId = `live-${randomUUID()}`;
 const startedResponse = await fetch(`${baseUrl}/v1/auth/steam/start`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ deviceId: `live-${randomUUID()}` })
+  body: JSON.stringify({ deviceId })
 });
 if (!startedResponse.ok) {
   throw new Error(`auth_start_failed_${startedResponse.status}`);
@@ -41,7 +42,8 @@ while (Date.now() < Date.parse(started.expiresAt)) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       authRequestId: started.authRequestId,
-      pollSecret: started.pollSecret
+      pollSecret: started.pollSecret,
+      deviceId
     })
   });
   if (response.status === 429) continue;

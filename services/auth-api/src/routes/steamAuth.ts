@@ -176,10 +176,14 @@ async function handleStatus(
       typeof body.authRequestId === "string" ? body.authRequestId : "";
     const pollSecret =
       typeof body.pollSecret === "string" ? body.pollSecret : "";
-    if (!authRequestId || !pollSecret) throw new CallbackError("invalid_request");
+    const deviceId = typeof body.deviceId === "string" ? body.deviceId : "";
+    if (!authRequestId || !pollSecret || !deviceId) {
+      throw new CallbackError("invalid_request");
+    }
     const status = await dependencies.transactions.status(
       authRequestId,
-      pollSecret
+      pollSecret,
+      deviceId
     );
     dependencies.rateLimiter.assertAllowed(authRequestId);
     writeJson(response, 200, status);

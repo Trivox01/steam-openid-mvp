@@ -1,6 +1,21 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SteamOpenIdIdentityRecord {
+    pub steam_id: String,
+    pub authenticated_at: String,
+    pub auth_method: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SteamOpenIdDesktopStateRecord {
+    pub device_id: String,
+    pub identity: Option<SteamOpenIdIdentityRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameRecord {
     pub id: String, pub platform_id: String, pub platform_game_id: String, pub name: String,

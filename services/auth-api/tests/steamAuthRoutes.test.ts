@@ -21,6 +21,7 @@ import { InMemoryAuthTransactionRepository } from "../src/storage/authRepository
 
 const NOW = Date.parse("2026-07-28T12:00:00Z");
 const STEAM_ID = "76561198000000000";
+const DEVICE_ID = "opaque-device-01";
 const CONFIG: AuthApiConfig = {
   nodeEnv: "test",
   port: 8787,
@@ -101,7 +102,7 @@ async function start(harness: Harness) {
   const response = await fetch(`${harness.baseUrl}/v1/auth/steam/start`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ deviceId: "opaque-device-01" })
+    body: JSON.stringify({ deviceId: DEVICE_ID })
   });
   return {
     response,
@@ -150,7 +151,7 @@ async function poll(harness: Harness, body: object) {
   return fetch(`${harness.baseUrl}/v1/auth/steam/status`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ ...body, deviceId: DEVICE_ID })
   });
 }
 
@@ -189,7 +190,7 @@ test("readiness reports repository validation without infrastructure details", a
   }
 });
 
-test("valid callback verifies the transaction and status leaks no identity or token", async () => {
+test("valid callback returns device-bound identity without token or poll secret", async () => {
   const harness = await createHarness();
   try {
     const { body } = await start(harness);
@@ -209,9 +210,33 @@ test("valid callback verifies the transaction and status leaks no identity or to
     const status = await poll(harness, body);
     assert.equal(status.status, 200);
     const text = await status.text();
-    assert.deepEqual(JSON.parse(text), { status: "verified" });
-    assert.equal(text.includes(STEAM_ID), false);
+    assert.deepEqual(JSON.parse(text), {
+      status: "verified",
+      steamId: STEAM_ID,
+      authenticatedAt: new Date(NOW).toISOString()
+    });
+    assert.equal(text.includes(body.pollSecret), false);
     assert.equal(/token/i.test(text), false);
+  } finally {
+    await closeHarness(harness);
+  }
+});
+
+test("status rejects a valid poll secret presented by another device", async () => {
+  const harness = await createHarness();
+  try {
+    const { body } = await start(harness);
+    const response = await fetch(`${harness.baseUrl}/v1/auth/steam/status`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        authRequestId: body.authRequestId,
+        pollSecret: body.pollSecret,
+        deviceId: "967de9ac-aac0-4b92-b0cc-843307c4f851"
+      })
+    });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "invalid_device_id" });
   } finally {
     await closeHarness(harness);
   }

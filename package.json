@@ -21,16 +21,18 @@
     "test:steam-openid": "npm --prefix services/auth-api run test:steam-openid",
     "steam-openid:live-test": "npm --prefix services/auth-api run steam-openid:live-test",
     "test:steam-signin-ui": "node --experimental-strip-types scripts/validate-steam-signin-phase1.mjs",
+    "test:steam-openid-desktop": "node --experimental-strip-types --test scripts/validate-steam-openid-desktop.mjs",
     "typecheck:backend": "npm --prefix services/auth-api run typecheck",
     "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-opener": "^2.5.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.468.0",
-    "recharts": "^3.1.2",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "recharts": "^3.1.2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4",

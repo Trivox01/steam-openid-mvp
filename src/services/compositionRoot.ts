@@ -14,6 +14,12 @@ import { SteamConnectionService } from "./platform/SteamConnectionService";
 import { SteamProvider } from "./platform/SteamProvider";
 import { SteamLibrarySyncService } from "./platform/SteamLibrarySyncService";
 import { SteamAchievementSyncService } from "./platform/SteamAchievementSyncService";
+import { SteamOpenIdClient } from "./platform/SteamOpenIdClient";
+import { SteamOpenIdSignInService } from "./platform/SteamOpenIdSignInService";
+import { SteamOpenIdDesktopRepository } from "../repositories/steamOpenIdDesktopRepository";
+import { TauriExternalUrlOpener } from "../integrations/steam/TauriExternalUrlOpener";
+import { getSteamAuthApiBaseUrl } from "../config/steamAuthApi";
+import { featureFlags } from "../config/featureFlags";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -23,6 +29,20 @@ const settings = persistent ? new SqliteSettingsRepository() : new EphemeralSett
 const profile = persistent ? new SqliteProfileRepository() : new EphemeralProfileRepository();
 const sync = persistent ? new SqliteSyncMetadataRepository() : new EphemeralSyncMetadataRepository();
 const steamConnection = new SteamConnectionService(new TauriSteamGateway());
+const steamOpenId = createSteamOpenIdService();
+
+function createSteamOpenIdService() {
+  if (!persistent || !featureFlags.steamOpenIdEnabled) return undefined;
+  try {
+    return new SteamOpenIdSignInService(
+      new SteamOpenIdClient(getSteamAuthApiBaseUrl()),
+      new SteamOpenIdDesktopRepository(),
+      new TauriExternalUrlOpener()
+    );
+  } catch {
+    return undefined;
+  }
+}
 export const steamProvider = new SteamProvider(steamConnection);
 
 export const repositories = { games, achievements, activities, settings, profile, sync };
@@ -34,6 +54,7 @@ export const services = {
   profile: new ProfileService(profile),
   statistics: new StatisticsService(games, achievements),
   steam: steamConnection,
+  steamOpenId,
   steamLibrarySync: new SteamLibrarySyncService(steamProvider, games, sync),
   steamAchievementSync: new SteamAchievementSyncService(steamProvider, games, achievements, sync)
 };

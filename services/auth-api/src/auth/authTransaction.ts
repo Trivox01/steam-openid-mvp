@@ -26,4 +26,6 @@ export interface AuthTransaction {
 export interface AuthTransactionStatusView {
   status: AuthTransactionStatus;
   errorCode?: string;
+  steamId?: string;
+  authenticatedAt?: string;
 }
