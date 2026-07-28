@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { IncomingMessage } from "node:http";
 import type { AuthApiConfig } from "../src/config.ts";
-import { validatePublicAuthRequest } from "../src/security/requestSecurity.ts";
+import {
+  getSecureTransportDiagnostic,
+  validatePublicAuthRequest
+} from "../src/security/requestSecurity.ts";
 
 const config: AuthApiConfig = {
   nodeEnv: "staging",
@@ -33,6 +36,10 @@ test("accepts HTTPS reported by a trusted proxy", () => {
   assert.doesNotThrow(() => validatePublicAuthRequest(request({
     "x-forwarded-proto": " https , http",
     "x-forwarded-host": "auth-staging.example.test"
+  }), config));
+  assert.doesNotThrow(() => validatePublicAuthRequest(request({
+    "x-forwarded-proto": "https",
+    host: "auth-staging.example.test"
   }), config));
 });
 
@@ -68,6 +75,19 @@ test("rejects an unapproved browser origin", () => {
     "x-forwarded-host": "auth-staging.example.test",
     origin: "https://attacker.example.test"
   }), config));
+});
+
+test("exposes only the approved safe transport diagnostics", () => {
+  assert.deepEqual(getSecureTransportDiagnostic(request({
+    "x-forwarded-proto": " https, http",
+    cookie: "must-not-appear",
+    authorization: "Bearer must-not-appear"
+  }), config, "/v1/auth/steam/start?secret=must-not-appear"), {
+    trustProxy: true,
+    forwardedProto: "https",
+    socketEncrypted: false,
+    endpoint: "/v1/auth/steam/start"
+  });
 });
 
 function request(

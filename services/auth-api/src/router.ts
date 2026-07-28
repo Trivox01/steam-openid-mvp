@@ -1,7 +1,10 @@
 import type { RequestListener } from "node:http";
 import { HEALTH_PATH, writeHealthResponse } from "./routes/health.ts";
 import { READINESS_PATH, writeReadinessResponse } from "./routes/readiness.ts";
-import { validatePublicAuthRequest } from "./security/requestSecurity.ts";
+import {
+  getSecureTransportDiagnostic,
+  validatePublicAuthRequest
+} from "./security/requestSecurity.ts";
 import {
   createSteamAuthRouteHandler,
   type SteamAuthRouteDependencies
@@ -34,6 +37,13 @@ export function createRouter(
       try {
         validatePublicAuthRequest(request, steamAuthDependencies!.config);
       } catch {
+        process.stdout.write(
+          `${JSON.stringify(getSecureTransportDiagnostic(
+            request,
+            steamAuthDependencies!.config,
+            url.pathname
+          ))}\n`
+        );
         const body = JSON.stringify({ error: "secure_transport_required" });
         response.writeHead(400, {
           "content-type": "application/json; charset=utf-8",

@@ -62,7 +62,8 @@ async function main() {
       JSON.stringify({
         event: "auth_api_started",
         port: config.port,
-        storageDriver: config.storageDriver
+        storageDriver: config.storageDriver,
+        trustProxy: config.trustProxy
       }) + "\n"
     );
   });

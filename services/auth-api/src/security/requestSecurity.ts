@@ -20,9 +20,12 @@ export function validatePublicAuthRequest(
     throw new Error("https_required");
   }
 
+  const forwardedHost = request.headers["x-forwarded-host"];
   const requestHost = directConnectionIsSecure
-    ? request.headers.host
-    : singleHostHeader(request.headers["x-forwarded-host"]);
+    ? singleHostHeader(request.headers.host)
+    : forwardedHost === undefined
+      ? singleHostHeader(request.headers.host)
+      : singleHostHeader(forwardedHost);
   if (requestHost !== expected.host) {
     throw new Error("https_required");
   }
@@ -36,6 +39,24 @@ export function validatePublicAuthRequest(
   }
 }
 
+export function getSecureTransportDiagnostic(
+  request: IncomingMessage,
+  config: AuthApiConfig,
+  endpoint: string
+) {
+  const socketEncrypted = Boolean(
+    (request.socket as typeof request.socket & { encrypted?: boolean }).encrypted
+  );
+  return {
+    trustProxy: config.trustProxy,
+    forwardedProto: sanitizeDiagnosticValue(
+      firstForwardedValue(request.headers["x-forwarded-proto"])
+    ),
+    socketEncrypted,
+    endpoint: endpoint.split(/[?#]/, 1)[0]
+  };
+}
+
 function firstForwardedValue(value: string | string[] | undefined) {
   const header = Array.isArray(value) ? value[0] : value;
   return header?.split(",", 1)[0]?.trim();
@@ -44,4 +65,9 @@ function firstForwardedValue(value: string | string[] | undefined) {
 function singleHostHeader(value: string | string[] | undefined) {
   if (typeof value !== "string" || value.includes(",")) return undefined;
   return value.trim().toLowerCase();
+}
+
+function sanitizeDiagnosticValue(value: string | undefined) {
+  if (!value) return null;
+  return /^[a-z]{1,16}$/.test(value) ? value : "invalid";
 }
