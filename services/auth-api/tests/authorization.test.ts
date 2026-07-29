@@ -230,6 +230,29 @@ test("/api/me/authorization accepts approved Authorization-header preflight", as
   }
 });
 
+test("CORS preflight accepts PATCH and DELETE only for approved origins", async () => {
+  const { service, sessions } = setup();
+  const harness = await startAuthorizationHarness(service, sessions);
+  try {
+    for (const method of ["PATCH", "DELETE"]) {
+      const response = await fetch(`${harness.baseUrl}/v1/auth/steam/start`, {
+        method: "OPTIONS",
+        headers: {
+          origin: "http://tauri.localhost",
+          "access-control-request-method": method,
+          "access-control-request-headers": "authorization, content-type",
+          "x-forwarded-proto": "https"
+        }
+      });
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get("access-control-allow-origin"), "http://tauri.localhost");
+      assert.match(response.headers.get("access-control-allow-methods") ?? "", new RegExp(method));
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
 test("session authentication ignores client supplied roles and permissions", async () => {
   const { repository, sessions } = setup();
   const user = await repository.ensureAuthenticatedUser(USER_STEAM_ID, AUTHENTICATED_AT);

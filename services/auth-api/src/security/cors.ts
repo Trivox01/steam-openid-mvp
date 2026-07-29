@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-const CORS_METHODS = "POST, GET, OPTIONS";
+const CORS_METHODS = "POST, GET, PATCH, DELETE, OPTIONS";
+const corsMethods = new Set(["POST", "GET", "PATCH", "DELETE"]);
 const CORS_HEADERS = "Content-Type, Authorization";
 const CORS_MAX_AGE_SECONDS = 600;
 
@@ -47,7 +48,8 @@ export function handleCorsPreflight(
       );
   if (
     !decision.originAllowed ||
-    (requestedMethod !== "POST" && requestedMethod !== "GET") ||
+    !requestedMethod ||
+    !corsMethods.has(requestedMethod) ||
     !headersAllowed
   ) {
     response.writeHead(403, {

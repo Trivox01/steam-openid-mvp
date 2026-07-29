@@ -139,7 +139,7 @@ test("approved OPTIONS preflight returns 204 and unknown origin is not allowed",
     assert.equal(approved.headers.get("access-control-allow-origin"), origin);
     assert.equal(
       approved.headers.get("access-control-allow-methods"),
-      "POST, GET, OPTIONS"
+      "POST, GET, PATCH, DELETE, OPTIONS"
     );
     assert.equal(
       approved.headers.get("access-control-allow-headers"),
