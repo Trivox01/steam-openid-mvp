@@ -51,7 +51,7 @@ test("cleanup is bounded and removes retained terminal memory records", async ()
 
 test("PostgreSQL migrations are ordered and contain no secret-bearing columns", async () => {
   const migrations = await loadPostgresMigrations();
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4]);
   const sql = migrations.map((item) => item.sql).join("\n").toLowerCase();
   assert.match(sql, /poll_secret_hash/);
   assert.match(sql, /nonce_hash/);

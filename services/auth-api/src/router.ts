@@ -18,9 +18,17 @@ import {
   handleMeAuthorization,
   ME_AUTHORIZATION_PATH
 } from "./routes/meAuthorization.ts";
+import { handleAdminBadges, isAdminBadgePath } from "./routes/adminBadges.ts";
+import type { BadgeService } from "./badges/badgeService.ts";
+import type { BadgeAssetStorage } from "./badges/badgeAssetStorage.ts";
+
+type RouterDependencies = SteamAuthRouteDependencies & {
+  badges?: BadgeService;
+  badgeAssets?: BadgeAssetStorage;
+};
 
 export function createRouter(
-  steamAuthDependencies?: SteamAuthRouteDependencies
+  steamAuthDependencies?: RouterDependencies
 ): RequestListener {
   const handleSteamAuth = steamAuthDependencies
     ? createSteamAuthRouteHandler(steamAuthDependencies)
@@ -48,7 +56,12 @@ export function createRouter(
       url.pathname === ME_AUTHORIZATION_PATH &&
       Boolean(steamAuthDependencies?.authorization) &&
       Boolean(steamAuthDependencies?.sessions);
-    if (isSteamAuthRoute || isAuthorizationRoute) {
+    const isBadgeRoute = isAdminBadgePath(url.pathname) &&
+      Boolean(steamAuthDependencies?.badges) &&
+      Boolean(steamAuthDependencies?.badgeAssets) &&
+      Boolean(steamAuthDependencies?.authorization) &&
+      Boolean(steamAuthDependencies?.sessions);
+    if (isSteamAuthRoute || isAuthorizationRoute || isBadgeRoute) {
       const cors = applyCorsHeaders(
         request,
         response,
@@ -92,6 +105,12 @@ export function createRouter(
         sessions: steamAuthDependencies!.sessions!
       })
     ) return;
+    if (isBadgeRoute && await handleAdminBadges(request, response, url, {
+      badges: steamAuthDependencies!.badges!,
+      assets: steamAuthDependencies!.badgeAssets!,
+      authorization: steamAuthDependencies!.authorization!,
+      sessions: steamAuthDependencies!.sessions!
+    })) return;
     if (handleSteamAuth && await handleSteamAuth(request, response, url)) return;
     const body = JSON.stringify({ error: "not_found" });
     response.writeHead(404, {

@@ -14,10 +14,13 @@ import {
   type AuthorizationRepository
 } from "../authorization/authorizationRepository.ts";
 import { PostgresAuthorizationRepository } from "./postgres/postgresAuthorizationRepository.ts";
+import { InMemoryBadgeRepository, type BadgeRepository } from "../badges/badgeRepository.ts";
+import { PostgresBadgeRepository } from "./postgres/postgresBadgeRepository.ts";
 
 export interface InitializedStorage {
   repository: AuthTransactionRepository;
   authorizationRepository: AuthorizationRepository;
+  badgeRepository: BadgeRepository;
   close(): Promise<void>;
 }
 
@@ -29,9 +32,12 @@ export async function initializeStorage(
     await repository.validateSchema();
     const authorizationRepository = new InMemoryAuthorizationRepository();
     await authorizationRepository.validateSchema();
+    const badgeRepository = new InMemoryBadgeRepository();
+    await badgeRepository.validateSchema();
     return {
       repository,
       authorizationRepository,
+      badgeRepository,
       async close() {}
     };
   }
@@ -51,9 +57,12 @@ export async function initializeStorage(
     await repository.validateSchema();
     const authorizationRepository = new PostgresAuthorizationRepository(pool);
     await authorizationRepository.validateSchema();
+    const badgeRepository = new PostgresBadgeRepository(pool);
+    await badgeRepository.validateSchema();
     return {
       repository,
       authorizationRepository,
+      badgeRepository,
       async close() {
         await pool.end();
       }

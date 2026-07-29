@@ -10,6 +10,8 @@ import {
 import { PostgresAuthTransactionRepository } from "../src/storage/postgres/postgresAuthRepository.ts";
 import { PostgresAuthorizationRepository } from "../src/storage/postgres/postgresAuthorizationRepository.ts";
 import { AuthorizationService } from "../src/authorization/authorizationService.ts";
+import { PostgresBadgeRepository } from "../src/storage/postgres/postgresBadgeRepository.ts";
+import { BadgeService } from "../src/badges/badgeService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -46,6 +48,23 @@ test("PostgreSQL repository integration and concurrency", {
     );
     assert.equal(Number(roleCount.rows[0].count), 5);
     assert.equal(Number(permissionCount.rows[0].count), 18);
+    const badgeRepository = new PostgresBadgeRepository(pool);
+    await badgeRepository.validateSchema();
+    const badges = new BadgeService(badgeRepository);
+    const badgeDraft = {
+      slug: "staging-founder", displayName: "Staging Founder",
+      description: "Migration validation", category: "special" as const,
+      rarity: "exclusive" as const, priority: 100, isActive: true,
+      isVisible: true, grantMode: "manual" as const
+    };
+    const createdBadge = await badges.create(badgeDraft, user.id);
+    assert.equal((await badges.get(createdBadge.id))?.slug, "staging-founder");
+    const slugRace = await Promise.allSettled([
+      badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id),
+      badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id)
+    ]);
+    assert.equal(slugRace.filter((item) => item.status === "fulfilled").length, 1);
+    assert.ok((await badges.archive(createdBadge.id, user.id)).archivedAt);
     const serviceA = new AuthTransactionService(repository);
     const serviceB = new AuthTransactionService(
       new PostgresAuthTransactionRepository(pool)

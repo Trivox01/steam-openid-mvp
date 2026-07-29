@@ -11,6 +11,8 @@ import { MigrationError } from "./storage/postgres/migrationRunner.ts";
 import { initializeStorage } from "./storage/storageFactory.ts";
 import { AuthorizationService } from "./authorization/authorizationService.ts";
 import { SessionTokenService } from "./authorization/sessionTokenService.ts";
+import { BadgeService } from "./badges/badgeService.ts";
+import { LocalBadgeAssetStorage } from "./badges/badgeAssetStorage.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -36,6 +38,10 @@ async function main() {
   const sessions = new SessionTokenService(
     config.sessionSecret,
     storage.authorizationRepository
+  );
+  const badges = new BadgeService(storage.badgeRepository);
+  const badgeAssets = new LocalBadgeAssetStorage(
+    config.badgeAssetDirectory ?? "./var/badge-assets"
   );
   const bootstrapResult = await authorization.bootstrapOwner(
     config.bootstrapOwnerSteamId64
@@ -65,7 +71,9 @@ async function main() {
       rateLimiter: new PollingRateLimiter(),
       logger: jsonSafeLogger,
       authorization,
-      sessions
+      sessions,
+      badges,
+      badgeAssets
     })
   );
 

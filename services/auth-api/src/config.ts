@@ -18,6 +18,7 @@ export interface AuthApiConfig {
   trustProxy: boolean;
   allowedOrigins: string[];
   bootstrapOwnerSteamId64?: string;
+  badgeAssetDirectory?: string;
 }
 
 export class ConfigurationError extends Error {
@@ -98,6 +99,9 @@ export function loadAuthApiConfig(
     logLevel: parseLogLevel(environment.LOG_LEVEL),
     trustProxy,
     allowedOrigins: parseAllowedOrigins(environment.ALLOWED_ORIGINS),
+    ...(environment.BADGE_ASSET_DIRECTORY?.trim()
+      ? { badgeAssetDirectory: environment.BADGE_ASSET_DIRECTORY.trim() }
+      : {}),
     ...(bootstrapOwnerSteamId64 ? { bootstrapOwnerSteamId64 } : {})
   };
 }

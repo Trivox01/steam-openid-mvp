@@ -16,12 +16,15 @@ import { Surface } from "../components/ui/Surface";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { useTranslation } from "../i18n/TranslationContext";
 import type { AuthorizationSnapshot } from "../features/developer-center/authorizationTypes";
+import { useState } from "react";
+import { BadgeManagementPanel } from "../features/developer-center/badges/BadgeManagementPanel";
+import { services } from "../services/compositionRoot";
 
 const sections = [
   ["overview", LayoutDashboard, false],
   ["users", Users, true],
   ["roles", UserCog, true],
-  ["badges", Medal, true],
+  ["badges", Medal, false],
   ["assignments", Tags, true],
   ["assets", FolderUp, true],
   ["settings", Settings, true],
@@ -36,6 +39,7 @@ export function DeveloperCenterPage({
   snapshot: AuthorizationSnapshot;
 }) {
   const { t } = useTranslation();
+  const [activeSection, setActiveSection] = useState<"overview" | "badges">("overview");
   const highestRole = [...snapshot.roles].sort(
     (left, right) => right.priority - left.priority
   )[0];
@@ -59,10 +63,13 @@ export function DeveloperCenterPage({
             <button
               key={id}
               type="button"
-              className={!disabled ? "active" : ""}
+              className={activeSection === id ? "active" : ""}
               disabled={disabled}
-              aria-current={!disabled ? "page" : undefined}
+              aria-current={activeSection === id ? "page" : undefined}
               title={disabled ? t("developer.comingSoon") : undefined}
+              onClick={() => {
+                if (id === "overview" || id === "badges") setActiveSection(id);
+              }}
             >
               <Icon size={18} aria-hidden="true" />
               <span>{t(`developer.section.${id}`)}</span>
@@ -71,7 +78,9 @@ export function DeveloperCenterPage({
           ))}
         </Surface>
 
-        <div className="developer-overview">
+        {activeSection === "badges" ? (
+          <BadgeManagementPanel snapshot={snapshot} client={services.badgeAdmin} />
+        ) : <div className="developer-overview">
           <div className="developer-overview-heading">
             <div>
               <h2>{t("developer.section.overview")}</h2>
@@ -105,7 +114,7 @@ export function DeveloperCenterPage({
               ))}
             </ul>
           </Surface>
-        </div>
+        </div>}
       </div>
     </div>
   );
