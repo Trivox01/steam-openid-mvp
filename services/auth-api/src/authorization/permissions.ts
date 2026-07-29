@@ -9,6 +9,7 @@ export const PERMISSION_KEYS = [
   "badges.create",
   "badges.edit",
   "badges.delete",
+  "badges.view_assignments",
   "badges.assign",
   "badges.revoke",
   "assets.upload",

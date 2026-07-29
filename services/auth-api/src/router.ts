@@ -21,10 +21,16 @@ import {
 import { handleAdminBadges, isAdminBadgePath } from "./routes/adminBadges.ts";
 import type { BadgeService } from "./badges/badgeService.ts";
 import type { BadgeAssetStorage } from "./badges/badgeAssetStorage.ts";
+import {
+  handleAdminBadgeAssignments,
+  isAdminBadgeAssignmentPath
+} from "./routes/adminBadgeAssignments.ts";
+import type { BadgeAssignmentService } from "./badgeAssignments/badgeAssignmentService.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
   badgeAssets?: BadgeAssetStorage;
+  badgeAssignments?: BadgeAssignmentService;
 };
 
 export function createRouter(
@@ -61,7 +67,17 @@ export function createRouter(
       Boolean(steamAuthDependencies?.badgeAssets) &&
       Boolean(steamAuthDependencies?.authorization) &&
       Boolean(steamAuthDependencies?.sessions);
-    if (isSteamAuthRoute || isAuthorizationRoute || isBadgeRoute) {
+    const isBadgeAssignmentRoute =
+      isAdminBadgeAssignmentPath(url.pathname) &&
+      Boolean(steamAuthDependencies?.badgeAssignments) &&
+      Boolean(steamAuthDependencies?.authorization) &&
+      Boolean(steamAuthDependencies?.sessions);
+    if (
+      isSteamAuthRoute ||
+      isAuthorizationRoute ||
+      isBadgeRoute ||
+      isBadgeAssignmentRoute
+    ) {
       const cors = applyCorsHeaders(
         request,
         response,
@@ -111,6 +127,14 @@ export function createRouter(
       authorization: steamAuthDependencies!.authorization!,
       sessions: steamAuthDependencies!.sessions!
     })) return;
+    if (
+      isBadgeAssignmentRoute &&
+      await handleAdminBadgeAssignments(request, response, url, {
+        assignments: steamAuthDependencies!.badgeAssignments!,
+        authorization: steamAuthDependencies!.authorization!,
+        sessions: steamAuthDependencies!.sessions!
+      })
+    ) return;
     if (handleSteamAuth && await handleSteamAuth(request, response, url)) return;
     const body = JSON.stringify({ error: "not_found" });
     response.writeHead(404, {

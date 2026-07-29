@@ -12,6 +12,8 @@ import { PostgresAuthorizationRepository } from "../src/storage/postgres/postgre
 import { AuthorizationService } from "../src/authorization/authorizationService.ts";
 import { PostgresBadgeRepository } from "../src/storage/postgres/postgresBadgeRepository.ts";
 import { BadgeService } from "../src/badges/badgeService.ts";
+import { PostgresBadgeAssignmentRepository } from "../src/storage/postgres/postgresBadgeAssignmentRepository.ts";
+import { BadgeAssignmentService } from "../src/badgeAssignments/badgeAssignmentService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -47,7 +49,7 @@ test("PostgreSQL repository integration and concurrency", {
       "SELECT count(*) FROM permissions"
     );
     assert.equal(Number(roleCount.rows[0].count), 5);
-    assert.equal(Number(permissionCount.rows[0].count), 18);
+    assert.equal(Number(permissionCount.rows[0].count), 19);
     const badgeRepository = new PostgresBadgeRepository(pool);
     await badgeRepository.validateSchema();
     const cleanupStorageKey =
@@ -74,6 +76,50 @@ test("PostgreSQL repository integration and concurrency", {
     };
     const createdBadge = await badges.create(badgeDraft, user.id);
     assert.equal((await badges.get(createdBadge.id))?.slug, "staging-founder");
+    const assignmentRepository = new PostgresBadgeAssignmentRepository(pool);
+    await assignmentRepository.validateSchema();
+    const assignments = new BadgeAssignmentService(assignmentRepository);
+    const concurrentAssignments = await Promise.allSettled([
+      assignments.assign({
+        userId: user.id,
+        badgeDefinitionId: createdBadge.id,
+        reason: "concurrency check"
+      }, user.id),
+      assignments.assign({
+        userId: user.id,
+        badgeDefinitionId: createdBadge.id,
+        reason: "concurrency check"
+      }, user.id)
+    ]);
+    assert.equal(
+      concurrentAssignments.filter((item) => item.status === "fulfilled").length,
+      1
+    );
+    const activeAssignment = concurrentAssignments.find(
+      (item) => item.status === "fulfilled"
+    );
+    assert.ok(activeAssignment && activeAssignment.status === "fulfilled");
+    const concurrentRevokes = await Promise.allSettled([
+      assignments.revoke(activeAssignment.value.id, {}, user.id),
+      assignments.revoke(activeAssignment.value.id, {}, user.id)
+    ]);
+    assert.equal(
+      concurrentRevokes.filter((item) => item.status === "fulfilled").length,
+      1
+    );
+    const reassigned = await assignments.assign({
+      userId: user.id,
+      badgeDefinitionId: createdBadge.id
+    }, user.id);
+    assert.notEqual(reassigned.id, activeAssignment.value.id);
+    assert.equal((await assignments.list({
+      page: 1,
+      pageSize: 20,
+      status: "all",
+      userId: user.id,
+      badgeDefinitionId: createdBadge.id,
+      sort: "assigned_asc"
+    })).total, 2);
     const slugRace = await Promise.allSettled([
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id),
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id)

@@ -14,14 +14,14 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
   owner: [
     "admin.access", "users.view", "users.manage", "roles.view", "roles.assign",
     "roles.manage_permissions", "badges.view", "badges.create", "badges.edit",
-    "badges.delete", "badges.assign", "badges.revoke", "assets.upload",
+    "badges.delete", "badges.view_assignments", "badges.assign", "badges.revoke", "assets.upload",
     "assets.delete", "settings.view", "settings.edit", "audit.view",
     "developer.tools"
   ],
   administrator: [
     "admin.access", "users.view", "users.manage", "roles.view", "roles.assign",
     "roles.manage_permissions", "badges.view", "badges.create", "badges.edit",
-    "badges.delete", "badges.assign", "badges.revoke", "assets.upload",
+    "badges.delete", "badges.view_assignments", "badges.assign", "badges.revoke", "assets.upload",
     "assets.delete", "settings.view", "settings.edit", "audit.view"
   ],
   developer: [
@@ -30,7 +30,7 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
     "developer.tools"
   ],
   moderator: [
-    "admin.access", "users.view", "badges.view", "badges.assign",
+    "admin.access", "users.view", "badges.view", "badges.view_assignments", "badges.assign",
     "badges.revoke", "audit.view"
   ],
   assistant: ["admin.access", "users.view", "badges.view", "settings.view"]
