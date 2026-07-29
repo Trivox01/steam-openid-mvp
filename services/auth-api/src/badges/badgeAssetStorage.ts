@@ -17,6 +17,15 @@ export interface BadgeAssetStorage {
   upload(asset: ValidatedBadgeAsset): Promise<string>;
   read(storageKey: string): Promise<Buffer>;
   delete(storageKey: string): Promise<void>;
+  exists(storageKey: string): Promise<boolean>;
+  publicUrl(storageKey: string): string | undefined;
+}
+
+export class BadgeAssetNotFoundError extends Error {
+  constructor() {
+    super("badge_asset_object_not_found");
+    this.name = "BadgeAssetNotFoundError";
+  }
 }
 
 export class LocalBadgeAssetStorage implements BadgeAssetStorage {
@@ -36,13 +45,26 @@ export class LocalBadgeAssetStorage implements BadgeAssetStorage {
 
   read(storageKey: string) {
     assertStorageKey(storageKey);
-    return readFile(join(this.root, storageKey));
+    return readFile(join(this.root, storageKey)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") throw new BadgeAssetNotFoundError();
+      throw error;
+    });
   }
 
   async delete(storageKey: string) {
     assertStorageKey(storageKey);
-    await unlink(join(this.root, storageKey));
+    await unlink(join(this.root, storageKey)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
   }
+  async exists(storageKey: string) {
+    try { await this.read(storageKey); return true; }
+    catch (error) {
+      if (error instanceof BadgeAssetNotFoundError) return false;
+      throw error;
+    }
+  }
+  publicUrl() { return undefined; }
 }
 
 export class MemoryBadgeAssetStorage implements BadgeAssetStorage {
@@ -54,10 +76,12 @@ export class MemoryBadgeAssetStorage implements BadgeAssetStorage {
   }
   async read(key: string) {
     const value = this.files.get(key);
-    if (!value) throw new Error("asset_not_found");
+    if (!value) throw new BadgeAssetNotFoundError();
     return Buffer.from(value);
   }
   async delete(key: string) { this.files.delete(key); }
+  async exists(key: string) { return this.files.has(key); }
+  publicUrl() { return undefined; }
 }
 
 export function validateBadgeAsset(
@@ -117,7 +141,7 @@ function parseWebp(bytes: Buffer) {
   return undefined;
 }
 
-function assertStorageKey(value: string) {
+export function assertStorageKey(value: string) {
   if (!/^[0-9a-f-]{36}\.(png|webp)$/.test(value)) {
     throw new BadgeError("INVALID_ASSET_KEY");
   }

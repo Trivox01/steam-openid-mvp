@@ -17,6 +17,16 @@ const VALID_ENV = {
   TRUST_PROXY: "false",
   ALLOWED_ORIGINS: ""
 };
+const VALID_S3 = {
+  BADGE_STORAGE_DRIVER: "s3",
+  S3_ENDPOINT: "https://objects.example.test",
+  S3_REGION: "eu-west-1",
+  S3_BUCKET: "achievement-nexus-staging",
+  S3_ACCESS_KEY_ID: "test-access-key",
+  S3_SECRET_ACCESS_KEY: "test-secret-key-not-for-production",
+  S3_PUBLIC_BASE_URL: "https://cdn.example.test",
+  S3_KEY_PREFIX: "tenant-a"
+};
 
 test("loads secure OpenID environment configuration", () => {
   assert.deepEqual(loadAuthApiConfig(VALID_ENV), {
@@ -29,7 +39,8 @@ test("loads secure OpenID environment configuration", () => {
     sessionSecret: "test-session-secret-at-least-32-characters",
     logLevel: "error",
     trustProxy: false,
-    allowedOrigins: []
+    allowedOrigins: [],
+    badgeStorageDriver: "memory"
   });
 });
 
@@ -116,8 +127,39 @@ test("PostgreSQL storage requires a valid database URL", () => {
     NODE_ENV: "staging",
     AUTH_STORAGE_DRIVER: "postgres",
     DATABASE_URL: "postgresql://db.example.test/auth",
-    TRUST_PROXY: "true"
+    TRUST_PROXY: "true",
+    ...VALID_S3
   }));
+});
+
+test("S3 badge storage is environment-separated and rejects unsafe endpoints", () => {
+  const config = loadAuthApiConfig({
+    ...VALID_ENV,
+    NODE_ENV: "staging",
+    AUTH_STORAGE_DRIVER: "postgres",
+    DATABASE_URL: "postgresql://db.example.test/auth",
+    TRUST_PROXY: "true",
+    ...VALID_S3
+  });
+  assert.equal(config.s3BadgeStorage?.keyPrefix, "tenant-a/badges/staging");
+  assert.equal(config.s3BadgeStorage?.publicBaseUrl, "https://cdn.example.test");
+  for (const S3_ENDPOINT of [
+    "http://objects.example.test",
+    "https://127.0.0.1",
+    "https://169.254.169.254"
+  ]) {
+    assert.throws(
+      () => loadAuthApiConfig({
+        ...VALID_ENV,
+        ...VALID_S3,
+        S3_ENDPOINT
+      }),
+      (error: unknown) =>
+        error instanceof ConfigurationError &&
+        error.code === "invalid_S3_ENDPOINT" &&
+        !error.message.includes(VALID_S3.S3_SECRET_ACCESS_KEY)
+    );
+  }
 });
 
 test("staging requires an explicitly trusted TLS-terminating proxy", () => {

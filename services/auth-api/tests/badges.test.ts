@@ -3,10 +3,19 @@ import test from "node:test";
 import { InMemoryBadgeRepository } from "../src/badges/badgeRepository.ts";
 import { BadgeService, parseBadgeListQuery } from "../src/badges/badgeService.ts";
 import {
+  BadgeAssetNotFoundError,
+  LocalBadgeAssetStorage,
   MAX_BADGE_ASSET_BYTES,
   MemoryBadgeAssetStorage,
   validateBadgeAsset
 } from "../src/badges/badgeAssetStorage.ts";
+import { mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import {
+  persistBadgeAsset,
+  removeUnusedBadgeAsset
+} from "../src/badges/badgeAssetLifecycle.ts";
 
 const draft = {
   slug: "bug-hunter",
@@ -57,6 +66,24 @@ test("asset validation uses magic bytes, MIME, size and dimensions", async () =>
   const key = await storage.upload(validated);
   assert.match(key, /^[0-9a-f-]{36}\.png$/);
   assert.deepEqual(await storage.read(key), png);
+  await storage.delete(key);
+  await storage.delete(key);
+  await assert.rejects(
+    storage.read(key),
+    (error: unknown) => error instanceof BadgeAssetNotFoundError
+  );
+});
+
+test("local badge assets treat missing reads as not found and deletes as idempotent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "achievement-nexus-badges-"));
+  const storage = new LocalBadgeAssetStorage(root);
+  const key = "00000000-0000-4000-8000-000000000003.png";
+  assert.equal(await storage.exists(key), false);
+  await storage.delete(key);
+  await assert.rejects(
+    storage.read(key),
+    (error: unknown) => error instanceof BadgeAssetNotFoundError
+  );
 });
 
 test("asset deletion is soft, audited, and rejects an asset referenced by a badge", async () => {
@@ -74,4 +101,55 @@ test("asset deletion is soft, audited, and rejects an asset referenced by a badg
   }, "actor");
   assert.equal(await repository.deleteUnusedAsset(unused.id, "actor"), unused.storageKey);
   assert.equal(repository.auditEvents.at(-1)?.action, "badge.asset_deleted");
+});
+
+test("metadata rollback removes the uploaded object or records bounded cleanup", async () => {
+  const repository = new InMemoryBadgeRepository();
+  repository.saveAsset = async () => { throw new Error("database unavailable"); };
+  const storage = new MemoryBadgeAssetStorage();
+  await assert.rejects(
+    persistBadgeAsset(repository, storage, {
+      contentType: "image/png",
+      bytes: Buffer.from("image"),
+      width: 64,
+      height: 64,
+      isSquare: true
+    }, "actor"),
+    /database unavailable/
+  );
+  assert.equal(storage.files.size, 0);
+
+  const failedCleanupStorage = new MemoryBadgeAssetStorage();
+  failedCleanupStorage.delete = async () => { throw new Error("delete failed"); };
+  await assert.rejects(
+    persistBadgeAsset(repository, failedCleanupStorage, {
+      contentType: "image/png",
+      bytes: Buffer.from("image"),
+      width: 64,
+      height: 64,
+      isSquare: true
+    }, "actor"),
+    /database unavailable/
+  );
+  assert.equal(repository.cleanupJobs.length, 1);
+  assert.equal(repository.cleanupJobs[0].reason, "metadata_rollback");
+});
+
+test("replacement and unused deletion queue cleanup without reverting committed metadata", async () => {
+  const repository = new InMemoryBadgeRepository();
+  const asset = await repository.saveAsset({
+    storageKey: "00000000-0000-4000-8000-000000000005.png",
+    contentType: "image/png", byteSize: 24, width: 64, height: 64, isSquare: true
+  }, "actor");
+  const storage = new MemoryBadgeAssetStorage();
+  storage.delete = async () => { throw new Error("temporary storage failure"); };
+  assert.equal(await removeUnusedBadgeAsset(
+    repository,
+    storage,
+    asset.id,
+    "actor",
+    "icon_replaced"
+  ), true);
+  assert.ok((await repository.getAsset(asset.id))?.deletedAt);
+  assert.deepEqual(repository.cleanupJobs.map((job) => job.reason), ["icon_replaced"]);
 });

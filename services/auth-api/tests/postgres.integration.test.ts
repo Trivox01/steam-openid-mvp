@@ -50,6 +50,21 @@ test("PostgreSQL repository integration and concurrency", {
     assert.equal(Number(permissionCount.rows[0].count), 18);
     const badgeRepository = new PostgresBadgeRepository(pool);
     await badgeRepository.validateSchema();
+    const cleanupStorageKey =
+      "tenant-a/badges/staging/00000000-0000-4000-8000-000000000004.png";
+    await badgeRepository.enqueueAssetCleanup({
+      storageKey: cleanupStorageKey,
+      reason: "metadata_rollback"
+    });
+    await badgeRepository.enqueueAssetCleanup({
+      storageKey: cleanupStorageKey,
+      reason: "metadata_rollback"
+    });
+    const cleanupCount = await pool.query<{ count: string }>(
+      "SELECT count(*) FROM badge_asset_cleanup_jobs WHERE storage_key=$1",
+      [cleanupStorageKey]
+    );
+    assert.equal(Number(cleanupCount.rows[0].count), 1);
     const badges = new BadgeService(badgeRepository);
     const badgeDraft = {
       slug: "staging-founder", displayName: "Staging Founder",

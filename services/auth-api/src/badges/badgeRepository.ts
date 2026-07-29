@@ -16,12 +16,23 @@ export interface BadgeRepository {
   saveAsset(input: Omit<BadgeAsset, "id" | "createdAt"> & { storageKey: string }, actorUserId: string): Promise<BadgeAsset>;
   getAsset(id: string): Promise<(BadgeAsset & { storageKey: string; deletedAt?: string }) | undefined>;
   deleteUnusedAsset(id: string, actorUserId: string): Promise<string | undefined>;
+  listAvailableAssets(limit: number): Promise<Array<BadgeAsset & { storageKey: string }>>;
+  enqueueAssetCleanup(input: {
+    storageKey: string;
+    assetId?: string;
+    reason: "metadata_rollback" | "icon_replaced" | "asset_deleted";
+  }): Promise<void>;
 }
 
 export class InMemoryBadgeRepository implements BadgeRepository {
   readonly badges = new Map<string, BadgeDefinition>();
   readonly assets = new Map<string, BadgeAsset & { storageKey: string; deletedAt?: string }>();
   readonly auditEvents: Array<{ action: string; targetId: string; metadata: Record<string, unknown> }> = [];
+  readonly cleanupJobs: Array<{
+    storageKey: string;
+    assetId?: string;
+    reason: "metadata_rollback" | "icon_replaced" | "asset_deleted";
+  }> = [];
 
   async validateSchema() {}
   async list(query: BadgeListQuery) {
@@ -90,6 +101,22 @@ export class InMemoryBadgeRepository implements BadgeRepository {
       metadata: { actorUserId }
     });
     return asset.storageKey;
+  }
+  async listAvailableAssets(limit: number) {
+    return [...this.assets.values()].filter((asset) => !asset.deletedAt).slice(0, limit);
+  }
+  async enqueueAssetCleanup(input: {
+    storageKey: string;
+    assetId?: string;
+    reason: "metadata_rollback" | "icon_replaced" | "asset_deleted";
+  }) {
+    if (this.cleanupJobs.some((job) => job.storageKey === input.storageKey)) return;
+    this.cleanupJobs.push({ ...input });
+    this.auditEvents.push({
+      action: "badge.asset_cleanup_pending",
+      targetId: input.assetId ?? "orphan",
+      metadata: { reason: input.reason }
+    });
   }
 }
 

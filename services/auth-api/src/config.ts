@@ -1,4 +1,14 @@
 export type AuthStorageDriver = "memory" | "postgres";
+export type BadgeStorageDriver = "memory" | "local" | "s3";
+export interface S3BadgeStorageConfig {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  keyPrefix: string;
+  publicBaseUrl?: string;
+}
 export type RuntimeEnvironment =
   | "development"
   | "test"
@@ -19,6 +29,8 @@ export interface AuthApiConfig {
   allowedOrigins: string[];
   bootstrapOwnerSteamId64?: string;
   badgeAssetDirectory?: string;
+  badgeStorageDriver?: BadgeStorageDriver;
+  s3BadgeStorage?: S3BadgeStorageConfig;
 }
 
 export class ConfigurationError extends Error {
@@ -51,6 +63,13 @@ export function loadAuthApiConfig(
   const bootstrapOwnerSteamId64 = parseOptionalSteamId(
     environment.BOOTSTRAP_OWNER_STEAM_ID64
   );
+  const badgeStorageDriver = parseBadgeStorageDriver(
+    environment.BADGE_STORAGE_DRIVER,
+    nodeEnv
+  );
+  const s3BadgeStorage = badgeStorageDriver === "s3"
+    ? parseS3BadgeStorage(environment, nodeEnv)
+    : undefined;
 
   if (publicBaseUrl.search || openIdRealm.search || openIdRealm.hash) {
     throw new ConfigurationError("invalid_OPENID_REALM");
@@ -77,6 +96,10 @@ export function loadAuthApiConfig(
   ) {
     throw new ConfigurationError("trusted_proxy_required");
   }
+  if (
+    (nodeEnv === "staging" || nodeEnv === "production") &&
+    badgeStorageDriver !== "s3"
+  ) throw new ConfigurationError("persistent_badge_storage_required");
   if (storageDriver === "postgres") validateDatabaseUrl(databaseUrl);
   if (
     sessionSecret.length < 32 ||
@@ -99,11 +122,87 @@ export function loadAuthApiConfig(
     logLevel: parseLogLevel(environment.LOG_LEVEL),
     trustProxy,
     allowedOrigins: parseAllowedOrigins(environment.ALLOWED_ORIGINS),
+    badgeStorageDriver,
+    ...(s3BadgeStorage ? { s3BadgeStorage } : {}),
     ...(environment.BADGE_ASSET_DIRECTORY?.trim()
       ? { badgeAssetDirectory: environment.BADGE_ASSET_DIRECTORY.trim() }
       : {}),
     ...(bootstrapOwnerSteamId64 ? { bootstrapOwnerSteamId64 } : {})
   };
+}
+
+function parseBadgeStorageDriver(
+  value: string | undefined,
+  nodeEnv: RuntimeEnvironment
+): BadgeStorageDriver {
+  if (!value) return nodeEnv === "test" ? "memory" : "local";
+  if (value === "memory" || value === "local" || value === "s3") return value;
+  throw new ConfigurationError("invalid_BADGE_STORAGE_DRIVER");
+}
+
+function parseS3BadgeStorage(
+  environment: NodeJS.ProcessEnv,
+  nodeEnv: RuntimeEnvironment
+): S3BadgeStorageConfig {
+  const endpoint = parseObjectStorageUrl(environment.S3_ENDPOINT, "S3_ENDPOINT");
+  const publicBase = environment.S3_PUBLIC_BASE_URL?.trim()
+    ? parseObjectStorageUrl(environment.S3_PUBLIC_BASE_URL, "S3_PUBLIC_BASE_URL")
+    : undefined;
+  const region = requiredBounded(environment.S3_REGION, "S3_REGION", 64);
+  const bucket = requiredBounded(environment.S3_BUCKET, "S3_BUCKET", 63);
+  const accessKeyId = requiredBounded(environment.S3_ACCESS_KEY_ID, "S3_ACCESS_KEY_ID", 256);
+  const secretAccessKey = requiredBounded(environment.S3_SECRET_ACCESS_KEY, "S3_SECRET_ACCESS_KEY", 512);
+  const configuredPrefix = environment.S3_KEY_PREFIX?.trim().replace(/^\/+|\/+$/g, "");
+  if (configuredPrefix && !/^[a-z0-9][a-z0-9/_-]{0,127}$/i.test(configuredPrefix)) {
+    throw new ConfigurationError("invalid_S3_KEY_PREFIX");
+  }
+  if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket)) {
+    throw new ConfigurationError("invalid_S3_BUCKET");
+  }
+  return {
+    endpoint: endpoint.toString().replace(/\/$/, ""),
+    region,
+    bucket,
+    accessKeyId,
+    secretAccessKey,
+    keyPrefix: `${configuredPrefix ? `${configuredPrefix}/` : ""}badges/${nodeEnv}`,
+    ...(publicBase ? { publicBaseUrl: publicBase.toString().replace(/\/$/, "") } : {})
+  };
+}
+
+function parseObjectStorageUrl(value: string | undefined, name: string) {
+  if (!value?.trim()) throw new ConfigurationError(`missing_${name}`);
+  let url: URL;
+  try { url = new URL(value); } catch { throw new ConfigurationError(`invalid_${name}`); }
+  if (
+    url.protocol !== "https:" || url.username || url.password ||
+    url.search || url.hash || isPrivateHost(url.hostname)
+  ) throw new ConfigurationError(`invalid_${name}`);
+  return url;
+}
+
+function isPrivateHost(host: string) {
+  const normalized = host.toLowerCase();
+  return normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized.endsWith(".local") ||
+    /^127\./.test(normalized) ||
+    /^10\./.test(normalized) ||
+    /^192\.168\./.test(normalized) ||
+    /^169\.254\./.test(normalized) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(normalized);
+}
+
+function requiredBounded(
+  value: string | undefined,
+  name: string,
+  max: number
+) {
+  const normalized = value?.trim();
+  if (!normalized || normalized.length > max || /[\r\n]/.test(normalized)) {
+    throw new ConfigurationError(`invalid_${name}`);
+  }
+  return normalized;
 }
 
 function parseOptionalSteamId(value: string | undefined) {

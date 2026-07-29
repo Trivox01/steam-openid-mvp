@@ -7,9 +7,14 @@ import { parseBadgeListQuery } from "../badges/badgeService.ts";
 import { BadgeError } from "../badges/contracts.ts";
 import {
   MAX_BADGE_ASSET_BYTES,
+  BadgeAssetNotFoundError,
   validateBadgeAsset,
   type BadgeAssetStorage
 } from "../badges/badgeAssetStorage.ts";
+import {
+  persistBadgeAsset,
+  removeUnusedBadgeAsset
+} from "../badges/badgeAssetLifecycle.ts";
 
 export interface AdminBadgeDependencies {
   badges: BadgeService;
@@ -22,6 +27,7 @@ export function isAdminBadgePath(pathname: string) {
   return pathname === "/api/admin/badges" ||
     /^\/api\/admin\/badges\/[0-9a-f-]+(?:\/archive)?$/i.test(pathname) ||
     pathname === "/api/admin/badge-assets" ||
+    pathname === "/api/admin/badge-assets/missing" ||
     /^\/api\/admin\/badge-assets\/[0-9a-f-]+(?:\/content)?$/i.test(pathname);
 }
 
@@ -59,20 +65,28 @@ export async function handleAdminBadges(
       await deps.authorization.requirePermission(actor.id, "assets.upload");
       const bytes = await readBytes(request, MAX_BADGE_ASSET_BYTES);
       const asset = validateBadgeAsset(bytes, request.headers["content-type"]);
-      const storageKey = await deps.assets.upload(asset);
-      try {
-        writeJson(response, 201, await deps.badges.repository.saveAsset({
-          storageKey,
-          contentType: asset.contentType,
-          byteSize: asset.bytes.length,
-          width: asset.width,
-          height: asset.height,
-          isSquare: asset.isSquare
-        }, actor.id));
-      } catch (error) {
-        await deps.assets.delete(storageKey).catch(() => undefined);
-        throw error;
+      writeJson(response, 201, await persistBadgeAsset(
+        deps.badges.repository,
+        deps.assets,
+        asset,
+        actor.id
+      ));
+      return true;
+    }
+    if (url.pathname === "/api/admin/badge-assets/missing" && request.method === "GET") {
+      await deps.authorization.requirePermission(actor.id, "audit.view");
+      const assets = await deps.badges.repository.listAvailableAssets(500);
+      const missing: Array<{ assetId: string; createdAt: string }> = [];
+      for (const asset of assets) {
+        if (!await deps.assets.exists(asset.storageKey)) {
+          missing.push({ assetId: asset.id, createdAt: asset.createdAt });
+        }
       }
+      writeJson(response, 200, {
+        checked: assets.length,
+        missingCount: missing.length,
+        items: missing
+      });
       return true;
     }
     const assetMatch = url.pathname.match(/^\/api\/admin\/badge-assets\/([0-9a-f-]+)\/content$/i);
@@ -80,7 +94,30 @@ export async function handleAdminBadges(
       await deps.authorization.requirePermission(actor.id, "badges.view");
       const asset = await deps.badges.repository.getAsset(assetMatch[1]);
       if (!asset || asset.deletedAt) throw new BadgeError("ASSET_NOT_FOUND");
-      const content = await deps.assets.read(asset.storageKey);
+      const publicUrl = deps.assets.publicUrl(asset.storageKey);
+      if (publicUrl) {
+        response.writeHead(302, {
+          location: publicUrl,
+          "cache-control": "public, max-age=300",
+          "referrer-policy": "no-referrer"
+        });
+        response.end();
+        return true;
+      }
+      let content: Buffer;
+      try {
+        content = await deps.assets.read(asset.storageKey);
+      } catch (error) {
+        if (error instanceof BadgeAssetNotFoundError) {
+          process.stdout.write(`${JSON.stringify({
+            event: "badge_asset_missing",
+            endpoint: "/api/admin/badge-assets/:id/content",
+            assetId: asset.id
+          })}\n`);
+          throw new BadgeError("ASSET_NOT_FOUND");
+        }
+        throw error;
+      }
       response.writeHead(200, {
         "content-type": asset.contentType,
         "cache-control": "private, max-age=300",
@@ -93,12 +130,20 @@ export async function handleAdminBadges(
     const deleteAssetMatch = url.pathname.match(/^\/api\/admin\/badge-assets\/([0-9a-f-]+)$/i);
     if (deleteAssetMatch && request.method === "DELETE") {
       await deps.authorization.requirePermission(actor.id, "assets.delete");
-      const storageKey = await deps.badges.repository.deleteUnusedAsset(
+      const deleted = await removeUnusedBadgeAsset(
+        deps.badges.repository,
+        deps.assets,
         deleteAssetMatch[1],
-        actor.id
+        actor.id,
+        "asset_deleted"
       );
-      if (!storageKey) throw new BadgeError("ASSET_NOT_FOUND");
-      await deps.assets.delete(storageKey).catch(() => undefined);
+      if (!deleted) {
+        const existing = await deps.badges.repository.getAsset(deleteAssetMatch[1]);
+        if (!existing?.deletedAt) throw new BadgeError("ASSET_NOT_FOUND");
+        response.writeHead(204, { "cache-control": "no-store" });
+        response.end();
+        return true;
+      }
       response.writeHead(204, { "cache-control": "no-store" });
       response.end();
       return true;
@@ -113,7 +158,21 @@ export async function handleAdminBadges(
     }
     if (match && request.method === "PATCH" && !match[2]) {
       await deps.authorization.requirePermission(actor.id, "badges.edit");
-      writeJson(response, 200, await deps.badges.update(match[1], await readJson(request), actor.id));
+      const before = await deps.badges.get(match[1]);
+      const updated = await deps.badges.update(match[1], await readJson(request), actor.id);
+      if (
+        before?.iconAssetId &&
+        before.iconAssetId !== updated.iconAssetId
+      ) {
+        await removeUnusedBadgeAsset(
+          deps.badges.repository,
+          deps.assets,
+          before.iconAssetId,
+          actor.id,
+          "icon_replaced"
+        );
+      }
+      writeJson(response, 200, updated);
       return true;
     }
     if (match && request.method === "POST" && match[2]) {

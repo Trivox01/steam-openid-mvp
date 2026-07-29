@@ -17,11 +17,15 @@ export class PostgresBadgeRepository implements BadgeRepository {
 
   async validateSchema() {
     const result = await this.pool.query<{ count: string }>(
-      `SELECT count(1) FROM information_schema.tables
+       `SELECT count(1) FROM information_schema.tables
        WHERE table_schema = current_schema()
-         AND table_name IN ('badge_definitions', 'badge_assets')`
+         AND table_name IN (
+           'badge_definitions',
+           'badge_assets',
+           'badge_asset_cleanup_jobs'
+         )`
     );
-    if (Number(result.rows[0]?.count) !== 2) throw new Error("badge_schema_invalid");
+    if (Number(result.rows[0]?.count) !== 3) throw new Error("badge_schema_invalid");
   }
 
   async list(query: BadgeListQuery) {
@@ -167,14 +171,14 @@ export class PostgresBadgeRepository implements BadgeRepository {
          WHERE id=$1 AND deleted_at IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM badge_definitions
-             WHERE icon_asset_id=$1 AND archived_at IS NULL
+             WHERE icon_asset_id=$1
            )
          RETURNING storage_key`,
         [id]
       );
       if (!result.rowCount) {
         const used = await client.query(
-          "SELECT 1 FROM badge_definitions WHERE icon_asset_id=$1 AND archived_at IS NULL",
+          "SELECT 1 FROM badge_definitions WHERE icon_asset_id=$1",
           [id]
         );
         if (used.rowCount) throw new Error("badge_asset_in_use");
@@ -183,6 +187,35 @@ export class PostgresBadgeRepository implements BadgeRepository {
       await audit(client, actorUserId, "badge.asset_deleted", id, {});
       return result.rows[0].storage_key;
     });
+  }
+
+  async listAvailableAssets(limit: number) {
+    const result = await this.pool.query(
+      `SELECT id, storage_key, content_type, byte_size, width, height, created_at
+       FROM badge_assets
+       WHERE deleted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      [Math.min(Math.max(limit, 1), 500)]
+    );
+    return result.rows.map((row) => ({
+      ...mapAsset(row),
+      storageKey: String(row.storage_key)
+    }));
+  }
+
+  async enqueueAssetCleanup(input: {
+    storageKey: string;
+    assetId?: string;
+    reason: "metadata_rollback" | "icon_replaced" | "asset_deleted";
+  }) {
+    await this.pool.query(
+      `INSERT INTO badge_asset_cleanup_jobs (
+        id, asset_id, storage_key, reason
+      ) VALUES ($1,$2,$3,$4)
+      ON CONFLICT (storage_key) WHERE completed_at IS NULL DO NOTHING`,
+      [randomUUID(), input.assetId ?? null, input.storageKey, input.reason]
+    );
   }
 
   private async mutate<T>(operation: (client: PoolClient) => Promise<T>) {
