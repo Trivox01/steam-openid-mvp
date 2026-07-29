@@ -114,3 +114,18 @@ test("S3 missing objects return an explicit not-found result and a stable encode
     "https://cdn.example.test/tenant-a/badges/staging/00000000-0000-4000-8000-000000000002.png"
   );
 });
+
+test("S3 treats legacy local metadata as missing without accepting arbitrary keys", async () => {
+  const client = new FakeClient();
+  const storage = new S3BadgeAssetStorage(config, client);
+  const legacyKey = "00000000-0000-4000-8000-000000000006.png";
+  assert.equal(await storage.exists(legacyKey), false);
+  await assert.rejects(
+    storage.read(legacyKey),
+    (error: unknown) => error instanceof BadgeAssetNotFoundError
+  );
+  await storage.delete(legacyKey);
+  assert.equal(storage.publicUrl(legacyKey), undefined);
+  assert.equal(client.commands.length, 0);
+  await assert.rejects(storage.exists("../outside.png"), /INVALID_ASSET_KEY/);
+});

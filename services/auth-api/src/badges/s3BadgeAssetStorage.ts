@@ -59,6 +59,7 @@ export class S3BadgeAssetStorage implements BadgeAssetStorage {
   }
 
   async read(storageKey: string) {
+    if (isLegacyLocalKey(storageKey)) throw new BadgeAssetNotFoundError();
     assertObjectKey(storageKey, this.config.keyPrefix);
     try {
       const response = await this.client.send(new GetObjectCommand({
@@ -74,6 +75,7 @@ export class S3BadgeAssetStorage implements BadgeAssetStorage {
   }
 
   async delete(storageKey: string) {
+    if (isLegacyLocalKey(storageKey)) return;
     assertObjectKey(storageKey, this.config.keyPrefix);
     await this.client.send(new DeleteObjectCommand({
       Bucket: this.config.bucket,
@@ -82,6 +84,7 @@ export class S3BadgeAssetStorage implements BadgeAssetStorage {
   }
 
   async exists(storageKey: string) {
+    if (isLegacyLocalKey(storageKey)) return false;
     assertObjectKey(storageKey, this.config.keyPrefix);
     try {
       await this.client.send(new HeadObjectCommand({
@@ -97,12 +100,17 @@ export class S3BadgeAssetStorage implements BadgeAssetStorage {
 
   publicUrl(storageKey: string) {
     if (!this.config.publicBaseUrl) return undefined;
+    if (isLegacyLocalKey(storageKey)) return undefined;
     assertObjectKey(storageKey, this.config.keyPrefix);
     return `${this.config.publicBaseUrl}/${storageKey
       .split("/")
       .map(encodeURIComponent)
       .join("/")}`;
   }
+}
+
+function isLegacyLocalKey(value: string) {
+  return /^[0-9a-f-]{36}\.(png|webp)$/.test(value);
 }
 
 export function assertObjectKey(value: string, prefix: string) {
