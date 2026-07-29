@@ -118,6 +118,9 @@ export function BadgeManagementPanel({ snapshot, client }: {
         <Select value={status} onChange={setStatus} label={t("developer.badges.status")} values={["active","inactive","archived"]}/>
         <Select value={sort} onChange={setSort} label={t("developer.badges.sort")} values={["updated_desc","updated_asc","priority_desc","name_asc"]} all={false}/>
       </Surface>
+      {!editing && error && state === "ready" ? (
+        <p className="field-error" role="alert">{error}</p>
+      ) : null}
       {state === "loading" ? <Surface className="badge-state">{t("developer.badges.loading")}</Surface>
         : state === "error" ? <Surface className="badge-state"><p>{error || t("developer.badges.error")}</p><button type="button" onClick={() => void load()}><RefreshCw size={16}/>{t("developer.badges.retry")}</button></Surface>
         : items.length === 0 ? <Surface className="badge-state"><Medal/><p>{t("developer.badges.empty")}</p></Surface>

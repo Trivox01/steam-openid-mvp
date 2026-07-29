@@ -68,6 +68,7 @@ export class BadgeAdminClient {
     } catch {
       throw new BadgeAdminError("NETWORK_ERROR");
     }
+    if (response.status === 401) this.sessions.expireSession();
     let payload: unknown;
     try { payload = await response.json(); } catch { throw new BadgeAdminError("MALFORMED_RESPONSE"); }
     if (!response.ok) {

@@ -6,6 +6,7 @@ import {
   AuthorizationClientError
 } from "../src/features/developer-center/AuthorizationClient.ts";
 import { AuthorizationStore } from "../src/features/developer-center/AuthorizationStore.ts";
+import { BadgeAdminClient, BadgeAdminError } from "../src/features/developer-center/badges/BadgeAdminClient.ts";
 
 const SESSION = {
   token: "memory-only-session",
@@ -54,6 +55,27 @@ test("Authorization client distinguishes 401, 403, malformed, and network failur
       new AuthorizationClient("https://auth.example.test").loadSnapshot(SESSION.token),
       (error) => error instanceof AuthorizationClientError && error.kind === "network"
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Badge admin client expires the session on 401 and preserves HTTP errors", async () => {
+  const originalFetch = globalThis.fetch;
+  const sessions = new FakeSessionSource(SESSION);
+  globalThis.fetch = async () => Response.json(
+    { error: "AUTHENTICATION_REQUIRED" },
+    { status: 401 }
+  );
+  try {
+    await assert.rejects(
+      new BadgeAdminClient("https://auth.example.test", sessions)
+        .list(new URLSearchParams()),
+      (error) => error instanceof BadgeAdminError &&
+        error.status === 401 &&
+        error.message === "AUTHENTICATION_REQUIRED"
+    );
+    assert.equal(sessions.expired, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
