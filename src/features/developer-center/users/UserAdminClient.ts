@@ -1,5 +1,5 @@
 import type { BackendSessionSource } from "../AuthorizationStore";
-import type { ManagedUserDetails, UserPage } from "./types";
+import type { ManagedUserDetails, UserAccountStatus, UserPage } from "./types";
 
 export class UserAdminClientError extends Error {
   readonly code: string;
@@ -45,13 +45,37 @@ export class UserAdminClient {
       }))
     };
   }
-  private async request<T>(path: string, signal?: AbortSignal) {
+  changeStatus(
+    id: string,
+    status: UserAccountStatus,
+    reason?: string,
+    signal?: AbortSignal
+  ) {
+    return this.request<ManagedUserDetails>(
+      `/api/admin/users/${encodeURIComponent(id)}/status`,
+      signal,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status, ...(reason?.trim() ? { reason: reason.trim() } : {}) })
+      }
+    );
+  }
+  private async request<T>(
+    path: string,
+    signal?: AbortSignal,
+    init: RequestInit = {}
+  ) {
     const session = this.sessions.getActiveSession();
     if (!session) throw new UserAdminClientError("AUTHENTICATION_REQUIRED", 401);
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
-        headers: { authorization: `Bearer ${session.token}` },
+        ...init,
+        headers: {
+          ...init.headers,
+          authorization: `Bearer ${session.token}`
+        },
         signal
       });
     } catch (error) {

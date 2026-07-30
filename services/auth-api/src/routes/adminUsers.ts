@@ -7,7 +7,7 @@ import { parseUserQuery, type UserService } from "../users/userService.ts";
 export const ADMIN_USERS_PATH = "/api/admin/users";
 export function isAdminUserPath(pathname: string) {
   return pathname === ADMIN_USERS_PATH ||
-    /^\/api\/admin\/users\/[0-9a-f-]{36}$/i.test(pathname);
+    /^\/api\/admin\/users\/[0-9a-f-]{36}(?:\/status)?$/i.test(pathname);
 }
 
 export async function handleAdminUsers(
@@ -21,7 +21,6 @@ export async function handleAdminUsers(
   }
 ) {
   if (!isAdminUserPath(url.pathname)) return false;
-  if (request.method !== "GET") return writeJson(response, 405, { error: "METHOD_NOT_ALLOWED" });
   try {
     const actor = await deps.sessions.authenticateBearer(
       typeof request.headers.authorization === "string"
@@ -29,6 +28,24 @@ export async function handleAdminUsers(
         : undefined
     );
     await deps.authorization.requirePermission(actor.id, "users.view");
+    const statusMatch = url.pathname.match(
+      /^\/api\/admin\/users\/([0-9a-f-]{36})\/status$/i
+    );
+    if (statusMatch) {
+      if (request.method !== "PATCH") {
+        return writeJson(response, 405, { error: "METHOD_NOT_ALLOWED" });
+      }
+      await deps.authorization.requirePermission(actor.id, "users.change_status");
+      const updated = await deps.users.changeStatus(
+        actor.id,
+        statusMatch[1],
+        await readJson(request)
+      );
+      return writeJson(response, 200, updated ?? {});
+    }
+    if (request.method !== "GET") {
+      return writeJson(response, 405, { error: "METHOD_NOT_ALLOWED" });
+    }
     if (url.pathname === ADMIN_USERS_PATH) {
       const query = parseUserQuery(url.searchParams);
       return writeJson(response, 200, {
@@ -48,8 +65,26 @@ export async function handleAdminUsers(
         ? String(error.code) : "USER_QUERY_FAILED";
     const status = code === "AUTHENTICATION_REQUIRED" ? 401
       : code === "PERMISSION_DENIED" ? 403
-        : code.startsWith("INVALID_") ? 400 : 500;
+        : code === "USER_NOT_FOUND" ? 404
+          : code === "USER_STATUS_UNCHANGED" ? 409
+            : code.startsWith("INVALID_") ? 400 : 500;
     return writeJson(response, status, { error: code });
+  }
+}
+
+async function readJson(request: IncomingMessage) {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += bytes.length;
+    if (size > 8_192) throw new UserManagementError("INVALID_USER_STATUS");
+    chunks.push(bytes);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+  } catch {
+    throw new UserManagementError("INVALID_USER_STATUS");
   }
 }
 

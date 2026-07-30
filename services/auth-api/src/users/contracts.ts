@@ -1,4 +1,4 @@
-export type UserStatus = "active";
+export type UserStatus = "active" | "suspended" | "disabled";
 export type UserSort =
   | "created_desc" | "created_asc" | "last_login_desc"
   | "name_asc" | "badges_desc";
@@ -41,4 +41,9 @@ export class UserManagementError extends Error {
     this.code = code;
     this.name = "UserManagementError";
   }
+}
+
+export interface ChangeUserStatusInput {
+  status: UserStatus;
+  reason?: string;
 }

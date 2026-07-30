@@ -12,14 +12,14 @@ export type SystemRoleSlug = typeof rolePresets[number]["slug"];
 
 export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly PermissionKey[]>> = {
   owner: [
-    "admin.access", "users.view", "users.manage", "roles.view", "roles.assign",
+    "admin.access", "users.view", "users.change_status", "users.manage", "roles.view", "roles.assign",
     "roles.manage_permissions", "badges.view", "badges.create", "badges.edit",
     "badges.delete", "badges.view_assignments", "badges.assign", "badges.revoke", "assets.upload",
     "assets.delete", "settings.view", "settings.edit", "audit.view",
     "developer.tools"
   ],
   administrator: [
-    "admin.access", "users.view", "users.manage", "roles.view", "roles.assign",
+    "admin.access", "users.view", "users.change_status", "users.manage", "roles.view", "roles.assign",
     "roles.manage_permissions", "badges.view", "badges.create", "badges.edit",
     "badges.delete", "badges.view_assignments", "badges.assign", "badges.revoke", "assets.upload",
     "assets.delete", "settings.view", "settings.edit", "audit.view"

@@ -2069,3 +2069,10 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 .user-short-id code{font-size:.78rem;color:var(--text-secondary);white-space:nowrap}
 .user-short-id button{width:30px;height:30px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);color:var(--text-muted);background:var(--surface-raised);transition:color 150ms ease-out,border-color 150ms ease-out}
 .user-short-id button:hover,.user-short-id button:focus-visible{color:var(--text-primary);border-color:var(--accent-primary)}
+.user-status-notice{margin:0;color:var(--status-success);font-size:.82rem}
+.user-status-backdrop{z-index:calc(var(--z-modal,1000) + 1)}
+.user-status-dialog{width:min(460px,calc(100vw - 2rem));display:grid;gap:1rem;padding:1.1rem}
+.user-status-dialog h3,.user-status-dialog p{margin:0}
+.user-status-dialog>label{display:grid;gap:.4rem;color:var(--text-secondary);font-size:.82rem}
+.user-status-dialog select,.user-status-dialog textarea{width:100%;padding:.65rem;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);color:var(--text-primary);background:var(--surface-raised)}
+.user-status-dialog textarea{min-height:6rem;resize:vertical}

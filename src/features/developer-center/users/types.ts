@@ -5,10 +5,12 @@ export interface ManagedUser {
   avatarUrl?: string;
   createdAt: string;
   lastLoginAt: string;
-  status: "active";
+  status: UserAccountStatus;
   badgeCount: number;
   roleCount: number;
 }
+
+export type UserAccountStatus = "active" | "suspended" | "disabled";
 
 export interface ManagedUserDetails extends ManagedUser {
   steamId64: string;

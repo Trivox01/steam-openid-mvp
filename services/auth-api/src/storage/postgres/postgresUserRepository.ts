@@ -113,6 +113,13 @@ export class PostgresUserRepository implements UserRepository {
     const result = await this.pool.query<{ count: string }>("SELECT count(*) FROM users");
     return Number(result.rows[0]?.count ?? 0);
   }
+  async changeStatus(id: string, status: UserDetails["status"]) {
+    const result = await this.pool.query(
+      `UPDATE users SET account_status=$2, updated_at=now() WHERE id=$1`,
+      [id, status]
+    );
+    if (result.rowCount !== 1) throw new Error("user_status_update_failed");
+  }
   async updateSteamProfile(
     steamId64: string,
     profile: { steamNickname: string; avatarUrl?: string }

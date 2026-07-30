@@ -7,6 +7,7 @@ export interface UserRepository {
   list(query: UserQuery): Promise<{ items: UserSummary[]; total: number }>;
   get(id: string): Promise<UserDetails | undefined>;
   count(): Promise<number>;
+  changeStatus(id: string, status: UserDetails["status"]): Promise<void>;
   updateSteamProfile(
     steamId64: string,
     profile: { steamNickname: string; avatarUrl?: string }
@@ -16,6 +17,7 @@ export interface UserRepository {
 export class InMemoryUserRepository implements UserRepository {
   private readonly authorization: AuthorizationRepository;
   private readonly assignments: BadgeAssignmentRepository;
+  private readonly statuses = new Map<string, UserDetails["status"]>();
   constructor(
     authorization: AuthorizationRepository,
     assignments: BadgeAssignmentRepository
@@ -59,6 +61,9 @@ export class InMemoryUserRepository implements UserRepository {
   async count() {
     return (this.authorization as { users?: Map<string, unknown> }).users?.size ?? 0;
   }
+  async changeStatus(id: string, status: UserDetails["status"]) {
+    this.statuses.set(id, status);
+  }
   async updateSteamProfile() {}
   private async toSummary(user: { id: string }): Promise<UserSummary> {
     const assignments = await this.assignments.list({
@@ -71,7 +76,7 @@ export class InMemoryUserRepository implements UserRepository {
       displayName: `User ${user.id.slice(0, 8)}`,
       createdAt: new Date(0).toISOString(),
       lastLoginAt: new Date(0).toISOString(),
-      status: "active" as const,
+      status: this.statuses.get(user.id) ?? "active",
       badgeCount: assignments.total,
       roleCount: roles.length
     };

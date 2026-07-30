@@ -1,6 +1,7 @@
 export const PERMISSION_KEYS = [
   "admin.access",
   "users.view",
+  "users.change_status",
   "users.manage",
   "roles.view",
   "roles.assign",

@@ -109,6 +109,7 @@ export function DeveloperCenterPage({
           <Suspense fallback={<Surface className="badge-state">{t("developer.users.loading")}</Surface>}>
             <UserManagementPanel
               client={services.userAdmin}
+              canChangeStatus={snapshot.permissions.includes("users.change_status")}
               onOpenAssignments={snapshot.permissions.includes("badges.view_assignments")
                 ? () => setActiveSection("assignments")
                 : undefined}

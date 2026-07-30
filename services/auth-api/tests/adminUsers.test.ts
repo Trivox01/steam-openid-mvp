@@ -19,7 +19,7 @@ import { BadgeAssignmentService } from "../src/badgeAssignments/badgeAssignmentS
 import { InMemoryUserRepository } from "../src/users/userRepository.ts";
 import { UserService } from "../src/users/userService.ts";
 
-test("admin users are read-only, paginated, searchable, and permission protected", async () => {
+test("admin users support protected reads and account status changes", async () => {
   const authorizationRepository = new InMemoryAuthorizationRepository();
   const authorization = new AuthorizationService(authorizationRepository);
   const owner = await authorizationRepository.ensureAuthenticatedUser(
@@ -46,7 +46,7 @@ test("admin users are read-only, paginated, searchable, and permission protected
   const assignments = new BadgeAssignmentService(assignmentRepository);
   const users = new UserService(new InMemoryUserRepository(
     authorizationRepository, assignmentRepository
-  ));
+  ), authorizationRepository);
   const harness = await startHarness({
     authorization, sessions, badges, assignments, users
   });
@@ -78,6 +78,65 @@ test("admin users are read-only, paginated, searchable, and permission protected
       method: "DELETE",
       headers: { authorization: `Bearer ${ownerSession.token}` }
     })).status, 405);
+
+    authorizationRepository.overrides.push({
+      userId: outsider.id,
+      permission: "users.view",
+      effect: "allow"
+    });
+    assert.equal((await fetch(`${harness.baseUrl}/api/admin/users/${target.id}/status`, {
+      method: "PATCH",
+      headers: {
+        authorization: `Bearer ${outsiderSession.token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ status: "suspended" })
+    })).status, 403);
+
+    const invalid = await fetch(`${harness.baseUrl}/api/admin/users/${target.id}/status`, {
+      method: "PATCH",
+      headers: {
+        authorization: `Bearer ${ownerSession.token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ status: "banned" })
+    });
+    assert.equal(invalid.status, 400);
+
+    const changed = await fetch(`${harness.baseUrl}/api/admin/users/${target.id}/status`, {
+      method: "PATCH",
+      headers: {
+        authorization: `Bearer ${ownerSession.token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ status: "suspended", reason: "Temporary review" })
+    });
+    assert.equal(changed.status, 200);
+    assert.equal((await changed.json() as { status: string }).status, "suspended");
+    assert.equal((await fetch(`${harness.baseUrl}/api/admin/users/${target.id}/status`, {
+      method: "PATCH",
+      headers: {
+        authorization: `Bearer ${ownerSession.token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ status: "suspended" })
+    })).status, 409);
+    assert.deepEqual(
+      authorizationRepository.auditEvents.find(
+        (event) => event.action === "user.status_changed"
+      ),
+      {
+        actorUserId: owner.id,
+        action: "user.status_changed",
+        targetType: "user",
+        targetId: target.id,
+        metadata: {
+          previousStatus: "active",
+          newStatus: "suspended",
+          reason: "Temporary review"
+        }
+      }
+    );
   } finally {
     await harness.close();
   }

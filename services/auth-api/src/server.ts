@@ -67,7 +67,10 @@ async function main() {
   const badgeAssignments = new BadgeAssignmentService(
     storage.badgeAssignmentRepository
   );
-  const users = new UserService(storage.userRepository);
+  const users = new UserService(
+    storage.userRepository,
+    storage.authorizationRepository
+  );
   const badgeAssets = createBadgeAssetStorage(config);
   const bootstrapResult = await authorization.bootstrapOwner(
     config.bootstrapOwnerSteamId64

@@ -10,7 +10,7 @@ export interface AuthorizationUser {
 export interface AuthorizationUserSummary {
   id: string;
   displayName: string;
-  status: "active";
+  status: "active" | "suspended" | "disabled";
 }
 
 export interface AuthorizationRole {

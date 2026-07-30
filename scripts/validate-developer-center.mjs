@@ -99,6 +99,45 @@ test("User client keeps SteamID64 out of list assumptions and expires rejected s
   }
 });
 
+test("User status client sends a bounded PATCH and preserves failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const sessions = new FakeSessionSource(SESSION);
+  let body;
+  try {
+    globalThis.fetch = async (url, init) => {
+      assert.match(String(url), /\/api\/admin\/users\/.+\/status$/);
+      assert.equal(init?.method, "PATCH");
+      body = JSON.parse(String(init?.body));
+      return Response.json({
+        id: "00000000-0000-4000-8000-000000000001",
+        status: "suspended"
+      });
+    };
+    const client = new UserAdminClient("https://auth.example.test", sessions);
+    const changed = await client.changeStatus(
+      "00000000-0000-4000-8000-000000000001",
+      "suspended",
+      "Review"
+    );
+    assert.equal(changed.status, "suspended");
+    assert.deepEqual(body, { status: "suspended", reason: "Review" });
+    globalThis.fetch = async () => Response.json(
+      { error: "USER_STATUS_UNCHANGED" }, { status: 409 }
+    );
+    await assert.rejects(
+      client.changeStatus(
+        "00000000-0000-4000-8000-000000000001",
+        "suspended"
+      ),
+      (error) => error instanceof UserAdminClientError &&
+        error.code === "USER_STATUS_UNCHANGED" &&
+        error.status === 409
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Badge admin client expires the session on 401 and preserves HTTP errors", async () => {
   const originalFetch = globalThis.fetch;
   const sessions = new FakeSessionSource(SESSION);
@@ -339,7 +378,12 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
   assert.match(users, /event\.key === "Escape"/);
   assert.match(users, /steamId64/);
   assert.doesNotMatch(users.match(/<table[\s\S]*?<\/table>/)?.[0] ?? "", /steamId64/i);
-  assert.doesNotMatch(users, /method:\s*"(?:POST|PATCH|DELETE)"/);
+  assert.match(page, /users\.change_status/);
+  assert.match(users, /client\.changeStatus/);
+  assert.match(users, /status === user\.status/);
+  assert.match(users, /state === "saving"/);
+  assert.match(users, /role="alert"/);
+  assert.match(users, /trapFocus/);
   assert.match(css, /\.badge-editor \.badge-control input:focus-visible/);
   assert.match(css, /@media \(max-width:580px\)/);
   assert.match(css, /html\[dir="rtl"\] \.badge-toggle/);
@@ -348,6 +392,7 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
     assert.match(translations, /developer\.badges\.uploadRequirements/);
     assert.match(translations, /developer\.badges\.error\.INVALID_BADGE_DATES/);
     assert.match(translations, /developer\.users\.details/);
+    assert.match(translations, /developer\.users\.changeStatus/);
   }
 });
 

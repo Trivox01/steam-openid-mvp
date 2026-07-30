@@ -51,7 +51,7 @@ test("PostgreSQL repository integration and concurrency", {
       "SELECT count(*) FROM permissions"
     );
     assert.equal(Number(roleCount.rows[0].count), 5);
-    assert.equal(Number(permissionCount.rows[0].count), 19);
+    assert.equal(Number(permissionCount.rows[0].count), 20);
     const badgeRepository = new PostgresBadgeRepository(pool);
     await badgeRepository.validateSchema();
     const cleanupStorageKey =
@@ -92,7 +92,10 @@ test("PostgreSQL repository integration and concurrency", {
     const assignmentRepository = new PostgresBadgeAssignmentRepository(pool);
     await assignmentRepository.validateSchema();
     const assignments = new BadgeAssignmentService(assignmentRepository);
-    const users = new UserService(new PostgresUserRepository(pool));
+    const users = new UserService(
+      new PostgresUserRepository(pool),
+      authorizationRepository
+    );
     await users.repository.validateSchema();
     const concurrentAssignments = await Promise.allSettled([
       assignments.assign({
@@ -151,6 +154,26 @@ test("PostgreSQL repository integration and concurrency", {
     assert.equal(userDetails?.steamId64, user.steamId64);
     assert.equal(userDetails?.badgeCount, 1);
     assert.equal(userDetails?.roleCount, 1);
+    assert.equal((await users.changeStatus(user.id, user.id, {
+      status: "suspended",
+      reason: "Integration test"
+    }))?.status, "suspended");
+    assert.equal((await users.get(user.id))?.status, "suspended");
+    const statusAudit = await pool.query<{
+      action: string;
+      target_id: string;
+      metadata_json: Record<string, string>;
+    }>(
+      `SELECT action, target_id, metadata_json FROM audit_events
+       WHERE action='user.status_changed' AND target_id=$1`,
+      [user.id]
+    );
+    assert.equal(statusAudit.rowCount, 1);
+    assert.deepEqual(statusAudit.rows[0].metadata_json, {
+      previousStatus: "active",
+      newStatus: "suspended",
+      reason: "Integration test"
+    });
     const slugRace = await Promise.allSettled([
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id),
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id)
