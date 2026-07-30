@@ -24,22 +24,31 @@ export function ProfileCardTrigger({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const requestGeneration = useRef(0);
+
+  const closeCard = () => {
+    requestGeneration.current += 1;
+    setOpen(false);
+    setStatus("idle");
+    triggerRef.current?.focus();
+  };
 
   const requestOpen = async () => {
+    if (status === "loading") return;
+    const generation = ++requestGeneration.current;
     setOpen(true);
     setStatus("loading");
     try {
       const loaded = await loadSummary();
+      if (generation !== requestGeneration.current) return;
       if (!loaded) {
-        setOpen(false);
-        setStatus("idle");
-        triggerRef.current?.focus();
+        closeCard();
         return;
       }
       setSummary(loaded);
       setStatus("ready");
     } catch {
-      setStatus("error");
+      if (generation === requestGeneration.current) setStatus("error");
     }
   };
 
@@ -48,15 +57,13 @@ export function ProfileCardTrigger({
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (!rootRef.current?.contains(target) && !cardRef.current?.contains(target)) {
-        setOpen(false);
-        triggerRef.current?.focus();
+        closeCard();
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        setOpen(false);
-        triggerRef.current?.focus();
+        closeCard();
       }
       if (event.key === "Tab" && cardRef.current) trapFocus(event, cardRef.current);
     };
@@ -82,8 +89,13 @@ export function ProfileCardTrigger({
         className="profile-card-trigger__button"
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-busy={status === "loading"}
         aria-label={t("profile.openCard")}
-        onClick={() => open ? setOpen(false) : void requestOpen()}
+        onClick={() => {
+          if (status === "loading") return;
+          if (open) closeCard();
+          else void requestOpen();
+        }}
       >
         {children}
       </button>

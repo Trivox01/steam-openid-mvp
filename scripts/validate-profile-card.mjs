@@ -41,6 +41,8 @@ assert.match(trigger, /event\.key === "Escape"/);
 assert.match(trigger, /aria-haspopup="dialog"/);
 assert.match(trigger, /pointerdown/);
 assert.match(trigger, /cardRef\.current\?\.focus\(\)/, "opening the card focuses the dialog, not the first badge");
+assert.match(trigger, /requestGeneration/, "stale profile requests cannot reopen or mutate a closed card");
+assert.match(trigger, /status === "loading"[\s\S]*return/, "a second click cannot toggle the card while it is loading");
 assert.match(trigger, /createPortal\([\s\S]*document\.body/, "profile popover escapes Topbar stacking and clipping contexts");
 assert.match(card, /ProfileBanner[\s\S]*ProfileIdentity[\s\S]*ProfileStats[\s\S]*ProfileVerification/, "card is composed from focused profile sections");
 assert.match(identity, /ProfileAvatar/);
@@ -62,6 +64,8 @@ assert.doesNotMatch(publicBadgeClient, /assignmentReason|assignedBy|steamId/i, "
 assert.doesNotMatch(badges, /role="tooltip"/, "tooltip content is not nested inside the Profile Card badge DOM");
 assert.match(css, /\.profile-badge\{[^}]*width:20px;height:20px/, "inline badges are exactly 20 by 20 pixels");
 assert.match(css, /\.profile-badge\{[^}]*background:transparent/, "inline badges have no permanent tile background");
+assert.match(css, /\.public-badge\{[^}]*background:transparent/, "public badge icons have no surrounding tile");
+assert.doesNotMatch(css, /\.public-badge--(?:rare|epic|legendary|exclusive)\{[^}]*box-shadow/, "rarity does not add a square around public icons");
 assert.match(css, /\.profile-badge-tooltip-portal\{[^}]*z-index:1000/, "portal tooltip layers above the profile popover");
 assert.match(css, /\.profile-card-popover\{[^}]*width:400px/, "desktop profile card width remains stable");
 assert.match(css, /\.profile-card-popover\{[^}]*position:fixed/, "profile card is positioned against the viewport");
