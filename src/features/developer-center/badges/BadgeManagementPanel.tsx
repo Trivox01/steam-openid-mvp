@@ -19,7 +19,10 @@ import {
   validateBadgeDraft,
   validateBadgeIconFile
 } from "./badgeEditorValidation";
-import { publishPublicBadgeChange } from "../../../services/dataEvents";
+import {
+  publishPublicBadgeChange,
+  subscribeToApplicationRefresh
+} from "../../../services/dataEvents";
 
 const categories: BadgeCategory[] = [
   "staff", "community", "achievement", "event", "legacy", "special"
@@ -79,6 +82,7 @@ export function BadgeManagementPanel({ snapshot, client }: {
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
+  useEffect(() => subscribeToApplicationRefresh(() => void load()), [load]);
 
   const open = (badge?: ManagedBadge) => {
     returnFocusRef.current = document.activeElement as HTMLElement | null;

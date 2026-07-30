@@ -369,7 +369,7 @@ test("account switching ignores the previous account request", async () => {
 });
 
 test("Sidebar, route guard, and Overview enforce the Developer Center contract", async () => {
-  const [sidebar, route, page, app, assignments, badges, users, css, en, ar] = await Promise.all([
+  const [sidebar, route, page, app, assignments, badges, users, css, en, ar, refresh] = await Promise.all([
     readFile(new URL("../src/components/layout/Sidebar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/features/developer-center/DeveloperCenterRoute.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/DeveloperCenterPage.tsx", import.meta.url), "utf8"),
@@ -379,7 +379,8 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
     readFile(new URL("../src/features/developer-center/users/UserManagementPanel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/styles/index.css", import.meta.url), "utf8"),
     readFile(new URL("../src/locales/en/developerCenter.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/locales/ar/developerCenter.ts", import.meta.url), "utf8")
+    readFile(new URL("../src/locales/ar/developerCenter.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/services/ApplicationRefreshCoordinator.ts", import.meta.url), "utf8")
   ]);
   assert.match(sidebar, /canAccessDeveloperCenter\s*\?\s*item\("developer"/);
   assert.match(route, /state\.status === "forbidden"/);
@@ -419,11 +420,11 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
   assert.match(users, /role="alert"/);
   assert.match(users, /trapFocus/);
   assert.match(users, /getCached\(id\)/);
-  assert.match(users, /Promise\.allSettled/);
-  assert.match(users, /aria-busy=\{refreshing\}/);
+  assert.doesNotMatch(users, /user-refresh-all/);
+  assert.match(users, /subscribeToApplicationRefresh/);
+  assert.match(refresh, /Promise\.allSettled/);
   assert.match(users, /loading="lazy"/);
   assert.match(users, /UserDetailsSkeleton/);
-  assert.match(users, /client\.invalidate\(selectedId\)/);
   assert.match(assignments, /publishAdminUserChange/);
   assert.match(css, /\.badge-editor \.badge-control input:focus-visible/);
   assert.match(css, /@media \(max-width:580px\)/);

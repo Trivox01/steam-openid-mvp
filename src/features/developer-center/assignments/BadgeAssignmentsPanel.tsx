@@ -18,7 +18,8 @@ import type {
 import type { ManagedBadge } from "../badges/types";
 import {
   publishAdminUserChange,
-  publishPublicBadgeChange
+  publishPublicBadgeChange,
+  subscribeToApplicationRefresh
 } from "../../../services/dataEvents";
 
 const PAGE_SIZE = 20;
@@ -93,6 +94,9 @@ export function BadgeAssignmentsPanel({
       });
     return () => controller.abort();
   }, [load, loadReferences]);
+  useEffect(() => subscribeToApplicationRefresh(() => {
+    void Promise.all([load(), loadReferences()]);
+  }), [load, loadReferences]);
 
   const reset = () => {
     setStatus("active"); setSource(""); setUserId(""); setBadgeId("");

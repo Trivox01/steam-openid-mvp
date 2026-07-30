@@ -2,6 +2,7 @@ type Listener = () => void;
 const libraryListeners = new Set<Listener>();
 const publicBadgeListeners = new Set<() => void | Promise<void>>();
 const adminUserListeners = new Set<(userId?: string) => void>();
+const applicationRefreshListeners = new Set<Listener>();
 
 export function subscribeToLibraryChanges(listener: Listener) {
   libraryListeners.add(listener);
@@ -32,4 +33,13 @@ export function subscribeToAdminUserChanges(
 
 export function publishAdminUserChange(userId?: string) {
   adminUserListeners.forEach((listener) => listener(userId));
+}
+
+export function subscribeToApplicationRefresh(listener: Listener) {
+  applicationRefreshListeners.add(listener);
+  return () => { applicationRefreshListeners.delete(listener); };
+}
+
+export function publishApplicationRefresh() {
+  applicationRefreshListeners.forEach((listener) => listener());
 }

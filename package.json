@@ -13,6 +13,7 @@
     "test:game-details": "node --experimental-strip-types scripts/validate-game-details.mjs",
     "test:onboarding": "node --experimental-strip-types scripts/validate-onboarding.mjs",
     "test:navigation": "node --experimental-strip-types scripts/validate-navigation.mjs",
+    "test:tray-refresh": "node --experimental-strip-types scripts/validate-tray-refresh.mjs",
     "test:quality": "node --experimental-strip-types scripts/validate-quality.mjs",
     "test:statistics": "node --experimental-strip-types scripts/validate-statistics.mjs",
     "test:backend-auth": "npm --prefix services/auth-api test",
@@ -31,6 +32,7 @@
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2.5.0",
+    "@tauri-apps/plugin-updater": "^2.9.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.468.0",
     "react": "^19.1.1",

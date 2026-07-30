@@ -27,7 +27,14 @@ import { BadgeAssignmentClient } from "../features/developer-center/assignments/
 import { PublicBadgeClient } from "../features/profile/publicBadges/PublicBadgeClient";
 import { PublicBadgeStore } from "../features/profile/publicBadges/PublicBadgeStore";
 import { UserAdminClient } from "../features/developer-center/users/UserAdminClient";
-import { subscribeToAdminUserChanges } from "./dataEvents";
+import {
+  publishAdminUserChange,
+  publishApplicationRefresh,
+  publishLibraryChange,
+  publishPublicBadgeChange,
+  subscribeToAdminUserChanges
+} from "./dataEvents";
+import { ApplicationRefreshCoordinator } from "./ApplicationRefreshCoordinator";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -95,4 +102,44 @@ export const services = {
   steamLibrarySync: new SteamLibrarySyncService(steamProvider, games, sync),
   steamAchievementSync: new SteamAchievementSyncService(steamProvider, games, achievements, sync)
 };
+export const applicationRefresh = new ApplicationRefreshCoordinator();
+applicationRefresh.register({
+  id: "local-data",
+  run: async () => {
+    await Promise.all([
+      services.games.list(),
+      services.achievements.list(),
+      services.activities.list(),
+      services.profile.get(),
+      services.statistics.get()
+    ]);
+    publishLibraryChange();
+  }
+});
+applicationRefresh.register({
+  id: "authorization",
+  run: async () => {
+    await services.authorization?.retry();
+  }
+});
+applicationRefresh.register({
+  id: "steam-data",
+  run: async () => {
+    if (!services.steam.available) return;
+    const legacyProfile = await services.steam.getSavedProfile();
+    if (!legacyProfile) return;
+    await services.steamLibrarySync.sync();
+    await services.steamAchievementSync.sync();
+    publishLibraryChange();
+  }
+});
+applicationRefresh.register({
+  id: "network-caches",
+  run: async () => {
+    services.userAdmin?.invalidate();
+    publishAdminUserChange();
+    await publishPublicBadgeChange();
+    publishApplicationRefresh();
+  }
+});
 export const storageMode = persistent ? "sqlite" : "ephemeral";

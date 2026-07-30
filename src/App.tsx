@@ -7,7 +7,11 @@ import { ErrorView, LoadingView } from "./components/ui/StateViews";
 import { FirstLaunchExperience } from "./features/onboarding/FirstLaunchExperience";
 import type { AchievementId, GameId, NavigationView, PageId, UserPreferences, UserProfile } from "./types";
 import { initializeApplication } from "./services/initializationService";
-import { services } from "./services/compositionRoot";
+import { applicationRefresh, services } from "./services/compositionRoot";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { isTauriRuntime } from "./runtime/environment";
+import { check } from "@tauri-apps/plugin-updater";
 import { useTheme } from "./state/ThemeContext";
 import { useTranslation } from "./i18n/TranslationContext";
 import type { SettingsPageHandle } from "./pages/SettingsPage";
@@ -43,6 +47,7 @@ export function App() {
   const [navigationSaveFailed, setNavigationSaveFailed] = useState(false);
   const settingsRef = useRef<SettingsPageHandle>(null);
   const mainRef = useRef<HTMLElement>(null);
+  const updateCheckRunning = useRef(false);
   const initialize = useCallback(async () => {
     setInitialization("loading");
     try {
@@ -58,6 +63,48 @@ export function App() {
     }
   }, [setLanguage, setTheme, t]);
   useEffect(() => { void initialize(); }, [initialize]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "r")) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      event.preventDefault();
+      void applicationRefresh.refreshAll();
+    };
+    const abort = () => applicationRefresh.abort();
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("beforeunload", abort);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("beforeunload", abort);
+      applicationRefresh.abort();
+    };
+  }, []);
+  useEffect(() => {
+    if (!preferences || !isTauriRuntime()) return;
+    void invoke("set_tray_behavior_enabled", { enabled: preferences.minimizeToTray });
+  }, [preferences]);
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let unlisten: (() => void) | undefined;
+    void listen("nexus://check-for-updates", async () => {
+      if (updateCheckRunning.current) return;
+      updateCheckRunning.current = true;
+      try {
+        const update = await check({ timeout: 10_000 });
+        if (!update) {
+          window.alert(t("settings.upToDate"));
+        } else if (window.confirm(t("settings.updateAvailable").replace("{version}", update.version))) {
+          await update.downloadAndInstall();
+        }
+      } catch {
+        window.alert(t("settings.updateInfrastructureMissing"));
+      } finally {
+        updateCheckRunning.current = false;
+      }
+    }).then((dispose) => { unlisten = dispose; });
+    return () => unlisten?.();
+  }, [t]);
 
   const performPageNavigation = (page: PageId) => {
     mainRef.current?.scrollTo({ top: 0 });
@@ -118,6 +165,7 @@ export function App() {
   }
   return (
     <div className={`app-shell ${preferences.sidebarCollapsed ? "app-shell--sidebar-collapsed" : ""}`}>
+      <GlobalRefreshStatus />
       <Sidebar
         activePage={activeNavigationPage(view, activePage)}
         collapsed={preferences.sidebarCollapsed}
@@ -184,6 +232,20 @@ export function App() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function GlobalRefreshStatus() {
+  const { t } = useTranslation();
+  const [state, setState] = useState(applicationRefresh.getSnapshot());
+  useEffect(() => applicationRefresh.subscribe(setState), []);
+  if (state.status === "idle") return null;
+  return (
+    <div className={`application-refresh-toast is-${state.status}`} role="status" aria-live="polite">
+      {state.status === "refreshing" ? t("settings.refreshingAll")
+        : state.status === "success" ? t("settings.refreshAllSuccess")
+          : t("settings.refreshAllPartial")}
     </div>
   );
 }

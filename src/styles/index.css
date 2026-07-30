@@ -2090,3 +2090,37 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 @keyframes user-refresh-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.user-refresh-all svg.is-refreshing{animation:none}}
 @media(max-width:580px){.user-header-actions{width:100%;justify-content:space-between}.user-refresh-all{flex:1}}
+/* Global refresh feedback stays independent from the active route and its layout. */
+.application-refresh-toast {
+  position: fixed;
+  inset-block-end: 20px;
+  inset-inline-end: 20px;
+  z-index: var(--z-toast);
+  max-inline-size: min(360px, calc(100vw - 40px));
+  padding: 11px 15px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-elevated, var(--surface));
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.875rem;
+}
+
+.application-refresh-toast.is-success {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+}
+
+.application-refresh-toast.is-partial {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .application-refresh-toast {
+    animation: application-refresh-enter 160ms ease-out;
+  }
+}
+
+@keyframes application-refresh-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

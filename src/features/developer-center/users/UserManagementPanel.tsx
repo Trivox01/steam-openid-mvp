@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, Eye, Medal, RefreshCw, Search, Users, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Eye, Medal, Search, Users, X } from "lucide-react";
 import { Surface } from "../../../components/ui/Surface";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import { ProfileAvatar } from "../../../components/ui/ProfileAvatar";
 import { useTranslation } from "../../../i18n/TranslationContext";
 import type { UserAdminClient } from "./UserAdminClient";
 import type { ManagedUser, ManagedUserDetails, UserAccountStatus } from "./types";
+import { subscribeToApplicationRefresh } from "../../../services/dataEvents";
 
 const PAGE_SIZE = 20;
 
@@ -28,9 +29,6 @@ export function UserManagementPanel({
   const [state, setState] = useState<"loading"|"ready"|"error">("loading");
   const [selectedId, setSelectedId] = useState<string>();
   const [notice, setNotice] = useState<string>();
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshFailed, setRefreshFailed] = useState(false);
-  const [refreshedUser, setRefreshedUser] = useState<ManagedUserDetails>();
   const returnFocus = useRef<HTMLElement | null>(null);
   const closeDetails = () => {
     setSelectedId(undefined);
@@ -62,38 +60,11 @@ export function UserManagementPanel({
     return () => request.abort();
   }, [load]);
   useEffect(() => client?.subscribeSession(() => void load()), [client, load]);
+  useEffect(() => subscribeToApplicationRefresh(() => void load()), [load]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const format = (value: string) => new Intl.DateTimeFormat(language, {
     dateStyle: "medium", timeStyle: "short"
   }).format(new Date(value));
-  const refreshAll = async () => {
-    if (!client || refreshing) return;
-    setRefreshing(true);
-    setRefreshFailed(false);
-    client.invalidate(selectedId);
-    const controller = new AbortController();
-    const [listResult, detailsResult] = await Promise.allSettled([
-      client.list(query, controller.signal),
-      selectedId
-        ? client.get(selectedId, controller.signal)
-        : Promise.resolve(undefined)
-    ]);
-    if (listResult.status === "fulfilled") {
-      setItems(listResult.value.items);
-      setTotal(listResult.value.total);
-    }
-    if (detailsResult.status === "fulfilled" && detailsResult.value) {
-      setRefreshedUser(detailsResult.value);
-    }
-    const failed = listResult.status === "rejected" ||
-      detailsResult.status === "rejected";
-    setRefreshFailed(failed);
-    setNotice(t(failed
-      ? "developer.users.refreshPartial"
-      : "developer.users.refreshSuccess"));
-    setRefreshing(false);
-  };
-
   return (
     <section className="user-admin" aria-labelledby="user-admin-title">
       <header className="badge-admin-header">
@@ -101,23 +72,7 @@ export function UserManagementPanel({
           <h2 id="user-admin-title">{t("developer.users.title")}</h2>
           <p>{t("developer.users.description")}</p>
         </div>
-        <div className="user-header-actions">
-          <StatusBadge tone="neutral">{t("developer.users.statusOnly")}</StatusBadge>
-          <button
-            className="secondary-button user-refresh-all"
-            type="button"
-            title={t("developer.users.refreshAllHelp")}
-            aria-label={t("developer.users.refreshAllHelp")}
-            aria-busy={refreshing}
-            disabled={refreshing}
-            onClick={() => void refreshAll()}
-          >
-            <RefreshCw className={refreshing ? "is-refreshing" : ""} size={16}/>
-            {t(refreshing
-              ? "developer.users.refreshing"
-              : "developer.users.refreshAll")}
-          </button>
-        </div>
+        <StatusBadge tone="neutral">{t("developer.users.statusOnly")}</StatusBadge>
       </header>
       <Surface className="user-toolbar">
         <label>
@@ -146,10 +101,7 @@ export function UserManagementPanel({
           </select>
         </label>
       </Surface>
-      {notice && <p className={refreshFailed ? "user-status-notice is-error" : "user-status-notice"} role="status">
-        {notice}
-        {refreshFailed && <button type="button" onClick={() => void refreshAll()}>{t("common.retry")}</button>}
-      </p>}
+      {notice && <p className="user-status-notice" role="status">{notice}</p>}
       {state === "loading" ? <Surface className="badge-state">{t("developer.users.loading")}</Surface>
         : state === "error" ? <Surface className="badge-state" role="alert">
           <p>{t("developer.users.error")}</p><button type="button" onClick={() => void load()}>{t("common.retry")}</button>
@@ -182,7 +134,6 @@ export function UserManagementPanel({
       </nav>
       {selectedId && <UserDetailsDrawer
         id={selectedId} client={client} format={format}
-        refreshedUser={refreshedUser?.id === selectedId ? refreshedUser : undefined}
         canChangeStatus={canChangeStatus}
         onUserChanged={(updated) => {
           setItems((current) => current.map((item) =>
@@ -200,10 +151,9 @@ export function UserManagementPanel({
 }
 
 function UserDetailsDrawer({
-  id, client, format, refreshedUser, canChangeStatus, onUserChanged, onClose, onOpenAssignments
+  id, client, format, canChangeStatus, onUserChanged, onClose, onOpenAssignments
 }: {
   id: string; client?: UserAdminClient; format: (value: string) => string;
-  refreshedUser?: ManagedUserDetails;
   canChangeStatus: boolean;
   onUserChanged: (user: ManagedUserDetails) => void;
   onClose: () => void; onOpenAssignments?: () => void;
@@ -222,12 +172,6 @@ function UserDetailsDrawer({
     setChangingStatus(false);
     requestAnimationFrame(() => changeStatusButton.current?.focus());
   };
-  useEffect(() => {
-    if (refreshedUser) {
-      setUser(refreshedUser);
-      setState("ready");
-    }
-  }, [refreshedUser]);
   useEffect(() => {
     const currentCached = client?.getCached(id);
     setUser(currentCached);

@@ -26,7 +26,7 @@ import {
 import { PageHeader } from "../components/ui/PageHeader";
 import { useTheme, type Theme } from "../state/ThemeContext";
 import { useTranslation } from "../i18n/TranslationContext";
-import { services } from "../services/compositionRoot";
+import { applicationRefresh, services } from "../services/compositionRoot";
 import { defaultPreferences, preferencesEqual } from "../services/settingsPreferences";
 import type { UserPreferences, UserProfile } from "../types";
 import { ErrorView, LoadingView } from "../components/ui/StateViews";
@@ -52,6 +52,8 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
     const { setLanguage, t } = useTranslation();
     const [saved, setSaved] = useState<UserPreferences>();
     const [draft, setDraft] = useState<UserPreferences>();
+    const [refreshStatus, setRefreshStatus] = useState(applicationRefresh.getSnapshot());
+    useEffect(() => applicationRefresh.subscribe(setRefreshStatus), []);
     const [loadError, setLoadError] = useState("");
     const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
     const [saveError, setSaveError] = useState("");
@@ -248,12 +250,22 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
           </SettingsSection>
           <SettingsSection icon={Database} title={t("settings.data")} description={t("settings.dataDescription")}>
             <div className="data-actions">
+              <button type="button" aria-busy={refreshStatus.status === "refreshing"}
+                disabled={refreshStatus.status === "refreshing"}
+                onClick={() => void applicationRefresh.refreshAll()}>
+                <RefreshCw className={refreshStatus.status === "refreshing" ? "spinning" : ""} size={16} />
+                {t(refreshStatus.status === "refreshing" ? "settings.refreshingAll" : "settings.refreshAll")}
+              </button>
               <button type="button" onClick={() => void showOnboarding()}><PlayCircle size={16} />{t("settings.onboarding")}</button>
               <button type="button" onClick={sync} disabled={syncing}><RefreshCw className={syncing ? "spinning" : ""} size={16} />{syncing ? t("settings.syncing") : t("settings.sync")}</button>
               <button type="button" onClick={() => window.alert(t("settings.exportFuture"))}><Download size={16} />{t("settings.export")}</button>
               <button type="button" onClick={() => openConfirmDialog("reset")}><RotateCw size={16} />{t("settings.reset")}</button>
               <button type="button" className="danger" onClick={() => openConfirmDialog("delete")}><Trash2 size={16} />{t("settings.delete")}</button>
             </div>
+            <p className="sr-only" role="status" aria-live="polite">
+              {refreshStatus.status === "success" ? t("settings.refreshAllSuccess")
+                : refreshStatus.status === "partial" ? t("settings.refreshAllPartial") : ""}
+            </p>
           </SettingsSection>
         </div>
 
