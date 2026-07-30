@@ -11,6 +11,10 @@ import {
   BadgeAssignmentClient,
   BadgeAssignmentClientError
 } from "../src/features/developer-center/assignments/BadgeAssignmentClient.ts";
+import {
+  validateBadgeDraft,
+  validateBadgeIconFile
+} from "../src/features/developer-center/badges/badgeEditorValidation.ts";
 
 const SESSION = {
   token: "memory-only-session",
@@ -115,6 +119,37 @@ test("Badge assignment client preserves domain errors and prevents stale session
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Badge editor validation mirrors required Backend constraints", () => {
+  const base = {
+    displayName: "Founder", slug: "founder", description: "",
+    category: "special", rarity: "exclusive", priority: 0,
+    isActive: true, isVisible: true, grantMode: "manual"
+  };
+  assert.deepEqual(validateBadgeDraft(base), {});
+  assert.equal(validateBadgeDraft({ ...base, displayName: "" }).displayName, "REQUIRED_NAME");
+  assert.equal(validateBadgeDraft({ ...base, slug: "Invalid Slug" }).slug, "INVALID_BADGE_SLUG");
+  assert.equal(validateBadgeDraft({ ...base, priority: -1 }).priority, "INVALID_PRIORITY");
+  assert.equal(validateBadgeDraft({
+    ...base,
+    startsAt: "2026-08-02T12:00",
+    endsAt: "2026-08-01T12:00"
+  }).endsAt, "INVALID_BADGE_DATES");
+});
+
+test("Badge icon selection rejects unsupported and oversized files", () => {
+  assert.equal(validateBadgeIconFile(
+    new File([new Uint8Array(128)], "badge.png", { type: "image/png" })
+  ), "");
+  assert.equal(validateBadgeIconFile(
+    new File([new Uint8Array(128)], "badge.svg", { type: "image/svg+xml" })
+  ), "INVALID_ASSET_FORMAT");
+  assert.equal(validateBadgeIconFile(
+    new File([new Uint8Array(2 * 1024 * 1024 + 1)], "large.webp", {
+      type: "image/webp"
+    })
+  ), "INVALID_ASSET_SIZE");
 });
 
 test("Authorization store is fail-closed and does not rely on role slug", async () => {
@@ -230,12 +265,16 @@ test("account switching ignores the previous account request", async () => {
 });
 
 test("Sidebar, route guard, and Overview enforce the Developer Center contract", async () => {
-  const [sidebar, route, page, app, assignments] = await Promise.all([
+  const [sidebar, route, page, app, assignments, badges, css, en, ar] = await Promise.all([
     readFile(new URL("../src/components/layout/Sidebar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/features/developer-center/DeveloperCenterRoute.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/DeveloperCenterPage.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/features/developer-center/assignments/BadgeAssignmentsPanel.tsx", import.meta.url), "utf8")
+    readFile(new URL("../src/features/developer-center/assignments/BadgeAssignmentsPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/features/developer-center/badges/BadgeManagementPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/styles/index.css", import.meta.url), "utf8"),
+    readFile(new URL("../src/locales/en/developerCenter.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/locales/ar/developerCenter.ts", import.meta.url), "utf8")
   ]);
   assert.match(sidebar, /canAccessDeveloperCenter\s*\?\s*item\("developer"/);
   assert.match(route, /state\.status === "forbidden"/);
@@ -253,6 +292,22 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
   assert.match(assignments, /aria-modal="true"/);
   assert.match(assignments, /event\.key === "Escape"/);
   assert.doesNotMatch(assignments, /steamId64|optimistic/i);
+  assert.match(badges, /aria-describedby/);
+  assert.match(badges, /aria-invalid/);
+  assert.match(badges, /aria-modal="true"/);
+  assert.match(badges, /event\.key === "Escape"/);
+  assert.match(badges, /event\.key !== "Tab"/);
+  assert.match(badges, /dataTransfer\.files/);
+  assert.match(badges, /disabled=\{saveDisabled\}/);
+  assert.match(badges, /if \(!client \|\| saving\) return/);
+  assert.match(css, /\.badge-editor \.badge-control input:focus-visible/);
+  assert.match(css, /@media \(max-width:580px\)/);
+  assert.match(css, /html\[dir="rtl"\] \.badge-toggle/);
+  for (const translations of [en, ar]) {
+    assert.match(translations, /developer\.badges\.helpName/);
+    assert.match(translations, /developer\.badges\.uploadRequirements/);
+    assert.match(translations, /developer\.badges\.error\.INVALID_BADGE_DATES/);
+  }
 });
 
 class FakeSessionSource {
