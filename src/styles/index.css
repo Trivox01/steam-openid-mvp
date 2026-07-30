@@ -2064,3 +2064,8 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
   .profile-badge-tooltip-portal{animation:none}
   .public-badges__skeleton{animation:none}
 }
+
+.user-short-id{display:inline-flex;align-items:center;gap:.4rem;max-width:100%}
+.user-short-id code{font-size:.78rem;color:var(--text-secondary);white-space:nowrap}
+.user-short-id button{width:30px;height:30px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);color:var(--text-muted);background:var(--surface-raised);transition:color 150ms ease-out,border-color 150ms ease-out}
+.user-short-id button:hover,.user-short-id button:focus-visible{color:var(--text-primary);border-color:var(--accent-primary)}

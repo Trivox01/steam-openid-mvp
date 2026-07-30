@@ -15,6 +15,7 @@ import { BadgeService } from "./badges/badgeService.ts";
 import { createBadgeAssetStorage } from "./badges/badgeAssetStorageFactory.ts";
 import { BadgeAssignmentService } from "./badgeAssignments/badgeAssignmentService.ts";
 import { UserService } from "./users/userService.ts";
+import { SteamUserProfileClient } from "./steam/steamUserProfileClient.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -37,9 +38,21 @@ async function main() {
   const storage = await initializeStorage(config);
   const transactions = new AuthTransactionService(storage.repository);
   const authorization = new AuthorizationService(storage.authorizationRepository);
+  const steamProfiles = config.steamWebApiKey
+    ? new SteamUserProfileClient(config.steamWebApiKey)
+    : undefined;
   const sessions = new SessionTokenService(
     config.sessionSecret,
-    storage.authorizationRepository
+    storage.authorizationRepository,
+    Date.now,
+    steamProfiles
+      ? async (steamId64) => {
+          const profile = await steamProfiles.get(steamId64);
+          if (profile) {
+            await storage.userRepository.updateSteamProfile(steamId64, profile);
+          }
+        }
+      : undefined
   );
   const badges = new BadgeService(storage.badgeRepository);
   const badgeAssignments = new BadgeAssignmentService(

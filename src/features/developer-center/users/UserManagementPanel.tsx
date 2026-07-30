@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, Medal, Search, Users, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Eye, Medal, Search, Users, X } from "lucide-react";
 import { Surface } from "../../../components/ui/Surface";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import { ProfileAvatar } from "../../../components/ui/ProfileAvatar";
@@ -107,7 +107,7 @@ export function UserManagementPanel({
               <tbody>{items.map((user) => <tr key={user.id}>
                 <td><ProfileAvatar src={user.avatarUrl} name={user.displayName ?? user.steamNickname ?? user.id}/>
                   <span><strong dir="auto">{user.displayName ?? user.steamNickname ?? t("developer.users.unknown")}</strong>
-                    <small dir="ltr">{user.id}</small></span></td>
+                    <small dir="ltr" title={user.id}>{shortId(user.id)}</small></span></td>
                 <td>{format(user.createdAt)}</td><td>{format(user.lastLoginAt)}</td>
                 <td><StatusBadge tone="success">{t("developer.users.active")}</StatusBadge></td>
                 <td>{user.badgeCount}</td><td>{user.roleCount}</td>
@@ -170,7 +170,7 @@ function UserDetailsDrawer({ id, client, format, onClose, onOpenAssignments }: {
             <ProfileAvatar src={user.avatarUrl} name={user.displayName ?? user.steamNickname ?? user.id}/>
             <h4 dir="auto">{user.displayName ?? user.steamNickname ?? t("developer.users.unknown")}</h4>
             <dl>
-              <Row label={t("developer.users.uuid")} value={user.id} ltr/>
+              <div><dt>{t("developer.users.uuid")}</dt><dd><ShortIdentifier value={user.id}/></dd></div>
               <Row label={t("developer.users.steamId")} value={user.steamId64} ltr/>
               <Row label={t("developer.users.steamNickname")} value={user.steamNickname ?? "—"}/>
               <Row label={t("developer.users.created")} value={format(user.createdAt)}/>
@@ -191,6 +191,26 @@ function UserDetailsDrawer({ id, client, format, onClose, onOpenAssignments }: {
 
 function Row({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
   return <div><dt>{label}</dt><dd dir={ltr ? "ltr" : "auto"}>{value}</dd></div>;
+}
+
+function ShortIdentifier({ value }: { value: string }) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  return <span className="user-short-id" dir="ltr" title={value}>
+    <code>{shortId(value)}</code>
+    <button
+      type="button"
+      aria-label={t(copied ? "developer.users.copied" : "developer.users.copyUuid")}
+      onClick={async () => {
+        await navigator.clipboard.writeText(value);
+        setCopied(true);
+      }}
+    >{copied ? <Check size={15}/> : <Copy size={15}/>}</button>
+  </span>;
+}
+
+function shortId(value: string) {
+  return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value;
 }
 
 function UserBadgeIcon({ src }: { src?: string }) {

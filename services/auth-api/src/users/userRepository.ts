@@ -7,6 +7,10 @@ export interface UserRepository {
   list(query: UserQuery): Promise<{ items: UserSummary[]; total: number }>;
   get(id: string): Promise<UserDetails | undefined>;
   count(): Promise<number>;
+  updateSteamProfile(
+    steamId64: string,
+    profile: { steamNickname: string; avatarUrl?: string }
+  ): Promise<void>;
 }
 
 export class InMemoryUserRepository implements UserRepository {
@@ -55,6 +59,7 @@ export class InMemoryUserRepository implements UserRepository {
   async count() {
     return (this.authorization as { users?: Map<string, unknown> }).users?.size ?? 0;
   }
+  async updateSteamProfile() {}
   private async toSummary(user: { id: string }): Promise<UserSummary> {
     const assignments = await this.assignments.list({
       page: 1, pageSize: 100, status: "active", userId: user.id,

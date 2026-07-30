@@ -43,6 +43,8 @@ export const developerCenter = {
   "developer.users.loadingDetails": "جارٍ تحميل تفاصيل المستخدم…",
   "developer.users.detailsError": "تعذر تحميل تفاصيل المستخدم.",
   "developer.users.uuid": "معرّف المستخدم UUID",
+  "developer.users.copyUuid": "نسخ معرّف المستخدم الكامل",
+  "developer.users.copied": "تم نسخ معرّف المستخدم",
   "developer.users.steamId": "SteamID64",
   "developer.users.steamNickname": "اسم Steam",
   "developer.users.assignedBadges": "الشارات الممنوحة",

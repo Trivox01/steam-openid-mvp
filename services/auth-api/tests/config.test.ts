@@ -44,6 +44,26 @@ test("loads secure OpenID environment configuration", () => {
   });
 });
 
+test("loads the optional server-only Steam Web API key", () => {
+  const config = loadAuthApiConfig({
+    ...VALID_ENV,
+    STEAM_WEB_API_KEY: "server-only-steam-web-api-key"
+  });
+  assert.equal(config.steamWebApiKey, "server-only-steam-web-api-key");
+});
+
+test("rejects malformed Steam Web API keys", () => {
+  assert.throws(
+    () => loadAuthApiConfig({
+      ...VALID_ENV,
+      STEAM_WEB_API_KEY: "key with whitespace is invalid"
+    }),
+    (error) =>
+      error instanceof ConfigurationError &&
+      error.code === "invalid_STEAM_WEB_API_KEY"
+  );
+});
+
 test("parses the explicit Windows Tauri and Vite development origin allowlist", () => {
   const config = loadAuthApiConfig({
     ...VALID_ENV,

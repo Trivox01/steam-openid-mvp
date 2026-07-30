@@ -31,6 +31,7 @@ export interface AuthApiConfig {
   badgeAssetDirectory?: string;
   badgeStorageDriver?: BadgeStorageDriver;
   s3BadgeStorage?: S3BadgeStorageConfig;
+  steamWebApiKey?: string;
 }
 
 export class ConfigurationError extends Error {
@@ -70,6 +71,10 @@ export function loadAuthApiConfig(
   const s3BadgeStorage = badgeStorageDriver === "s3"
     ? parseS3BadgeStorage(environment, nodeEnv)
     : undefined;
+  const steamWebApiKey = parseOptionalSecret(
+    environment.STEAM_WEB_API_KEY,
+    "STEAM_WEB_API_KEY"
+  );
 
   if (publicBaseUrl.search || openIdRealm.search || openIdRealm.hash) {
     throw new ConfigurationError("invalid_OPENID_REALM");
@@ -127,8 +132,21 @@ export function loadAuthApiConfig(
     ...(environment.BADGE_ASSET_DIRECTORY?.trim()
       ? { badgeAssetDirectory: environment.BADGE_ASSET_DIRECTORY.trim() }
       : {}),
-    ...(bootstrapOwnerSteamId64 ? { bootstrapOwnerSteamId64 } : {})
+    ...(bootstrapOwnerSteamId64 ? { bootstrapOwnerSteamId64 } : {}),
+    ...(steamWebApiKey ? { steamWebApiKey } : {})
   };
+}
+
+function parseOptionalSecret(
+  value: string | undefined,
+  name: string
+) {
+  if (!value?.trim()) return undefined;
+  const secret = value.trim();
+  if (secret.length < 20 || secret.length > 256 || /\s|[\r\n]/.test(secret)) {
+    throw new ConfigurationError(`invalid_${name}`);
+  }
+  return secret;
 }
 
 function parseBadgeStorageDriver(

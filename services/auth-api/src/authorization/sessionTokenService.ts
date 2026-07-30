@@ -15,19 +15,23 @@ export class SessionTokenService {
   private readonly secret: string;
   private readonly repository: AuthorizationRepository;
   private readonly now: () => number;
+  private readonly enrichProfile?: (steamId64: string) => Promise<void>;
 
   constructor(
     secret: string,
     repository: AuthorizationRepository,
-    now: () => number = Date.now
+    now: () => number = Date.now,
+    enrichProfile?: (steamId64: string) => Promise<void>
   ) {
     this.secret = secret;
     this.repository = repository;
     this.now = now;
+    this.enrichProfile = enrichProfile;
   }
 
   async issueForSteamIdentity(steamId64: string, authenticatedAt: string) {
     const user = await this.repository.ensureAuthenticatedUser(steamId64, authenticatedAt);
+    await this.enrichProfile?.(steamId64).catch(() => undefined);
     const issuedAt = Math.floor(this.now() / 1000);
     const expiresAt = issuedAt + Math.floor(SESSION_TTL_MS / 1000);
     const claims: SessionClaims = { sub: user.id, iat: issuedAt, exp: expiresAt, jti: randomUUID() };

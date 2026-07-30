@@ -43,6 +43,8 @@ export const developerCenter = {
   "developer.users.loadingDetails": "Loading user details…",
   "developer.users.detailsError": "User details could not be loaded.",
   "developer.users.uuid": "User UUID",
+  "developer.users.copyUuid": "Copy full user UUID",
+  "developer.users.copied": "User UUID copied",
   "developer.users.steamId": "SteamID64",
   "developer.users.steamNickname": "Steam nickname",
   "developer.users.assignedBadges": "Assigned badges",

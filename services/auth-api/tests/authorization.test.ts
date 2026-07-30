@@ -280,6 +280,35 @@ test("session authentication ignores client supplied roles and permissions", asy
   );
 });
 
+test("session issuance enriches Steam profile without making authentication depend on it", async () => {
+  const repository = new InMemoryAuthorizationRepository();
+  const enriched: string[] = [];
+  const successful = new SessionTokenService(
+    "authorization-test-secret-0123456789-ABCDEF",
+    repository,
+    () => Date.parse(AUTHENTICATED_AT),
+    async (steamId64) => { enriched.push(steamId64); }
+  );
+  const issued = await successful.issueForSteamIdentity(USER_STEAM_ID, AUTHENTICATED_AT);
+  assert.deepEqual(enriched, [USER_STEAM_ID]);
+  assert.equal(
+    (await successful.authenticateBearer(`Bearer ${issued.token}`)).steamId64,
+    USER_STEAM_ID
+  );
+
+  const unavailable = new SessionTokenService(
+    "authorization-test-secret-0123456789-ABCDEF",
+    repository,
+    () => Date.parse(AUTHENTICATED_AT),
+    async () => { throw new Error("profile_provider_unavailable"); }
+  );
+  const fallback = await unavailable.issueForSteamIdentity(USER_STEAM_ID, AUTHENTICATED_AT);
+  assert.equal(
+    (await unavailable.authenticateBearer(`Bearer ${fallback.token}`)).steamId64,
+    USER_STEAM_ID
+  );
+});
+
 test("HTTP authorization errors distinguish missing authentication from denied permission", () => {
   assert.equal(authorizationErrorStatus("AUTHENTICATION_REQUIRED"), 401);
   assert.equal(authorizationErrorStatus("PERMISSION_DENIED"), 403);

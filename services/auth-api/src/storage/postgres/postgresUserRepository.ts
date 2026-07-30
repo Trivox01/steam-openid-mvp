@@ -113,6 +113,16 @@ export class PostgresUserRepository implements UserRepository {
     const result = await this.pool.query<{ count: string }>("SELECT count(*) FROM users");
     return Number(result.rows[0]?.count ?? 0);
   }
+  async updateSteamProfile(
+    steamId64: string,
+    profile: { steamNickname: string; avatarUrl?: string }
+  ) {
+    await this.pool.query(
+      `UPDATE users SET steam_nickname=$2, avatar_url=$3, updated_at=now()
+       WHERE steam_id64=$1`,
+      [steamId64, profile.steamNickname, profile.avatarUrl ?? null]
+    );
+  }
 }
 
 function mapSummary(row: QueryResultRow): UserSummary {
