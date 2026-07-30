@@ -36,6 +36,7 @@ const badgeTooltip = await readFile(new URL("../src/components/profile/BadgeTool
 const publicBadgeList = await readFile(new URL("../src/components/profile/publicBadges/PublicBadgeList.tsx", import.meta.url), "utf8");
 const publicBadgeClient = await readFile(new URL("../src/features/profile/publicBadges/PublicBadgeClient.ts", import.meta.url), "utf8");
 const publicBadgeStore = await readFile(new URL("../src/features/profile/publicBadges/PublicBadgeStore.ts", import.meta.url), "utf8");
+const assignmentsPanel = await readFile(new URL("../src/features/developer-center/assignments/BadgeAssignmentsPanel.tsx", import.meta.url), "utf8");
 const css = await readFile(new URL("../src/styles/index.css", import.meta.url), "utf8");
 const adapter = await readFile(new URL("../src/features/profile/profileSummaryAdapter.ts", import.meta.url), "utf8");
 assert.match(trigger, /event\.key === "Escape"/);
@@ -61,6 +62,8 @@ assert.match(badgeTooltip, /event\.key === "Escape" && open/, "Escape closes the
 assert.match(publicBadgeStore, /AbortController/, "prefetched public badge request is cancellable");
 assert.match(publicBadgeStore, /subscribeSession/, "public badges preload when the authenticated session becomes available");
 assert.match(publicBadgeStore, /private clear\(\)[\s\S]*generation \+= 1/, "session changes clear cached badges and invalidate stale requests");
+assert.match(publicBadgeStore, /subscribeToPublicBadgeChanges/, "assignment changes refresh prefetched public badges");
+assert.match(assignmentsPanel, /await publishPublicBadgeChange\(\)/, "grant and revoke wait for the profile badge refresh");
 assert.match(publicBadgeList, /VISIBLE_BADGES = 5/, "public badge overflow remains bounded");
 assert.match(publicBadgeClient, /\/api\/me\/public-badges/, "profile uses one public badge endpoint");
 assert.doesNotMatch(publicBadgeClient, /assignmentReason|assignedBy|steamId/i, "public client does not model administrative data");

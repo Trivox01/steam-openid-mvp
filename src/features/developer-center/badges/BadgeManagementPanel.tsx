@@ -19,6 +19,7 @@ import {
   validateBadgeDraft,
   validateBadgeIconFile
 } from "./badgeEditorValidation";
+import { publishPublicBadgeChange } from "../../../services/dataEvents";
 
 const categories: BadgeCategory[] = [
   "staff", "community", "achievement", "event", "legacy", "special"
@@ -93,7 +94,11 @@ export function BadgeManagementPanel({ snapshot, client }: {
       !client ||
       !confirm(t("developer.badges.archiveConfirm", { name: badge.displayName }))
     ) return;
-    try { await client.archive(badge.id); await load(); }
+    try {
+      await client.archive(badge.id);
+      await publishPublicBadgeChange();
+      await load();
+    }
     catch (reason) {
       setError(reason instanceof Error ? reason.message : "REQUEST_FAILED");
     }
@@ -192,7 +197,11 @@ export function BadgeManagementPanel({ snapshot, client }: {
       </div>}
       {editing && <BadgeEditorDialog badge={editing} client={client}
         canUpload={can("assets.upload")} onClose={closeEditor}
-        onSaved={async () => { closeEditor(); await load(); }}/>}
+        onSaved={async () => {
+          await publishPublicBadgeChange();
+          closeEditor();
+          await load();
+        }}/>}
     </div>
   );
 }

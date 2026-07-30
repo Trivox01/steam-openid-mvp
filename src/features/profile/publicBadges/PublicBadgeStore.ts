@@ -1,6 +1,7 @@
 import type { BackendSessionSource } from "../../developer-center/AuthorizationStore";
 import type { PublicBadgeClient } from "./PublicBadgeClient";
 import type { PublicBadge } from "./types";
+import { subscribeToPublicBadgeChanges } from "../../../services/dataEvents";
 
 export type PublicBadgeState =
   | { status: "idle" }
@@ -12,6 +13,7 @@ export class PublicBadgeStore {
   private state: PublicBadgeState = { status: "idle" };
   private readonly listeners = new Set<(state: PublicBadgeState) => void>();
   private unsubscribeSession?: () => void;
+  private unsubscribeChanges?: () => void;
   private request?: AbortController;
   private generation = 0;
 
@@ -31,6 +33,9 @@ export class PublicBadgeStore {
       if (session) void this.load();
       else this.clear();
     });
+    this.unsubscribeChanges = subscribeToPublicBadgeChanges(() =>
+      this.sessions.getActiveSession() ? this.load(true) : undefined
+    );
     if (this.sessions.getActiveSession()) void this.load();
     else this.clear();
   }
@@ -38,16 +43,20 @@ export class PublicBadgeStore {
     this.request?.abort();
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
+    this.unsubscribeChanges?.();
+    this.unsubscribeChanges = undefined;
     this.clear();
   }
-  retry() { return this.load(); }
+  retry() { return this.load(true); }
 
-  private async load() {
+  private async load(preserveReady = false) {
     this.request?.abort();
     const request = new AbortController();
     this.request = request;
     const generation = ++this.generation;
-    this.setState({ status: "loading" });
+    if (!preserveReady || this.state.status !== "ready") {
+      this.setState({ status: "loading" });
+    }
     try {
       const badges = await this.client.list(request.signal);
       if (generation === this.generation) this.setState({ status: "ready", badges });

@@ -16,6 +16,7 @@ import type {
   AssignmentSource, AssignmentStatus, AssignmentUser, BadgeAssignment
 } from "./types";
 import type { ManagedBadge } from "../badges/types";
+import { publishPublicBadgeChange } from "../../../services/dataEvents";
 
 const PAGE_SIZE = 20;
 const sources: AssignmentSource[] = ["manual", "automatic", "system", "migration"];
@@ -195,13 +196,23 @@ export function BadgeAssignmentsPanel({
 
       {grantOpen && <GrantDialog client={client} users={users} badges={badges}
         onClose={() => setGrantOpen(false)}
-        onSuccess={async () => { setGrantOpen(false); setNotice(t("developer.assignments.granted")); await load(); }}/>}
+        onSuccess={async () => {
+          await publishPublicBadgeChange();
+          setGrantOpen(false);
+          setNotice(t("developer.assignments.granted"));
+          await load();
+        }}/>}
       {revokeTarget && <RevokeDialog assignment={revokeTarget}
         userName={labelUser(revokeTarget.userId)}
         badgeName={badgeMap.get(revokeTarget.badgeDefinitionId)?.displayName ?? t("developer.assignments.unknownBadge")}
         client={client} formatDate={formatDate}
         onClose={() => setRevokeTarget(undefined)}
-        onSuccess={async () => { setRevokeTarget(undefined); setNotice(t("developer.assignments.revokedNotice")); await load(); }}/>}
+        onSuccess={async () => {
+          await publishPublicBadgeChange();
+          setRevokeTarget(undefined);
+          setNotice(t("developer.assignments.revokedNotice"));
+          await load();
+        }}/>}
       {selected && <DetailsDialog assignment={selected}
         userName={labelUser(selected.userId)}
         badgeName={badgeMap.get(selected.badgeDefinitionId)?.displayName ?? t("developer.assignments.unknownBadge")}
