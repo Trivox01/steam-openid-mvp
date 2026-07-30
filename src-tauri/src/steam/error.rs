@@ -15,6 +15,9 @@ pub enum SteamError {
     GameUnsupported,
     NoAchievements,
     GameNotOwned,
+    NoPlayerStats,
+    SchemaUnavailable,
+    InvalidAppId,
 }
 
 impl SteamError {
@@ -35,6 +38,9 @@ impl SteamError {
             Self::GameUnsupported => "game_unsupported",
             Self::NoAchievements => "no_achievements",
             Self::GameNotOwned => "game_not_owned",
+            Self::NoPlayerStats => "no_player_stats",
+            Self::SchemaUnavailable => "schema_unavailable",
+            Self::InvalidAppId => "invalid_app_id",
         }
     }
 
@@ -55,6 +61,9 @@ impl SteamError {
             Self::GameUnsupported => "This game does not expose achievements through Steam Web API.",
             Self::NoAchievements => "This game has no Steam achievements.",
             Self::GameNotOwned => "The connected Steam account does not own this game.",
+            Self::NoPlayerStats => "No achievement statistics were found for this Steam account.",
+            Self::SchemaUnavailable => "Steam achievement data for this game is currently unavailable.",
+            Self::InvalidAppId => "The stored Steam AppID is invalid.",
         }
     }
 }

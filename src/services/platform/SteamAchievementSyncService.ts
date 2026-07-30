@@ -11,7 +11,7 @@ import { dedupeSteamGames, isRetryableAchievementError, mapWithConcurrency, summ
 
 const DEFAULT_CONCURRENCY = 2;
 const DEFAULT_BATCH_LIMIT = 20;
-const unsupportedCodes = new Set(["game_unsupported", "no_achievements"]);
+const unsupportedCodes = new Set(["game_unsupported", "no_achievements", "schema_unavailable", "invalid_app_id"]);
 const batchBlockingCodes = new Set([
   "api_key_unavailable", "invalid_api_key", "steam_not_connected",
   "private_library", "rate_limited", "no_internet", "timeout"
@@ -20,6 +20,7 @@ const safeSteamErrorCodes = new Set([
   ...unsupportedCodes,
   ...batchBlockingCodes,
   "steam_api_unavailable", "invalid_response", "game_not_owned",
+  "no_player_stats", "schema_unavailable", "invalid_app_id",
   "steam_not_connected", "session_expired"
 ]);
 
@@ -98,7 +99,7 @@ export class SteamAchievementSyncService {
     let stage: "steam" | "sqlite" = "steam";
     try {
       const dto = await this.fetchWithRetry(game.appId);
-      logDevelopmentSync(game.appId, "steam", "success", dto.achievements.length, startedAt);
+      logDevelopmentSync(game.appId, game.name, "request", "success", dto.achievements.length, startedAt);
       const merged = mergeSteamAchievements(game.id, existing, dto);
       stage = "sqlite";
       if (merged.changed.length) await this.achievements.saveAchievements(merged.changed);
@@ -115,7 +116,7 @@ export class SteamAchievementSyncService {
         achievementsSyncStatus: dto.warnings.length ? "partial" : "success",
         achievementsSyncError: undefined
       });
-      logDevelopmentSync(game.appId, "sqlite", "success", dto.achievements.length, startedAt);
+      logDevelopmentSync(game.appId, game.name, "database", "success", dto.achievements.length, startedAt);
       return {
         gameId: game.id, appId: game.appId, gameName: game.name,
         status: dto.warnings.length ? "partial" : "success",
@@ -132,7 +133,7 @@ export class SteamAchievementSyncService {
         achievementsSyncStatus: unsupported ? "unsupported" : "error",
         achievementsSyncError: code
       }).catch(() => undefined);
-      logDevelopmentSync(game.appId, stage, "failed", 0, startedAt, code);
+      logDevelopmentSync(game.appId, game.name, stage === "sqlite" ? "database" : "request", "failed", 0, startedAt, code);
       return {
         gameId: game.id, appId: game.appId, gameName: game.name,
         status: unsupported ? "unsupported" : "failed",
@@ -163,7 +164,8 @@ function safeErrorCode(error: unknown) {
 
 function logDevelopmentSync(
   appId: string,
-  stage: "steam" | "sqlite",
+  gameName: string,
+  stage: "request" | "parse" | "database",
   outcome: "success" | "failed",
   achievementsReceived: number,
   startedAt: number,
@@ -172,6 +174,7 @@ function logDevelopmentSync(
   if (!import.meta.env.DEV) return;
   const details = {
     appId,
+    gameName,
     stage,
     achievementsReceived,
     httpStatus: undefined,

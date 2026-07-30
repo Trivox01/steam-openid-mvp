@@ -138,15 +138,28 @@ pub async fn steam_get_game_achievements(
     #[cfg(debug_assertions)]
     match &result {
         Ok(payload) => eprintln!(
-            "[steam-achievements] app_id={} achievements_received={} outcome=success duration_ms={}",
-            app_id, payload.achievements.len(), started.elapsed().as_millis()
+            "[steam-achievements] app_id={} game_name={:?} success=true achievements_received={} outcome=success stage=parse duration_ms={}",
+            app_id, payload.game_name, payload.achievements.len(), started.elapsed().as_millis()
         ),
         Err(error) => eprintln!(
-            "[steam-achievements] app_id={} achievements_received=0 outcome=failed reason={} duration_ms={}",
-            app_id, error.code(), started.elapsed().as_millis()
+            "[steam-achievements] app_id={} success=false achievements_received=0 outcome=failed error_code={} stage={} duration_ms={}",
+            app_id, error.code(), achievement_error_stage(error), started.elapsed().as_millis()
         ),
     }
     result.map_err(|error| SteamCommandError { code: error.code().to_string() })
+}
+
+#[cfg(debug_assertions)]
+fn achievement_error_stage(error: &SteamError) -> &'static str {
+    match error {
+        SteamError::NoInternet
+        | SteamError::Timeout
+        | SteamError::ApiUnavailable
+        | SteamError::RateLimited
+        | SteamError::InvalidApiKey
+        | SteamError::ApiKeyUnavailable => "request",
+        _ => "parse",
+    }
 }
 
 fn connection_error(error: SteamError) -> SteamConnectionResult {

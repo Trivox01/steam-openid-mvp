@@ -62,6 +62,7 @@ export async function validateSteamAchievementSync() {
   ];
   assert(retryableAchievementGameIds(retryCandidates).join() === "temporary", "retry targets only temporary failures");
   assert(isRetryableAchievementError("rate_limited") && !isRetryableAchievementError("no_achievements"), "temporary and permanent errors differ");
+  assert(!isRetryableAchievementError("no_player_stats") && !isRetryableAchievementError("schema_unavailable"), "unavailable game data is not retried blindly");
   const failures = achievementFailureCounts(retryCandidates);
   assert(failures.timeout === 1 && failures.private_library === 1 && failures.no_achievements === 1, "failure categories are counted");
 

@@ -13,7 +13,8 @@ const [page, en, ar, rustClient, rustCommand, service] = await Promise.all([
 ]);
 for (const key of [
   "apiUnavailable", "apiKeyMissing", "noAchievements", "notOwned",
-  "timeout", "rateLimited", "sessionExpired"
+  "noPlayerStats", "schemaUnavailable", "invalidAppId",
+  "timeout", "rateLimited", "sessionExpired", "storageFailed"
 ]) {
   assert.match(page, new RegExp(`gameDetails\\.sync\\.${key}`));
   assert.match(en, new RegExp(`gameDetails\\.sync\\.${key}`));
@@ -21,9 +22,12 @@ for (const key of [
 }
 assert.match(rustClient, /http_status=/);
 assert.match(rustClient, /duration_ms=/);
+assert.match(rustClient, /GetSchemaForGame\/v2/);
+assert.match(rustClient, /GetPlayerAchievements\/v1/);
 assert.match(rustCommand, /achievements_received=/);
 assert.match(service, /stage:\s*"steam"\s*\|\s*"sqlite"/);
+assert.match(service, /stage === "sqlite" \? "database" : "request"/);
 assert.match(service, /httpStatus/);
 assert.doesNotMatch(service, /apiKey|pollSecret|sessionToken/);
 
-console.log(`Steam achievement validation passed (${assertions + 12} assertions).`);
+console.log(`Steam achievement validation passed (${assertions + 18} assertions).`);

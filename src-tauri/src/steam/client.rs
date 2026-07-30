@@ -115,26 +115,26 @@ impl SteamClient {
     ) -> Result<super::SteamGameAchievements, SteamError> {
         validate_steam_id(steam_id)?;
         if api_key.trim().is_empty() { return Err(SteamError::ApiKeyUnavailable); }
-        if app_id == 0 { return Err(SteamError::GameUnsupported); }
+        if app_id == 0 { return Err(SteamError::InvalidAppId); }
         let app_id_text = app_id.to_string();
 
         let schema_text = self.get_text(
             GAME_SCHEMA_ENDPOINT,
             &[("key", api_key.trim()), ("appid", &app_id_text), ("l", "english")],
             app_id,
-            "schema",
+            "GetSchemaForGame/v2",
         ).await?;
         let player_text = self.get_text(
             PLAYER_ACHIEVEMENTS_ENDPOINT,
             &[("key", api_key.trim()), ("steamid", steam_id), ("appid", &app_id_text), ("l", "english")],
             app_id,
-            "player-achievements",
+            "GetPlayerAchievements/v1",
         ).await?;
         let global_text = self.get_text(
             GLOBAL_ACHIEVEMENTS_ENDPOINT,
             &[("gameid", &app_id_text)],
             app_id,
-            "global-percentages",
+            "GetGlobalAchievementPercentagesForApp/v2",
         ).await.ok();
         merge_achievement_payloads(app_id, &schema_text, &player_text, global_text.as_deref())
     }
@@ -166,8 +166,9 @@ impl SteamClient {
                 return Err(SteamError::RateLimited);
             }
             StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND => {
-                log_steam_request(app_id, operation, Some(status.as_u16()), "game_unsupported", started.elapsed());
-                return Err(SteamError::GameUnsupported);
+                let error = map_achievement_http_error(operation, status);
+                log_steam_request(app_id, operation, Some(status.as_u16()), error.code(), started.elapsed());
+                return Err(error);
             }
             status if !status.is_success() => {
                 log_steam_request(app_id, operation, Some(status.as_u16()), "steam_api_unavailable", started.elapsed());
@@ -204,7 +205,7 @@ pub(crate) fn merge_achievement_payloads(
     global_payload: Option<&str>,
 ) -> Result<super::SteamGameAchievements, SteamError> {
     let schema: SteamSchemaResponse = serde_json::from_str(schema_payload).map_err(|_| SteamError::InvalidResponse)?;
-    let game = schema.game.ok_or(SteamError::GameUnsupported)?;
+    let game = schema.game.ok_or(SteamError::SchemaUnavailable)?;
     let schema_items = game.available_game_stats.and_then(|stats| stats.achievements).unwrap_or_default();
     if schema_items.is_empty() { return Err(SteamError::NoAchievements); }
 
@@ -214,7 +215,12 @@ pub(crate) fn merge_achievement_payloads(
     let player_items = match player.playerstats {
         Some(stats) if !stats.success && stats.error.is_some() => {
             let error = stats.error.unwrap_or_default().to_ascii_lowercase();
-            return Err(if error.contains("does not own") || error.contains("not own") {
+            return Err(if error.contains("requested app has no stats")
+                || error.contains("user has no stats")
+                || error.contains("no stats")
+            {
+                SteamError::NoPlayerStats
+            } else if error.contains("does not own") || error.contains("not own") {
                 SteamError::GameNotOwned
             } else {
                 SteamError::PrivateLibrary
@@ -382,6 +388,20 @@ fn map_request_error(error: reqwest::Error) -> SteamError {
     }
 }
 
+fn map_achievement_http_error(operation: &str, status: StatusCode) -> SteamError {
+    if operation == "GetSchemaForGame/v2" {
+        if status == StatusCode::BAD_REQUEST {
+            SteamError::InvalidAppId
+        } else {
+            SteamError::SchemaUnavailable
+        }
+    } else if operation == "GetPlayerAchievements/v1" {
+        SteamError::NoPlayerStats
+    } else {
+        SteamError::GameUnsupported
+    }
+}
+
 #[cfg(debug_assertions)]
 fn log_steam_request(
     app_id: u32,
@@ -405,7 +425,8 @@ fn log_steam_request(_: u32, _: &str, _: Option<u16>, _: &str, _: Duration) {}
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_achievement_payloads, owned_games_query, parse_owned_games_payload};
+    use reqwest::StatusCode;
+    use super::{map_achievement_http_error, merge_achievement_payloads, owned_games_query, parse_owned_games_payload};
     use crate::steam::SteamError;
 
     #[test]
@@ -492,9 +513,41 @@ mod tests {
             merge_achievement_payloads(20, schema, r#"{"playerstats":{"success":false,"error":"User does not own this game"}}"#, None),
             Err(SteamError::GameNotOwned)
         ));
+        assert!(matches!(
+            merge_achievement_payloads(20, schema, r#"{"playerstats":{"success":false,"error":"Requested app has no stats"}}"#, None),
+            Err(SteamError::NoPlayerStats)
+        ));
+        assert!(matches!(
+            merge_achievement_payloads(20, r#"{"game":null}"#, r#"{"playerstats":{"success":true}}"#, None),
+            Err(SteamError::SchemaUnavailable)
+        ));
+        assert!(matches!(
+            merge_achievement_payloads(20, "malformed", r#"{"playerstats":{"success":true}}"#, None),
+            Err(SteamError::InvalidResponse)
+        ));
         let partial = merge_achievement_payloads(20, schema, "{}", None).expect("missing player stats is partial");
         assert!(!partial.achievements[0].unlocked);
         assert!(partial.warnings.contains(&"player_stats_unavailable".to_string()));
         assert!(partial.warnings.contains(&"global_percentages_unavailable".to_string()));
+    }
+
+    #[test]
+    fn classifies_invalid_app_and_endpoint_specific_http_failures() {
+        assert!(matches!(
+            map_achievement_http_error("GetSchemaForGame/v2", StatusCode::BAD_REQUEST),
+            SteamError::InvalidAppId
+        ));
+        assert!(matches!(
+            map_achievement_http_error("GetSchemaForGame/v2", StatusCode::NOT_FOUND),
+            SteamError::SchemaUnavailable
+        ));
+        assert!(matches!(
+            map_achievement_http_error("GetPlayerAchievements/v1", StatusCode::BAD_REQUEST),
+            SteamError::NoPlayerStats
+        ));
+        assert!(matches!(
+            map_achievement_http_error("GetGlobalAchievementPercentagesForApp/v2", StatusCode::NOT_FOUND),
+            SteamError::GameUnsupported
+        ));
     }
 }
