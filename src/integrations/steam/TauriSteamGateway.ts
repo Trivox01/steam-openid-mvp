@@ -93,6 +93,15 @@ export class TauriSteamGateway {
     }
   }
 
+  async hasApiKey(): Promise<boolean> {
+    if (!this.available) return false;
+    try {
+      return await invoke<boolean>("has_steam_api_key");
+    } catch {
+      return false;
+    }
+  }
+
   async disconnect(): Promise<void> {
     if (!this.available) {
       throw new SteamIntegrationError(

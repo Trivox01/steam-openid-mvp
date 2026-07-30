@@ -2114,6 +2114,23 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
   border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
 }
 
+.refresh-details {
+  display: grid;
+  gap: 8px;
+  margin-block-start: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle, var(--panel));
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.refresh-details strong { color: var(--text-primary); }
+.refresh-details ul { margin: 0; padding-inline-start: 18px; }
+.refresh-details p { margin: 0; }
+.refresh-details .secondary-button { justify-self: start; }
+
 @media (prefers-reduced-motion: no-preference) {
   .application-refresh-toast {
     animation: application-refresh-enter 160ms ease-out;

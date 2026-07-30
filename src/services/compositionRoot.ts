@@ -31,10 +31,13 @@ import {
   publishAdminUserChange,
   publishApplicationRefresh,
   publishLibraryChange,
-  publishPublicBadgeChange,
   subscribeToAdminUserChanges
 } from "./dataEvents";
-import { ApplicationRefreshCoordinator } from "./ApplicationRefreshCoordinator";
+import {
+  ApplicationRefreshCoordinator,
+  RefreshHandlerError,
+  skipped
+} from "./ApplicationRefreshCoordinator";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -104,41 +107,77 @@ export const services = {
 };
 export const applicationRefresh = new ApplicationRefreshCoordinator();
 applicationRefresh.register({
-  id: "local-data",
+  id: "local-library",
   run: async () => {
     await Promise.all([
       services.games.list(),
       services.achievements.list(),
-      services.activities.list(),
-      services.profile.get(),
-      services.statistics.get()
+      services.activities.list()
     ]);
     publishLibraryChange();
   }
 });
 applicationRefresh.register({
+  id: "profile",
+  run: async () => { await services.profile.get(); }
+});
+applicationRefresh.register({
+  id: "statistics",
+  run: async () => { await services.statistics.get(); }
+});
+applicationRefresh.register({
   id: "authorization",
   run: async () => {
-    await services.authorization?.retry();
+    if (!services.authorization || !services.steamOpenId?.getActiveSession()) {
+      return skipped("session_unavailable");
+    }
+    await services.authorization.retry();
+    const state = services.authorization.getState();
+    if (state.status === "error") throw new RefreshHandlerError(state.error);
+    if (state.status === "unauthorized") return skipped("session_expired");
   }
 });
 applicationRefresh.register({
-  id: "steam-data",
+  id: "steam-library",
   run: async () => {
-    if (!services.steam.available) return;
+    if (!services.steam.available || !await services.steam.hasApiKey()) {
+      return skipped("steam_credentials_unavailable");
+    }
     const legacyProfile = await services.steam.getSavedProfile();
-    if (!legacyProfile) return;
+    if (!legacyProfile) return skipped("steam_profile_unavailable");
     await services.steamLibrarySync.sync();
+    publishLibraryChange();
+  }
+});
+applicationRefresh.register({
+  id: "steam-achievements",
+  run: async () => {
+    if (!services.steam.available || !await services.steam.hasApiKey()) {
+      return skipped("steam_credentials_unavailable");
+    }
+    const legacyProfile = await services.steam.getSavedProfile();
+    if (!legacyProfile) return skipped("steam_profile_unavailable");
     await services.steamAchievementSync.sync();
     publishLibraryChange();
   }
 });
 applicationRefresh.register({
-  id: "network-caches",
+  id: "public-badges",
+  run: async () => {
+    if (!services.publicBadges || !services.steamOpenId?.getActiveSession()) {
+      return skipped("session_unavailable");
+    }
+    await services.publicBadges.retry();
+    if (services.publicBadges.getState().status === "error") {
+      throw new RefreshHandlerError("network");
+    }
+  }
+});
+applicationRefresh.register({
+  id: "developer-data",
   run: async () => {
     services.userAdmin?.invalidate();
     publishAdminUserChange();
-    await publishPublicBadgeChange();
     publishApplicationRefresh();
   }
 });

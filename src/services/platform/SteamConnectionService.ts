@@ -38,6 +38,10 @@ export class SteamConnectionService {
     return this.gateway.getSavedProfile();
   }
 
+  hasApiKey() {
+    return this.gateway.hasApiKey();
+  }
+
   disconnect() {
     return this.gateway.disconnect();
   }

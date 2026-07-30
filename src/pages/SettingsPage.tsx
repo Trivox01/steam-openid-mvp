@@ -266,6 +266,34 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
               {refreshStatus.status === "success" ? t("settings.refreshAllSuccess")
                 : refreshStatus.status === "partial" ? t("settings.refreshAllPartial") : ""}
             </p>
+            {refreshStatus.status !== "idle" && refreshStatus.status !== "refreshing" && (
+              <div className="refresh-details" role="status" aria-live="polite">
+                <strong>{t("settings.refreshSummary", {
+                  completed: refreshStatus.results.filter((item) => item.status === "success").length,
+                  total: refreshStatus.results.length
+                })}</strong>
+                {refreshStatus.results.some((item) => item.status === "failed") && (
+                  <ul>
+                    {refreshStatus.results.filter((item) => item.status === "failed").map((item) => (
+                      <li key={item.id}>{t("settings.refreshSourceFailed", {
+                        source: t(`settings.refreshSource.${item.id}`)
+                      })}</li>
+                    ))}
+                  </ul>
+                )}
+                {refreshStatus.results.some((item) => item.status === "skipped") && (
+                  <p>{t("settings.refreshSkipped", {
+                    count: refreshStatus.results.filter((item) => item.status === "skipped").length
+                  })}</p>
+                )}
+                {refreshStatus.results.some((item) => item.status === "failed") && (
+                  <button type="button" className="secondary-button"
+                    onClick={() => void applicationRefresh.retryFailedOnly()}>
+                    <RefreshCw size={15} />{t("settings.retryFailed")}
+                  </button>
+                )}
+              </div>
+            )}
           </SettingsSection>
         </div>
 

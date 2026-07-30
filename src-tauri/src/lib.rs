@@ -25,6 +25,11 @@ fn set_tray_behavior_enabled(enabled: bool, state: tauri::State<'_, DesktopLifec
     state.minimize_to_tray.store(enabled, Ordering::Relaxed);
 }
 
+#[tauri::command]
+fn has_steam_api_key(state: tauri::State<'_, secret_store::SecretStore>) -> Result<bool, String> {
+    state.steam_api_key().map(|value| value.is_some())
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -152,7 +157,8 @@ pub fn run() {
             steam_commands::disconnect_steam_account,
             steam_commands::steam_get_owned_games,
             steam_commands::steam_get_game_achievements,
-            set_tray_behavior_enabled
+            set_tray_behavior_enabled,
+            has_steam_api_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running Achievement Nexus");

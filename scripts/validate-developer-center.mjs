@@ -422,7 +422,8 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
   assert.match(users, /getCached\(id\)/);
   assert.doesNotMatch(users, /user-refresh-all/);
   assert.match(users, /subscribeToApplicationRefresh/);
-  assert.match(refresh, /Promise\.allSettled/);
+  assert.match(refresh, /Promise\.all\(ids\.map/);
+  assert.match(refresh, /retryFailedOnly/);
   assert.match(users, /loading="lazy"/);
   assert.match(users, /UserDetailsSkeleton/);
   assert.match(assignments, /publishAdminUserChange/);
