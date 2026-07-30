@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-import type { PublicBadgeClient } from "../../../features/profile/publicBadges/PublicBadgeClient";
-import type { PublicBadge } from "../../../features/profile/publicBadges/types";
+import { usePublicBadges } from "../../../features/profile/publicBadges/PublicBadgeContext";
 import { useTranslation } from "../../../i18n/TranslationContext";
 import { PublicBadgeIcon } from "./PublicBadgeIcon";
 import { PublicBadgeOverflow } from "./PublicBadgeOverflow";
@@ -8,31 +6,9 @@ import { PublicBadgeTooltip } from "./PublicBadgeTooltip";
 
 const VISIBLE_BADGES = 5;
 
-export function PublicBadgeList({ client }: { client?: PublicBadgeClient }) {
+export function PublicBadgeList() {
   const { t } = useTranslation();
-  const [state, setState] = useState<
-    { status: "loading" } |
-    { status: "ready"; badges: PublicBadge[] } |
-    { status: "error" }
-  >({ status: "loading" });
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    const request = new AbortController();
-    setState({ status: "loading" });
-    if (!client) {
-      setState({ status: "ready", badges: [] });
-      return () => request.abort();
-    }
-    client.list(request.signal).then(
-      (badges) => setState({ status: "ready", badges }),
-      (error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setState({ status: "error" });
-        }
-      }
-    );
-    return () => request.abort();
-  }, [client, revision]);
+  const { state, retry } = usePublicBadges();
 
   if (state.status === "loading") {
     return <span className="public-badges__skeleton" aria-label={t("profile.badgesLoading")} />;
@@ -42,11 +18,12 @@ export function PublicBadgeList({ client }: { client?: PublicBadgeClient }) {
       <button
         type="button"
         className="public-badges__retry"
-        onClick={() => setRevision((value) => value + 1)}
+        onClick={retry}
         aria-label={t("profile.badgesRetry")}
       >!</button>
     );
   }
+  if (state.status === "idle") return null;
   if (!state.badges.length) return null;
   const visible = state.badges.slice(0, VISIBLE_BADGES);
   const overflow = state.badges.slice(VISIBLE_BADGES);

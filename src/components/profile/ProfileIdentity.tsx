@@ -2,9 +2,8 @@ import type { UserProfileSummary } from "../../features/profile/types";
 import { useTranslation } from "../../i18n/TranslationContext";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
 import { PublicBadgeList } from "./publicBadges/PublicBadgeList";
-import type { PublicBadgeClient } from "../../features/profile/publicBadges/PublicBadgeClient";
 
-export function ProfileIdentity({ summary, publicBadgeClient }: { summary: UserProfileSummary; publicBadgeClient?: PublicBadgeClient }) {
+export function ProfileIdentity({ summary }: { summary: UserProfileSummary }) {
   const { t } = useTranslation();
   return (
     <section className="profile-card__identity">
@@ -21,7 +20,7 @@ export function ProfileIdentity({ summary, publicBadgeClient }: { summary: UserP
         <div className="profile-card__heading">
           <div className="profile-card__name-row">
             <h2 dir="auto">{summary.displayName}</h2>
-            <PublicBadgeList client={publicBadgeClient} />
+            <PublicBadgeList />
           </div>
           {summary.username && <p className="profile-card__username" dir="auto">@{summary.username}</p>}
         </div>

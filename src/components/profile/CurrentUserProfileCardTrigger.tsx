@@ -18,7 +18,6 @@ export function CurrentUserProfileCardTrigger({
   return (
     <ProfileCardTrigger
       onAction={onAction}
-      publicBadgeClient={services.publicBadges}
       loadSummary={async () => {
         const identity = await services.steamOpenId?.getSavedIdentity();
         if (!identity) return undefined;

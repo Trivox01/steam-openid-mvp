@@ -35,6 +35,7 @@ const badges = await readFile(new URL("../src/components/profile/ProfileBadges.t
 const badgeTooltip = await readFile(new URL("../src/components/profile/BadgeTooltip.tsx", import.meta.url), "utf8");
 const publicBadgeList = await readFile(new URL("../src/components/profile/publicBadges/PublicBadgeList.tsx", import.meta.url), "utf8");
 const publicBadgeClient = await readFile(new URL("../src/features/profile/publicBadges/PublicBadgeClient.ts", import.meta.url), "utf8");
+const publicBadgeStore = await readFile(new URL("../src/features/profile/publicBadges/PublicBadgeStore.ts", import.meta.url), "utf8");
 const css = await readFile(new URL("../src/styles/index.css", import.meta.url), "utf8");
 const adapter = await readFile(new URL("../src/features/profile/profileSummaryAdapter.ts", import.meta.url), "utf8");
 assert.match(trigger, /event\.key === "Escape"/);
@@ -57,7 +58,9 @@ assert.match(badges, /size=\{24\}/, "badge tooltip contains a larger icon");
 assert.match(badgeTooltip, /createPortal\([\s\S]*document\.body/, "badge tooltip renders through a document body portal");
 assert.match(badgeTooltip, /window\.innerWidth[\s\S]*window\.innerHeight/, "badge tooltip handles viewport collisions");
 assert.match(badgeTooltip, /event\.key === "Escape" && open/, "Escape closes the tooltip before bubbling to the profile popover");
-assert.match(publicBadgeList, /AbortController/, "public badge request is cancelled on unmount");
+assert.match(publicBadgeStore, /AbortController/, "prefetched public badge request is cancellable");
+assert.match(publicBadgeStore, /subscribeSession/, "public badges preload when the authenticated session becomes available");
+assert.match(publicBadgeStore, /private clear\(\)[\s\S]*generation \+= 1/, "session changes clear cached badges and invalidate stale requests");
 assert.match(publicBadgeList, /VISIBLE_BADGES = 5/, "public badge overflow remains bounded");
 assert.match(publicBadgeClient, /\/api\/me\/public-badges/, "profile uses one public badge endpoint");
 assert.doesNotMatch(publicBadgeClient, /assignmentReason|assignedBy|steamId/i, "public client does not model administrative data");
