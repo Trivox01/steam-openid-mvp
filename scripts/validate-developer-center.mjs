@@ -110,7 +110,9 @@ test("User status client sends a bounded PATCH and preserves failures", async ()
       body = JSON.parse(String(init?.body));
       return Response.json({
         id: "00000000-0000-4000-8000-000000000001",
-        status: "suspended"
+        status: "suspended",
+        badges: [],
+        roles: []
       });
     };
     const client = new UserAdminClient("https://auth.example.test", sessions);
@@ -133,6 +135,38 @@ test("User status client sends a bounded PATCH and preserves failures", async ()
         error.code === "USER_STATUS_UNCHANGED" &&
         error.status === 409
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("User details cache is short-lived and explicitly invalidated", async () => {
+  const originalFetch = globalThis.fetch;
+  const sessions = new FakeSessionSource(SESSION);
+  const id = "00000000-0000-4000-8000-000000000001";
+  let calls = 0;
+  try {
+    globalThis.fetch = async () => {
+      calls += 1;
+      return Response.json({
+        id,
+        steamId64: "76561198000000001",
+        createdAt: "2026-07-30T00:00:00.000Z",
+        lastLoginAt: "2026-07-30T00:00:00.000Z",
+        status: "active",
+        badgeCount: 1,
+        roleCount: 1,
+        roles: [],
+        badges: []
+      });
+    };
+    const client = new UserAdminClient("https://auth.example.test", sessions);
+    assert.equal(client.getCached(id), undefined);
+    const loaded = await client.get(id);
+    assert.equal(calls, 1);
+    assert.equal(client.getCached(id), loaded);
+    client.invalidate(id);
+    assert.equal(client.getCached(id), undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -384,6 +418,13 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
   assert.match(users, /state === "saving"/);
   assert.match(users, /role="alert"/);
   assert.match(users, /trapFocus/);
+  assert.match(users, /getCached\(id\)/);
+  assert.match(users, /Promise\.allSettled/);
+  assert.match(users, /aria-busy=\{refreshing\}/);
+  assert.match(users, /loading="lazy"/);
+  assert.match(users, /UserDetailsSkeleton/);
+  assert.match(users, /client\.invalidate\(selectedId\)/);
+  assert.match(assignments, /publishAdminUserChange/);
   assert.match(css, /\.badge-editor \.badge-control input:focus-visible/);
   assert.match(css, /@media \(max-width:580px\)/);
   assert.match(css, /html\[dir="rtl"\] \.badge-toggle/);
@@ -393,6 +434,7 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
     assert.match(translations, /developer\.badges\.error\.INVALID_BADGE_DATES/);
     assert.match(translations, /developer\.users\.details/);
     assert.match(translations, /developer\.users\.changeStatus/);
+    assert.match(translations, /developer\.users\.refreshAll/);
   }
 });
 

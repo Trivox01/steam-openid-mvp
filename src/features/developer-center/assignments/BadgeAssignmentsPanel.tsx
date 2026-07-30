@@ -16,7 +16,10 @@ import type {
   AssignmentSource, AssignmentStatus, AssignmentUser, BadgeAssignment
 } from "./types";
 import type { ManagedBadge } from "../badges/types";
-import { publishPublicBadgeChange } from "../../../services/dataEvents";
+import {
+  publishAdminUserChange,
+  publishPublicBadgeChange
+} from "../../../services/dataEvents";
 
 const PAGE_SIZE = 20;
 const sources: AssignmentSource[] = ["manual", "automatic", "system", "migration"];
@@ -198,6 +201,7 @@ export function BadgeAssignmentsPanel({
         onClose={() => setGrantOpen(false)}
         onSuccess={async () => {
           await publishPublicBadgeChange();
+          publishAdminUserChange();
           setGrantOpen(false);
           setNotice(t("developer.assignments.granted"));
           await load();
@@ -209,6 +213,7 @@ export function BadgeAssignmentsPanel({
         onClose={() => setRevokeTarget(undefined)}
         onSuccess={async () => {
           await publishPublicBadgeChange();
+          publishAdminUserChange(revokeTarget.userId);
           setRevokeTarget(undefined);
           setNotice(t("developer.assignments.revokedNotice"));
           await load();

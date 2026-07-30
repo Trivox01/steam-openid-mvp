@@ -1,6 +1,7 @@
 type Listener = () => void;
 const libraryListeners = new Set<Listener>();
 const publicBadgeListeners = new Set<() => void | Promise<void>>();
+const adminUserListeners = new Set<(userId?: string) => void>();
 
 export function subscribeToLibraryChanges(listener: Listener) {
   libraryListeners.add(listener);
@@ -20,4 +21,15 @@ export function subscribeToPublicBadgeChanges(
 
 export async function publishPublicBadgeChange() {
   await Promise.all([...publicBadgeListeners].map((listener) => listener()));
+}
+
+export function subscribeToAdminUserChanges(
+  listener: (userId?: string) => void
+) {
+  adminUserListeners.add(listener);
+  return () => adminUserListeners.delete(listener);
+}
+
+export function publishAdminUserChange(userId?: string) {
+  adminUserListeners.forEach((listener) => listener(userId));
 }

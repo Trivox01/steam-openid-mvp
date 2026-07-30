@@ -2076,3 +2076,17 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 .user-status-dialog>label{display:grid;gap:.4rem;color:var(--text-secondary);font-size:.82rem}
 .user-status-dialog select,.user-status-dialog textarea{width:100%;padding:.65rem;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);color:var(--text-primary);background:var(--surface-raised)}
 .user-status-dialog textarea{min-height:6rem;resize:vertical}
+.user-header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:.6rem}
+.user-refresh-all svg.is-refreshing{animation:user-refresh-spin .8s linear infinite}
+.user-status-notice{display:flex;align-items:center;gap:.6rem}
+.user-status-notice.is-error{color:var(--status-error)}
+.user-status-notice button{color:inherit;text-decoration:underline}
+.user-details-skeleton{display:grid;gap:.75rem;padding:1rem 0}
+.user-details-skeleton .skeleton{display:block;border-radius:var(--radius-sm)}
+.user-details-skeleton__avatar{width:64px;height:64px;border-radius:50%!important}
+.user-details-skeleton__title{width:min(14rem,65%);height:1.4rem}
+.user-details-skeleton__line{width:100%;height:2.5rem}
+.user-details-skeleton__badges{width:min(20rem,85%);height:2rem}
+@keyframes user-refresh-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.user-refresh-all svg.is-refreshing{animation:none}}
+@media(max-width:580px){.user-header-actions{width:100%;justify-content:space-between}.user-refresh-all{flex:1}}
