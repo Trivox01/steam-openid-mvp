@@ -34,11 +34,14 @@ import {
   handlePublicBadges,
   isPublicBadgePath
 } from "./routes/publicBadges.ts";
+import { handleAdminUsers, isAdminUserPath } from "./routes/adminUsers.ts";
+import type { UserService } from "./users/userService.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
   badgeAssets?: BadgeAssetStorage;
   badgeAssignments?: BadgeAssignmentService;
+  users?: UserService;
 };
 
 export function createRouter(
@@ -90,13 +93,19 @@ export function createRouter(
       Boolean(steamAuthDependencies?.badgeAssets) &&
       Boolean(steamAuthDependencies?.badgeAssignments) &&
       Boolean(steamAuthDependencies?.sessions);
+    const isUserRoute =
+      isAdminUserPath(url.pathname) &&
+      Boolean(steamAuthDependencies?.users) &&
+      Boolean(steamAuthDependencies?.authorization) &&
+      Boolean(steamAuthDependencies?.sessions);
     if (
       isSteamAuthRoute ||
       isAuthorizationRoute ||
       isBadgeRoute ||
       isBadgeAssignmentRoute ||
       isAssignmentUserRoute ||
-      isPublicBadgeRoute
+      isPublicBadgeRoute ||
+      isUserRoute
     ) {
       const cors = applyCorsHeaders(
         request,
@@ -134,6 +143,14 @@ export function createRouter(
         return;
       }
     }
+    if (
+      isUserRoute &&
+      await handleAdminUsers(request, response, url, {
+        users: steamAuthDependencies!.users!,
+        authorization: steamAuthDependencies!.authorization!,
+        sessions: steamAuthDependencies!.sessions!
+      })
+    ) return;
     if (
       isPublicBadgeRoute &&
       await handlePublicBadges(request, response, url, {

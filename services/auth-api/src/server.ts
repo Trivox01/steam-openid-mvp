@@ -14,6 +14,7 @@ import { SessionTokenService } from "./authorization/sessionTokenService.ts";
 import { BadgeService } from "./badges/badgeService.ts";
 import { createBadgeAssetStorage } from "./badges/badgeAssetStorageFactory.ts";
 import { BadgeAssignmentService } from "./badgeAssignments/badgeAssignmentService.ts";
+import { UserService } from "./users/userService.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -44,6 +45,7 @@ async function main() {
   const badgeAssignments = new BadgeAssignmentService(
     storage.badgeAssignmentRepository
   );
+  const users = new UserService(storage.userRepository);
   const badgeAssets = createBadgeAssetStorage(config);
   const bootstrapResult = await authorization.bootstrapOwner(
     config.bootstrapOwnerSteamId64
@@ -76,7 +78,8 @@ async function main() {
       sessions,
       badges,
       badgeAssignments,
-      badgeAssets
+      badgeAssets,
+      users
     })
   );
 

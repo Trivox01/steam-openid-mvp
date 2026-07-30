@@ -15,6 +15,10 @@ import {
   validateBadgeDraft,
   validateBadgeIconFile
 } from "../src/features/developer-center/badges/badgeEditorValidation.ts";
+import {
+  UserAdminClient,
+  UserAdminClientError
+} from "../src/features/developer-center/users/UserAdminClient.ts";
 
 const SESSION = {
   token: "memory-only-session",
@@ -63,6 +67,33 @@ test("Authorization client distinguishes 401, 403, malformed, and network failur
       new AuthorizationClient("https://auth.example.test").loadSnapshot(SESSION.token),
       (error) => error instanceof AuthorizationClientError && error.kind === "network"
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("User client keeps SteamID64 out of list assumptions and expires rejected sessions", async () => {
+  const originalFetch = globalThis.fetch;
+  const sessions = new FakeSessionSource(SESSION);
+  try {
+    let requested = "";
+    globalThis.fetch = async (url, init) => {
+      requested = String(url);
+      assert.equal(new Headers(init?.headers).get("authorization"), `Bearer ${SESSION.token}`);
+      return Response.json({ items: [], total: 0, page: 1, pageSize: 20 });
+    };
+    const client = new UserAdminClient("https://auth.example.test", sessions);
+    const result = await client.list(new URLSearchParams({ page: "1" }));
+    assert.equal(result.total, 0);
+    assert.match(requested, /\/api\/admin\/users\?/);
+    globalThis.fetch = async () => Response.json(
+      { error: "AUTHENTICATION_REQUIRED" }, { status: 401 }
+    );
+    await assert.rejects(
+      client.get("00000000-0000-4000-8000-000000000001"),
+      (error) => error instanceof UserAdminClientError && error.status === 401
+    );
+    assert.equal(sessions.expired, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -265,13 +296,14 @@ test("account switching ignores the previous account request", async () => {
 });
 
 test("Sidebar, route guard, and Overview enforce the Developer Center contract", async () => {
-  const [sidebar, route, page, app, assignments, badges, css, en, ar] = await Promise.all([
+  const [sidebar, route, page, app, assignments, badges, users, css, en, ar] = await Promise.all([
     readFile(new URL("../src/components/layout/Sidebar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/features/developer-center/DeveloperCenterRoute.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/DeveloperCenterPage.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/features/developer-center/assignments/BadgeAssignmentsPanel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/features/developer-center/badges/BadgeManagementPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/features/developer-center/users/UserManagementPanel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/styles/index.css", import.meta.url), "utf8"),
     readFile(new URL("../src/locales/en/developerCenter.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/locales/ar/developerCenter.ts", import.meta.url), "utf8")
@@ -285,6 +317,8 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
   assert.doesNotMatch(page, /sessionToken|steamId|databaseId|pollSecret/);
   assert.match(app, /#\/developer/);
   assert.match(page, /badges\.view_assignments/);
+  assert.match(page, /users\.view/);
+  assert.match(page, /UserManagementPanel/);
   assert.match(assignments, /badges\.assign/);
   assert.match(assignments, /badges\.revoke/);
   assert.match(assignments, /BADGE_ALREADY_ASSIGNED/);
@@ -300,6 +334,12 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
   assert.match(badges, /dataTransfer\.files/);
   assert.match(badges, /disabled=\{saveDisabled\}/);
   assert.match(badges, /if \(!client \|\| saving\) return/);
+  assert.match(users, /AbortController/);
+  assert.match(users, /aria-modal="true"/);
+  assert.match(users, /event\.key === "Escape"/);
+  assert.match(users, /steamId64/);
+  assert.doesNotMatch(users.match(/<table[\s\S]*?<\/table>/)?.[0] ?? "", /steamId64/i);
+  assert.doesNotMatch(users, /method:\s*"(?:POST|PATCH|DELETE)"/);
   assert.match(css, /\.badge-editor \.badge-control input:focus-visible/);
   assert.match(css, /@media \(max-width:580px\)/);
   assert.match(css, /html\[dir="rtl"\] \.badge-toggle/);
@@ -307,6 +347,7 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
     assert.match(translations, /developer\.badges\.helpName/);
     assert.match(translations, /developer\.badges\.uploadRequirements/);
     assert.match(translations, /developer\.badges\.error\.INVALID_BADGE_DATES/);
+    assert.match(translations, /developer\.users\.details/);
   }
 });
 

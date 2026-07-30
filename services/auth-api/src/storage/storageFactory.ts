@@ -21,12 +21,15 @@ import {
   type BadgeAssignmentRepository
 } from "../badgeAssignments/badgeAssignmentRepository.ts";
 import { PostgresBadgeAssignmentRepository } from "./postgres/postgresBadgeAssignmentRepository.ts";
+import { InMemoryUserRepository, type UserRepository } from "../users/userRepository.ts";
+import { PostgresUserRepository } from "./postgres/postgresUserRepository.ts";
 
 export interface InitializedStorage {
   repository: AuthTransactionRepository;
   authorizationRepository: AuthorizationRepository;
   badgeRepository: BadgeRepository;
   badgeAssignmentRepository: BadgeAssignmentRepository;
+  userRepository: UserRepository;
   close(): Promise<void>;
 }
 
@@ -45,11 +48,16 @@ export async function initializeStorage(
       badgeRepository
     );
     await badgeAssignmentRepository.validateSchema();
+    const userRepository = new InMemoryUserRepository(
+      authorizationRepository,
+      badgeAssignmentRepository
+    );
     return {
       repository,
       authorizationRepository,
       badgeRepository,
       badgeAssignmentRepository,
+      userRepository,
       async close() {}
     };
   }
@@ -73,11 +81,14 @@ export async function initializeStorage(
     await badgeRepository.validateSchema();
     const badgeAssignmentRepository = new PostgresBadgeAssignmentRepository(pool);
     await badgeAssignmentRepository.validateSchema();
+    const userRepository = new PostgresUserRepository(pool);
+    await userRepository.validateSchema();
     return {
       repository,
       authorizationRepository,
       badgeRepository,
       badgeAssignmentRepository,
+      userRepository,
       async close() {
         await pool.end();
       }

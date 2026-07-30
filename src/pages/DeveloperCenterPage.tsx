@@ -25,6 +25,12 @@ const BadgeAssignmentsPanel = lazy(async () => {
   );
   return { default: module.BadgeAssignmentsPanel };
 });
+const UserManagementPanel = lazy(async () => {
+  const module = await import(
+    "../features/developer-center/users/UserManagementPanel"
+  );
+  return { default: module.UserManagementPanel };
+});
 
 const sections = [
   ["overview", LayoutDashboard, false],
@@ -45,7 +51,7 @@ export function DeveloperCenterPage({
   snapshot: AuthorizationSnapshot;
 }) {
   const { t } = useTranslation();
-  const [activeSection, setActiveSection] = useState<"overview" | "badges" | "assignments">("overview");
+  const [activeSection, setActiveSection] = useState<"overview" | "users" | "badges" | "assignments">("overview");
   const highestRole = [...snapshot.roles].sort(
     (left, right) => right.priority - left.priority
   )[0];
@@ -70,7 +76,10 @@ export function DeveloperCenterPage({
               id === "assignments" &&
               !snapshot.permissions.includes("badges.view_assignments")
             ) return null;
-            const disabled = originallyDisabled && id !== "assignments";
+            if (id === "users" && !snapshot.permissions.includes("users.view")) {
+              return null;
+            }
+            const disabled = originallyDisabled && id !== "assignments" && id !== "users";
             return (
               <button
                 key={id}
@@ -82,6 +91,7 @@ export function DeveloperCenterPage({
                 onClick={() => {
                   if (
                     id === "overview" ||
+                    id === "users" ||
                     id === "badges" ||
                     id === "assignments"
                   ) setActiveSection(id);
@@ -95,7 +105,16 @@ export function DeveloperCenterPage({
           })}
         </Surface>
 
-        {activeSection === "assignments" ? (
+        {activeSection === "users" ? (
+          <Suspense fallback={<Surface className="badge-state">{t("developer.users.loading")}</Surface>}>
+            <UserManagementPanel
+              client={services.userAdmin}
+              onOpenAssignments={snapshot.permissions.includes("badges.view_assignments")
+                ? () => setActiveSection("assignments")
+                : undefined}
+            />
+          </Suspense>
+        ) : activeSection === "assignments" ? (
           <Suspense fallback={<Surface className="badge-state">{t("developer.assignments.loading")}</Surface>}>
             <BadgeAssignmentsPanel snapshot={snapshot} client={services.badgeAssignments}/>
           </Suspense>

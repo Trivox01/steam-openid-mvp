@@ -14,6 +14,8 @@ import { PostgresBadgeRepository } from "../src/storage/postgres/postgresBadgeRe
 import { BadgeService } from "../src/badges/badgeService.ts";
 import { PostgresBadgeAssignmentRepository } from "../src/storage/postgres/postgresBadgeAssignmentRepository.ts";
 import { BadgeAssignmentService } from "../src/badgeAssignments/badgeAssignmentService.ts";
+import { PostgresUserRepository } from "../src/storage/postgres/postgresUserRepository.ts";
+import { UserService } from "../src/users/userService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -90,6 +92,8 @@ test("PostgreSQL repository integration and concurrency", {
     const assignmentRepository = new PostgresBadgeAssignmentRepository(pool);
     await assignmentRepository.validateSchema();
     const assignments = new BadgeAssignmentService(assignmentRepository);
+    const users = new UserService(new PostgresUserRepository(pool));
+    await users.repository.validateSchema();
     const concurrentAssignments = await Promise.allSettled([
       assignments.assign({
         userId: user.id,
@@ -137,6 +141,16 @@ test("PostgreSQL repository integration and concurrency", {
     assert.deepEqual(Object.keys(publicBadges[0].badge).sort(), [
       "category", "description", "displayName", "iconUrl", "rarity", "slug"
     ]);
+    const userPage = await users.list({
+      page: 1, pageSize: 20, search: user.steamId64,
+      status: "active", sort: "created_desc"
+    });
+    assert.equal(userPage.total, 1);
+    assert.equal(userPage.items[0].id, user.id);
+    const userDetails = await users.get(user.id);
+    assert.equal(userDetails?.steamId64, user.steamId64);
+    assert.equal(userDetails?.badgeCount, 1);
+    assert.equal(userDetails?.roleCount, 1);
     const slugRace = await Promise.allSettled([
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id),
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id)
