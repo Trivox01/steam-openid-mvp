@@ -66,6 +66,7 @@ export const gameDetails = {
   "gameDetails.sync.noPlayerStats": "لم يتم العثور على إحصائيات إنجازات لهذا الحساب.",
   "gameDetails.sync.schemaUnavailable": "بيانات إنجازات هذه اللعبة غير متاحة حاليًا من Steam.",
   "gameDetails.sync.invalidAppId": "معرّف Steam AppID المخزن غير صالح.",
+  "gameDetails.sync.backendNotConfigured": "مزامنة Steam غير مهيأة على خادم Achievement Nexus.",
   "gameDetails.sync.timeout": "انتهت مهلة مزامنة الإنجازات.",
   "gameDetails.sync.rateLimited": "قيّد Steam طلبات مزامنة الإنجازات. حاول لاحقًا.",
   "gameDetails.sync.sessionExpired": "انتهت جلسة Steam. أعد ربط Steam ثم حاول مجددًا.",

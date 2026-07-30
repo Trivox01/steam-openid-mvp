@@ -5,9 +5,13 @@ import {
   steamProfileToUserProfile
 } from "./SteamConnectionService";
 import { steamArtworkUrls } from "./steamArtwork";
+import type { SteamDataGateway } from "./SteamBackendDataClient";
 
 export class SteamProvider implements PlatformProvider {
-  constructor(private connection: SteamConnectionService) {}
+  constructor(
+    private connection: SteamConnectionService,
+    private data: SteamDataGateway = connection
+  ) {}
 
   async authenticate(): Promise<void> {
     const profile = await this.connection.getSavedProfile();
@@ -21,7 +25,7 @@ export class SteamProvider implements PlatformProvider {
   }
 
   async getOwnedGames(): Promise<Game[]> {
-    const result = await this.connection.getOwnedGames();
+    const result = await this.data.getOwnedGames();
     return result.games.map((game) => {
       const artwork = steamArtworkUrls(game.appId, game.iconHash);
       return ({
@@ -46,12 +50,12 @@ export class SteamProvider implements PlatformProvider {
   }
 
   getOwnedGamesWithMetadata() {
-    return this.connection.getOwnedGames();
+    return this.data.getOwnedGames();
   }
 
   async getGameAchievements(_appId: string): Promise<Achievement[]> {
     const appId = Number(_appId);
-    const result = await this.connection.getGameAchievements(appId);
+    const result = await this.data.getGameAchievements(appId);
     return result.achievements.map((item) => ({
       id: `steam:${appId}:${item.apiName}`,
       gameId: "",
@@ -76,7 +80,7 @@ export class SteamProvider implements PlatformProvider {
     if (!Number.isSafeInteger(numeric) || numeric <= 0) {
       throw new Error("game_unsupported");
     }
-    return this.connection.getGameAchievements(numeric);
+    return this.data.getGameAchievements(numeric);
   }
 
   async syncData(): Promise<void> {

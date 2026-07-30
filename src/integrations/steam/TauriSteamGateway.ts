@@ -7,14 +7,8 @@ import type {
   SteamGameAchievementsDto,
   SteamProfile
 } from "../../types";
-
-export class SteamIntegrationError extends Error {
-  constructor(message: string, readonly code = "unknown") {
-    super(message);
-    this.name = "SteamIntegrationError";
-  }
-
-}
+import { SteamIntegrationError } from "./SteamIntegrationError";
+export { SteamIntegrationError } from "./SteamIntegrationError";
 
 function readErrorCode(error: unknown) {
   if (typeof error === "object" && error !== null && "code" in error) {

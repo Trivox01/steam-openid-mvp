@@ -4,7 +4,7 @@ import type {
   SteamAchievementSyncResult
 } from "../../types";
 import type { AchievementRepository, GameRepository, SyncMetadataRepository } from "../../repositories/contracts";
-import { SteamIntegrationError } from "../../integrations/steam/TauriSteamGateway";
+import { SteamIntegrationError } from "../../integrations/steam/SteamIntegrationError";
 import type { SteamProvider } from "./SteamProvider";
 import { mergeSteamAchievements } from "./SteamAchievementMerge";
 import { dedupeSteamGames, isRetryableAchievementError, mapWithConcurrency, summarizeAchievementSync } from "./SteamAchievementSyncCore";
@@ -21,7 +21,7 @@ const safeSteamErrorCodes = new Set([
   ...batchBlockingCodes,
   "steam_api_unavailable", "invalid_response", "game_not_owned",
   "no_player_stats", "schema_unavailable", "invalid_app_id",
-  "steam_not_connected", "session_expired"
+  "steam_not_connected", "session_expired", "backend_not_configured", "network"
 ]);
 
 export class SteamAchievementSyncError extends Error {

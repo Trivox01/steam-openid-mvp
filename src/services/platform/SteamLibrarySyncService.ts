@@ -1,6 +1,6 @@
 import type { SteamLibrarySyncResult } from "../../types";
 import type { GameRepository, SyncMetadataRepository } from "../../repositories/contracts";
-import { SteamIntegrationError } from "../../integrations/steam/TauriSteamGateway";
+import { SteamIntegrationError } from "../../integrations/steam/SteamIntegrationError";
 import type { SteamProvider } from "./SteamProvider";
 import { mergeSteamLibrary } from "./SteamLibraryMerge";
 export { mergeSteamLibrary } from "./SteamLibraryMerge";

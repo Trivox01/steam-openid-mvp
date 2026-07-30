@@ -36,12 +36,20 @@ import {
 } from "./routes/publicBadges.ts";
 import { handleAdminUsers, isAdminUserPath } from "./routes/adminUsers.ts";
 import type { UserService } from "./users/userService.ts";
+import {
+  handleSteamData,
+  isSteamDataPath
+} from "./routes/steamData.ts";
+import type { SteamDataClient } from "./steam/steamDataClient.ts";
+import { PollingRateLimiter } from "./security/pollingRateLimiter.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
   badgeAssets?: BadgeAssetStorage;
   badgeAssignments?: BadgeAssignmentService;
   users?: UserService;
+  steamData?: SteamDataClient;
+  steamDataRateLimiter?: PollingRateLimiter;
 };
 
 export function createRouter(
@@ -98,6 +106,11 @@ export function createRouter(
       Boolean(steamAuthDependencies?.users) &&
       Boolean(steamAuthDependencies?.authorization) &&
       Boolean(steamAuthDependencies?.sessions);
+    const isSteamDataRoute =
+      isSteamDataPath(url.pathname) &&
+      Boolean(steamAuthDependencies?.steamData) &&
+      Boolean(steamAuthDependencies?.steamDataRateLimiter) &&
+      Boolean(steamAuthDependencies?.sessions);
     if (
       isSteamAuthRoute ||
       isAuthorizationRoute ||
@@ -105,7 +118,8 @@ export function createRouter(
       isBadgeAssignmentRoute ||
       isAssignmentUserRoute ||
       isPublicBadgeRoute ||
-      isUserRoute
+      isUserRoute ||
+      isSteamDataRoute
     ) {
       const cors = applyCorsHeaders(
         request,
@@ -143,6 +157,14 @@ export function createRouter(
         return;
       }
     }
+    if (
+      isSteamDataRoute &&
+      await handleSteamData(request, response, url, {
+        sessions: steamAuthDependencies!.sessions!,
+        steam: steamAuthDependencies!.steamData!,
+        rateLimiter: steamAuthDependencies!.steamDataRateLimiter!
+      })
+    ) return;
     if (
       isUserRoute &&
       await handleAdminUsers(request, response, url, {

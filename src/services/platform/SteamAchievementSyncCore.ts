@@ -4,6 +4,7 @@ const RETRYABLE_ACHIEVEMENT_ERRORS = new Set([
   "steam_api_unavailable",
   "rate_limited",
   "no_internet",
+  "network",
   "timeout",
   "invalid_response"
 ]);

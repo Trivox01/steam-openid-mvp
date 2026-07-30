@@ -66,6 +66,7 @@ export const gameDetails = {
   "gameDetails.sync.noPlayerStats": "No achievement statistics were found for this Steam account.",
   "gameDetails.sync.schemaUnavailable": "Steam achievement data for this game is currently unavailable.",
   "gameDetails.sync.invalidAppId": "The stored Steam AppID is invalid.",
+  "gameDetails.sync.backendNotConfigured": "Steam synchronization is not configured on the Achievement Nexus server.",
   "gameDetails.sync.timeout": "Achievement synchronization timed out.",
   "gameDetails.sync.rateLimited": "Steam rate limited achievement synchronization. Try again later.",
   "gameDetails.sync.sessionExpired": "The Steam session has expired. Reconnect Steam and try again.",

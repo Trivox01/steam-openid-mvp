@@ -344,10 +344,13 @@ function achievementErrorLabel(
     rate_limited: "steam.achievements.rateLimitedCount",
     timeout: "steam.achievements.temporaryCount",
     no_internet: "steam.achievements.networkCount",
+    network: "steam.achievements.networkCount",
     steam_api_unavailable: "steam.achievements.temporaryCount",
     invalid_response: "steam.achievements.invalidResponseCount",
     invalid_api_key: "steam.achievements.authenticationCount",
-    api_key_unavailable: "steam.achievements.authenticationCount"
+    api_key_unavailable: "steam.achievements.authenticationCount",
+    backend_not_configured: "steam.achievements.authenticationCount",
+    session_expired: "steam.achievements.authenticationCount"
   };
   return t(keys[code] ?? "steam.achievements.unknownCount", { count });
 }

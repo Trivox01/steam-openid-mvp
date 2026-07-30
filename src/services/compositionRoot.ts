@@ -16,6 +16,7 @@ import { SteamLibrarySyncService } from "./platform/SteamLibrarySyncService";
 import { SteamAchievementSyncService } from "./platform/SteamAchievementSyncService";
 import { SteamOpenIdClient } from "./platform/SteamOpenIdClient";
 import { SteamOpenIdSignInService } from "./platform/SteamOpenIdSignInService";
+import { SteamBackendDataClient } from "./platform/SteamBackendDataClient";
 import { SteamOpenIdDesktopRepository } from "../repositories/steamOpenIdDesktopRepository";
 import { TauriExternalUrlOpener } from "../integrations/steam/TauriExternalUrlOpener";
 import { getSteamAuthApiBaseUrl } from "../config/steamAuthApi";
@@ -85,7 +86,10 @@ function createSteamOpenIdService() {
     return undefined;
   }
 }
-export const steamProvider = new SteamProvider(steamConnection);
+const steamData = steamOpenId
+  ? new SteamBackendDataClient(getSteamAuthApiBaseUrl(), steamOpenId)
+  : steamConnection;
+export const steamProvider = new SteamProvider(steamConnection, steamData);
 
 export const repositories = { games, achievements, activities, settings, profile, sync };
 export const services = {
@@ -140,11 +144,15 @@ applicationRefresh.register({
 applicationRefresh.register({
   id: "steam-library",
   run: async () => {
-    if (!services.steam.available || !await services.steam.hasApiKey()) {
-      return skipped("steam_credentials_unavailable");
+    if (services.steamOpenId) {
+      if (!services.steamOpenId.getActiveSession()) return skipped("session_expired");
+    } else {
+      if (!services.steam.available || !await services.steam.hasApiKey()) {
+        return skipped("steam_credentials_unavailable");
+      }
+      const legacyProfile = await services.steam.getSavedProfile();
+      if (!legacyProfile) return skipped("steam_profile_unavailable");
     }
-    const legacyProfile = await services.steam.getSavedProfile();
-    if (!legacyProfile) return skipped("steam_profile_unavailable");
     await services.steamLibrarySync.sync();
     publishLibraryChange();
   }
@@ -152,11 +160,15 @@ applicationRefresh.register({
 applicationRefresh.register({
   id: "steam-achievements",
   run: async () => {
-    if (!services.steam.available || !await services.steam.hasApiKey()) {
-      return skipped("steam_credentials_unavailable");
+    if (services.steamOpenId) {
+      if (!services.steamOpenId.getActiveSession()) return skipped("session_expired");
+    } else {
+      if (!services.steam.available || !await services.steam.hasApiKey()) {
+        return skipped("steam_credentials_unavailable");
+      }
+      const legacyProfile = await services.steam.getSavedProfile();
+      if (!legacyProfile) return skipped("steam_profile_unavailable");
     }
-    const legacyProfile = await services.steam.getSavedProfile();
-    if (!legacyProfile) return skipped("steam_profile_unavailable");
     await services.steamAchievementSync.sync();
     publishLibraryChange();
   }

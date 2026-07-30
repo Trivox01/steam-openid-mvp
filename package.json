@@ -10,6 +10,7 @@
     "test:intelligence": "node --experimental-strip-types scripts/validate-intelligence.mjs",
     "test:steam-library": "node --experimental-strip-types scripts/validate-steam-library.mjs",
     "test:steam-achievements": "node --experimental-strip-types scripts/validate-steam-achievements.mjs",
+    "test:steam-backend-data": "node --experimental-strip-types --test scripts/validate-steam-backend-data.mjs",
     "test:game-details": "node --experimental-strip-types scripts/validate-game-details.mjs",
     "test:onboarding": "node --experimental-strip-types scripts/validate-onboarding.mjs",
     "test:navigation": "node --experimental-strip-types scripts/validate-navigation.mjs",
