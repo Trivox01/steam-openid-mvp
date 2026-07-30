@@ -8,7 +8,11 @@ import type {
   PermissionOverride
 } from "../../authorization/authorizationRepository.ts";
 import { sanitizeAuditMetadata } from "../../authorization/authorizationRepository.ts";
-import { isPermissionKey, type PermissionKey } from "../../authorization/permissions.ts";
+import {
+  PERMISSION_KEYS,
+  isPermissionKey,
+  type PermissionKey
+} from "../../authorization/permissions.ts";
 import { StorageError } from "../authRepository.ts";
 
 export class PostgresAuthorizationRepository implements AuthorizationRepository {
@@ -38,7 +42,10 @@ export class PostgresAuthorizationRepository implements AuthorizationRepository 
       ),
       this.query<{ count: string }>("SELECT count(*) FROM permissions", [])
     ]);
-    if (Number(roles[0]?.count) !== 5 || Number(permissions[0]?.count) !== 18) {
+    if (
+      Number(roles[0]?.count) !== 5 ||
+      Number(permissions[0]?.count) !== PERMISSION_KEYS.length
+    ) {
       throw new Error("authorization_schema_invalid");
     }
   }

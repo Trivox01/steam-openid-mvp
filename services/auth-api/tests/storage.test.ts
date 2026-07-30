@@ -6,6 +6,7 @@ import { startStorageCleanup } from "../src/storage/cleanupJob.ts";
 import { loadPostgresMigrations } from "../src/storage/postgres/migrationRunner.ts";
 import { PERMISSION_KEYS } from "../src/authorization/permissions.ts";
 import { rolePresets } from "../src/authorization/roles.ts";
+import { readFile } from "node:fs/promises";
 
 function transaction(overrides: Partial<AuthTransaction> = {}): AuthTransaction {
   return {
@@ -65,4 +66,14 @@ test("PostgreSQL migrations are ordered and contain no secret-bearing columns", 
   assert.match(sql, /badge_assignments_active_unique/);
   for (const key of PERMISSION_KEYS) assert.match(sql, new RegExp(`'${key.replace(".", "\\.")}'`));
   for (const role of rolePresets) assert.match(sql, new RegExp(`'${role.slug}'`));
+});
+
+test("authorization schema validation derives its permission count from the registry", async () => {
+  const source = await readFile(
+    new URL("../src/storage/postgres/postgresAuthorizationRepository.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /PERMISSION_KEYS\.length/);
+  assert.equal(PERMISSION_KEYS.length, 19);
+  assert.doesNotMatch(source, /permissions\[0\]\?\.count\)\s*!==\s*18/);
 });
