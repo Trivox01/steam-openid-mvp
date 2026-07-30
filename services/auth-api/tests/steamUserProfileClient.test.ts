@@ -6,6 +6,7 @@ const STEAM_ID = "76561198190954413";
 
 test("maps the verified Steam player summary", async () => {
   let requestedUrl = "";
+  const diagnostics: unknown[] = [];
   const client = new SteamUserProfileClient("server-secret-key", async (input) => {
     requestedUrl = String(input);
     return Response.json({
@@ -17,7 +18,7 @@ test("maps the verified Steam player summary", async () => {
         }]
       }
     });
-  });
+  }, { write(entry) { diagnostics.push(entry); } });
 
   assert.deepEqual(await client.get(STEAM_ID), {
     steamNickname: "Trivox",
@@ -25,6 +26,12 @@ test("maps the verified Steam player summary", async () => {
   });
   assert.match(requestedUrl, /ISteamUser\/GetPlayerSummaries\/v2/);
   assert.match(requestedUrl, /steamids=76561198190954413/);
+  assert.deepEqual(diagnostics, [{
+    event: "steam_profile_summary",
+    responseStatus: 200,
+    playerCount: 1,
+    matchingPlayer: true
+  }]);
 });
 
 test("rejects a player summary for a different Steam identity", async () => {

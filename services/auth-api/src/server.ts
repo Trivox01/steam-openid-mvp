@@ -39,7 +39,11 @@ async function main() {
   const transactions = new AuthTransactionService(storage.repository);
   const authorization = new AuthorizationService(storage.authorizationRepository);
   const steamProfiles = config.steamWebApiKey
-    ? new SteamUserProfileClient(config.steamWebApiKey)
+    ? new SteamUserProfileClient(config.steamWebApiKey, fetch, {
+        write(entry) {
+          process.stdout.write(JSON.stringify(entry) + "\n");
+        }
+      })
     : undefined;
   const sessions = new SessionTokenService(
     config.sessionSecret,
@@ -50,6 +54,11 @@ async function main() {
           const profile = await steamProfiles.get(steamId64);
           if (profile) {
             await storage.userRepository.updateSteamProfile(steamId64, profile);
+            process.stdout.write(JSON.stringify({
+              event: "steam_profile_persisted",
+              nicknameStored: true,
+              avatarStored: Boolean(profile.avatarUrl)
+            }) + "\n");
           }
         }
       : undefined
@@ -104,6 +113,7 @@ async function main() {
         storageDriver: config.storageDriver,
         badgeStorageDriver: config.badgeStorageDriver,
         trustProxy: config.trustProxy,
+        steamWebApiKeyConfigured: Boolean(config.steamWebApiKey),
         bootstrapOwner: bootstrapResult
       }) + "\n"
     );

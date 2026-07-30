@@ -54,6 +54,7 @@ export function UserManagementPanel({
     void load(request.signal);
     return () => request.abort();
   }, [load]);
+  useEffect(() => client?.subscribeSession(() => void load()), [client, load]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const format = (value: string) => new Intl.DateTimeFormat(language, {
     dateStyle: "medium", timeStyle: "short"

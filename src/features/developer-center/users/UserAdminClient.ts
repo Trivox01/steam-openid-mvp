@@ -25,6 +25,11 @@ export class UserAdminClient {
   list(params: URLSearchParams, signal?: AbortSignal) {
     return this.request<UserPage>(`/api/admin/users?${params}`, signal);
   }
+  subscribeSession(listener: () => void) {
+    return this.sessions.subscribeSession((session) => {
+      if (session) listener();
+    });
+  }
   async get(id: string, signal?: AbortSignal) {
     const user = await this.request<ManagedUserDetails>(
       `/api/admin/users/${encodeURIComponent(id)}`,

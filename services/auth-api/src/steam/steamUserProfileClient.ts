@@ -6,15 +6,27 @@ export interface SteamUserProfile {
   avatarUrl?: string;
 }
 
+export interface SteamUserProfileDiagnostics {
+  write(entry: {
+    event: "steam_profile_summary";
+    responseStatus: number;
+    playerCount: number;
+    matchingPlayer: boolean;
+  }): void;
+}
+
 export class SteamUserProfileClient {
   private readonly apiKey: string;
   private readonly request: typeof fetch;
+  private readonly diagnostics?: SteamUserProfileDiagnostics;
   constructor(
     apiKey: string,
-    request: typeof fetch = fetch
+    request: typeof fetch = fetch,
+    diagnostics?: SteamUserProfileDiagnostics
   ) {
     this.apiKey = apiKey;
     this.request = request;
+    this.diagnostics = diagnostics;
   }
 
   async get(steamId64: string): Promise<SteamUserProfile | undefined> {
@@ -25,9 +37,24 @@ export class SteamUserProfileClient {
       signal: AbortSignal.timeout(5_000),
       headers: { accept: "application/json" }
     });
-    if (!response.ok) return undefined;
+    if (!response.ok) {
+      this.diagnostics?.write({
+        event: "steam_profile_summary",
+        responseStatus: response.status,
+        playerCount: 0,
+        matchingPlayer: false
+      });
+      return undefined;
+    }
     const payload: unknown = await response.json().catch(() => undefined);
+    const playerCount = readPlayerCount(payload);
     const player = readPlayer(payload, steamId64);
+    this.diagnostics?.write({
+      event: "steam_profile_summary",
+      responseStatus: response.status,
+      playerCount,
+      matchingPlayer: Boolean(player)
+    });
     if (!player) return undefined;
     const avatarUrl = safeAvatar(player.avatarfull) ? player.avatarfull : undefined;
     return {
@@ -35,6 +62,14 @@ export class SteamUserProfileClient {
       ...(avatarUrl ? { avatarUrl } : {})
     };
   }
+}
+
+function readPlayerCount(value: unknown) {
+  return record(value) &&
+    record(value.response) &&
+    Array.isArray(value.response.players)
+    ? value.response.players.length
+    : 0;
 }
 
 function readPlayer(value: unknown, steamId64: string) {
