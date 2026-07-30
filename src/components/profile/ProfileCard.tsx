@@ -5,8 +5,9 @@ import { ProfileBanner } from "./ProfileBanner";
 import { ProfileIdentity } from "./ProfileIdentity";
 import { ProfileStats } from "./ProfileStats";
 import { ProfileVerification } from "./ProfileVerification";
+import type { PublicBadgeClient } from "../../features/profile/publicBadges/PublicBadgeClient";
 
-export function ProfileCard({ summary, onAction }: { summary: UserProfileSummary; onAction?: () => void }) {
+export function ProfileCard({ summary, onAction, publicBadgeClient }: { summary: UserProfileSummary; onAction?: () => void; publicBadgeClient?: PublicBadgeClient }) {
   const { t } = useTranslation();
   const actionLabel = summary.isCurrentUser ? t("profile.editProfile") : t("profile.viewFullProfile");
   const actionUnavailableLabel = summary.isCurrentUser
@@ -16,7 +17,7 @@ export function ProfileCard({ summary, onAction }: { summary: UserProfileSummary
   return (
     <article className="profile-card">
       <ProfileBanner src={summary.bannerUrl} />
-      <ProfileIdentity summary={summary} />
+      <ProfileIdentity summary={summary} publicBadgeClient={publicBadgeClient} />
       <div className="profile-card__body">
         <ProfileStats stats={summary.stats} />
         <ProfileVerification summary={summary} />

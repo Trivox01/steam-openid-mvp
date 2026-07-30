@@ -66,11 +66,13 @@ test("assignment routes enforce permissions and expose stable lifecycle errors",
       badgeRepository
     )
   );
+  const badgeAssets = new MemoryBadgeAssetStorage();
   const harness = await startHarness({
     authorization,
     sessions,
     badges,
-    assignments
+    assignments,
+    badgeAssets
   });
   try {
     const body = {
@@ -165,11 +167,92 @@ test("assignment routes enforce permissions and expose stable lifecycle errors",
   }
 });
 
+test("public badges expose only eligible readable presentation data", async () => {
+  const authorizationRepository = new InMemoryAuthorizationRepository();
+  const authorization = new AuthorizationService(authorizationRepository);
+  const user = await authorizationRepository.ensureAuthenticatedUser(
+    "76561198000000004",
+    authenticatedAt
+  );
+  const sessions = new SessionTokenService(
+    "public-badge-route-secret-012345678901",
+    authorizationRepository
+  );
+  const session = await sessions.issueForSteamIdentity(user.steamId64, authenticatedAt);
+  const badgeRepository = new InMemoryBadgeRepository();
+  const badges = new BadgeService(badgeRepository);
+  const badgeAssets = new MemoryBadgeAssetStorage();
+  const storageKey = await badgeAssets.upload({
+    contentType: "image/png",
+    bytes: Buffer.from("public-icon"),
+    width: 64,
+    height: 64,
+    isSquare: true
+  });
+  const asset = await badgeRepository.saveAsset({
+    storageKey,
+    contentType: "image/png",
+    byteSize: 11,
+    width: 64,
+    height: 64,
+    isSquare: true
+  }, user.id);
+  const badge = await badges.create({
+    slug: "public-founder",
+    displayName: "Public Founder",
+    description: "Safe public description.",
+    category: "special",
+    rarity: "exclusive",
+    iconAssetId: asset.id,
+    priority: 1,
+    isActive: true,
+    isVisible: true,
+    grantMode: "manual"
+  }, user.id);
+  const assignments = new BadgeAssignmentService(
+    new InMemoryBadgeAssignmentRepository(authorizationRepository, badgeRepository),
+    () => Date.parse(authenticatedAt)
+  );
+  await assignments.assign({
+    userId: user.id,
+    badgeDefinitionId: badge.id
+  }, user.id);
+  const harness = await startHarness({
+    authorization, sessions, badges, assignments, badgeAssets
+  });
+  try {
+    assert.equal((await fetch(`${harness.baseUrl}/api/me/public-badges`)).status, 401);
+    const response = await fetch(`${harness.baseUrl}/api/me/public-badges`, {
+      headers: { authorization: `Bearer ${session.token}` }
+    });
+    assert.equal(response.status, 200);
+    const payload = await response.json() as { items: Array<Record<string, unknown>> };
+    assert.equal(payload.items.length, 1);
+    assert.deepEqual(Object.keys(payload.items[0]).sort(), [
+      "category", "description", "displayName", "iconUrl", "rarity", "slug"
+    ]);
+    assert.equal(JSON.stringify(payload).includes(user.id), false);
+    const icon = await fetch(`${harness.baseUrl}${payload.items[0].iconUrl}`);
+    assert.equal(icon.status, 200);
+    assert.equal(icon.headers.get("content-type"), "image/png");
+    assert.match(icon.headers.get("cache-control") ?? "", /public/);
+    await badgeAssets.delete(storageKey);
+    assert.equal((await fetch(`${harness.baseUrl}${payload.items[0].iconUrl}`)).status, 404);
+    const missing = await fetch(`${harness.baseUrl}/api/me/public-badges`, {
+      headers: { authorization: `Bearer ${session.token}` }
+    });
+    assert.deepEqual(await missing.json(), { items: [] });
+  } finally {
+    await harness.close();
+  }
+});
+
 async function startHarness(deps: {
   authorization: AuthorizationService;
   sessions: SessionTokenService;
   badges: BadgeService;
   assignments: BadgeAssignmentService;
+  badgeAssets: MemoryBadgeAssetStorage;
 }) {
   const config: AuthApiConfig = {
     nodeEnv: "test",
@@ -194,7 +277,7 @@ async function startHarness(deps: {
     authorization: deps.authorization,
     sessions: deps.sessions,
     badges: deps.badges,
-    badgeAssets: new MemoryBadgeAssetStorage(),
+    badgeAssets: deps.badgeAssets,
     badgeAssignments: deps.assignments
   }));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

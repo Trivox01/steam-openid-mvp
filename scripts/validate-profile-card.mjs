@@ -33,6 +33,8 @@ const verification = await readFile(new URL("../src/components/profile/ProfileVe
 const banner = await readFile(new URL("../src/components/profile/ProfileBanner.tsx", import.meta.url), "utf8");
 const badges = await readFile(new URL("../src/components/profile/ProfileBadges.tsx", import.meta.url), "utf8");
 const badgeTooltip = await readFile(new URL("../src/components/profile/BadgeTooltip.tsx", import.meta.url), "utf8");
+const publicBadgeList = await readFile(new URL("../src/components/profile/publicBadges/PublicBadgeList.tsx", import.meta.url), "utf8");
+const publicBadgeClient = await readFile(new URL("../src/features/profile/publicBadges/PublicBadgeClient.ts", import.meta.url), "utf8");
 const css = await readFile(new URL("../src/styles/index.css", import.meta.url), "utf8");
 const adapter = await readFile(new URL("../src/features/profile/profileSummaryAdapter.ts", import.meta.url), "utf8");
 assert.match(trigger, /event\.key === "Escape"/);
@@ -42,7 +44,7 @@ assert.match(trigger, /cardRef\.current\?\.focus\(\)/, "opening the card focuses
 assert.match(trigger, /createPortal\([\s\S]*document\.body/, "profile popover escapes Topbar stacking and clipping contexts");
 assert.match(card, /ProfileBanner[\s\S]*ProfileIdentity[\s\S]*ProfileStats[\s\S]*ProfileVerification/, "card is composed from focused profile sections");
 assert.match(identity, /ProfileAvatar/);
-assert.match(identity, /profile-card__name-row[\s\S]*ProfileBadges/, "badges render beside the profile name");
+assert.match(identity, /profile-card__name-row[\s\S]*PublicBadgeList/, "public badges render beside the profile name");
 assert.match(verification, /profile-card__verification/, "Steam verification and connected date use a dedicated panel");
 assert.match(verification, /summary\.memberSince[\s\S]*profile\.connected/, "authenticatedAt is labelled as Connected when memberSince is unavailable");
 assert.match(stats, /value === undefined[\s\S]*"—"/, "partial statistics do not invent zero values");
@@ -53,6 +55,10 @@ assert.match(badges, /size=\{24\}/, "badge tooltip contains a larger icon");
 assert.match(badgeTooltip, /createPortal\([\s\S]*document\.body/, "badge tooltip renders through a document body portal");
 assert.match(badgeTooltip, /window\.innerWidth[\s\S]*window\.innerHeight/, "badge tooltip handles viewport collisions");
 assert.match(badgeTooltip, /event\.key === "Escape" && open/, "Escape closes the tooltip before bubbling to the profile popover");
+assert.match(publicBadgeList, /AbortController/, "public badge request is cancelled on unmount");
+assert.match(publicBadgeList, /VISIBLE_BADGES = 5/, "public badge overflow remains bounded");
+assert.match(publicBadgeClient, /\/api\/me\/public-badges/, "profile uses one public badge endpoint");
+assert.doesNotMatch(publicBadgeClient, /assignmentReason|assignedBy|steamId/i, "public client does not model administrative data");
 assert.doesNotMatch(badges, /role="tooltip"/, "tooltip content is not nested inside the Profile Card badge DOM");
 assert.match(css, /\.profile-badge\{[^}]*width:20px;height:20px/, "inline badges are exactly 20 by 20 pixels");
 assert.match(css, /\.profile-badge\{[^}]*background:transparent/, "inline badges have no permanent tile background");

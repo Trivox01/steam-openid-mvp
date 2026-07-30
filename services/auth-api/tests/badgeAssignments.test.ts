@@ -90,6 +90,47 @@ test("assign, list, revoke, and reassign preserve immutable history", async () =
   );
 });
 
+test("public badge projection is eligible, bounded, deterministic, and private", async () => {
+  const context = await setup();
+  const asset = await context.badges.repository.saveAsset({
+    storageKey: "00000000-0000-4000-8000-000000000001.png",
+    contentType: "image/png",
+    byteSize: 128,
+    width: 64,
+    height: 64,
+    isSquare: true
+  }, context.actor.id);
+  const eligible = await context.badges.update(context.badge.id, {
+    ...baseDraft,
+    iconAssetId: asset.id,
+    priority: 1
+  }, context.actor.id);
+  await context.service.assign({
+    userId: context.user.id,
+    badgeDefinitionId: eligible.id
+  }, context.actor.id);
+  const hidden = await context.badges.create({
+    ...baseDraft,
+    slug: "hidden-test",
+    displayName: "Hidden",
+    iconAssetId: asset.id,
+    isVisible: false
+  }, context.actor.id);
+  await context.service.assign({
+    userId: context.user.id,
+    badgeDefinitionId: hidden.id
+  }, context.actor.id);
+
+  const items = await context.service.listPublicBadges(context.user.id);
+  assert.equal(items.length, 1);
+  assert.deepEqual(Object.keys(items[0].badge).sort(), [
+    "category", "description", "displayName", "iconUrl", "rarity", "slug"
+  ]);
+  assert.equal(items[0].badge.slug, "founder");
+  assert.equal(items[0].badge.iconUrl, "/api/public/badge-icons/founder");
+  assert.equal(JSON.stringify(items).includes(context.user.id), false);
+});
+
 test("assignment eligibility rejects missing users and unavailable badges", async () => {
   const context = await setup();
   await assert.rejects(context.service.assign({

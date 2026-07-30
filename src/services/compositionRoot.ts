@@ -24,6 +24,7 @@ import { AuthorizationClient } from "../features/developer-center/AuthorizationC
 import { AuthorizationStore } from "../features/developer-center/AuthorizationStore";
 import { BadgeAdminClient } from "../features/developer-center/badges/BadgeAdminClient";
 import { BadgeAssignmentClient } from "../features/developer-center/assignments/BadgeAssignmentClient";
+import { PublicBadgeClient } from "../features/profile/publicBadges/PublicBadgeClient";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -45,6 +46,9 @@ const badgeAdmin = steamOpenId
   : undefined;
 const badgeAssignments = steamOpenId
   ? new BadgeAssignmentClient(getSteamAuthApiBaseUrl(), steamOpenId)
+  : undefined;
+const publicBadges = steamOpenId
+  ? new PublicBadgeClient(getSteamAuthApiBaseUrl(), steamOpenId)
   : undefined;
 
 function createSteamOpenIdService() {
@@ -74,6 +78,7 @@ export const services = {
   authorization,
   badgeAdmin,
   badgeAssignments,
+  publicBadges,
   steamLibrarySync: new SteamLibrarySyncService(steamProvider, games, sync),
   steamAchievementSync: new SteamAchievementSyncService(steamProvider, games, achievements, sync)
 };

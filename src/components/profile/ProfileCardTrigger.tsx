@@ -4,15 +4,18 @@ import type { UserProfileSummary } from "../../features/profile/types";
 import { useTranslation } from "../../i18n/TranslationContext";
 import { ProfileCard } from "./ProfileCard";
 import { ProfileCardSkeleton } from "./ProfileCardSkeleton";
+import type { PublicBadgeClient } from "../../features/profile/publicBadges/PublicBadgeClient";
 
 export function ProfileCardTrigger({
   children,
   loadSummary,
-  onAction
+  onAction,
+  publicBadgeClient
 }: {
   children: ReactNode;
   loadSummary: () => Promise<UserProfileSummary | undefined>;
   onAction?: () => void;
+  publicBadgeClient?: PublicBadgeClient;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -93,7 +96,7 @@ export function ProfileCardTrigger({
               <button type="button" onClick={() => void requestOpen()}>{t("common.retry")}</button>
             </div>
           )}
-          {status === "ready" && summary && <ProfileCard summary={summary} onAction={onAction ? () => { setOpen(false); onAction(); } : undefined} />}
+          {status === "ready" && summary && <ProfileCard summary={summary} publicBadgeClient={publicBadgeClient} onAction={onAction ? () => { setOpen(false); onAction(); } : undefined} />}
         </div>
       , document.body)}
     </div>

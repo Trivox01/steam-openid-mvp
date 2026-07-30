@@ -7,6 +7,7 @@ import type {
   BadgeListQuery,
   BadgeMutation
 } from "../../badges/contracts.ts";
+import type { PublicBadgeAsset } from "../../publicBadges/contracts.ts";
 
 export class PostgresBadgeRepository implements BadgeRepository {
   private readonly pool: Pool;
@@ -216,6 +217,28 @@ export class PostgresBadgeRepository implements BadgeRepository {
       ON CONFLICT (storage_key) WHERE completed_at IS NULL DO NOTHING`,
       [randomUUID(), input.assetId ?? null, input.storageKey, input.reason]
     );
+  }
+
+  async getPublicAssetByBadgeSlug(
+    slug: string,
+    now: string
+  ): Promise<PublicBadgeAsset | undefined> {
+    const result = await this.pool.query(
+      `SELECT asset.storage_key, asset.content_type
+       FROM badge_definitions bd
+       JOIN badge_assets asset ON asset.id=bd.icon_asset_id
+       WHERE bd.slug=$1 AND bd.is_active=true AND bd.is_visible=true
+         AND bd.archived_at IS NULL AND asset.deleted_at IS NULL
+         AND (bd.starts_at IS NULL OR bd.starts_at <= $2)
+         AND (bd.ends_at IS NULL OR bd.ends_at > $2)
+       LIMIT 1`,
+      [slug, now]
+    );
+    if (!result.rows[0]) return undefined;
+    return {
+      storageKey: String(result.rows[0].storage_key),
+      contentType: result.rows[0].content_type
+    };
   }
 
   private async mutate<T>(operation: (client: PoolClient) => Promise<T>) {

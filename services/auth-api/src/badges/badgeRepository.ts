@@ -5,6 +5,7 @@ import type {
   BadgeListQuery,
   BadgeMutation
 } from "./contracts.ts";
+import type { PublicBadgeAsset } from "../publicBadges/contracts.ts";
 
 export interface BadgeRepository {
   validateSchema(): Promise<void>;
@@ -22,6 +23,7 @@ export interface BadgeRepository {
     assetId?: string;
     reason: "metadata_rollback" | "icon_replaced" | "asset_deleted";
   }): Promise<void>;
+  getPublicAssetByBadgeSlug(slug: string, now: string): Promise<PublicBadgeAsset | undefined>;
 }
 
 export class InMemoryBadgeRepository implements BadgeRepository {
@@ -117,6 +119,17 @@ export class InMemoryBadgeRepository implements BadgeRepository {
       targetId: input.assetId ?? "orphan",
       metadata: { reason: input.reason }
     });
+  }
+  async getPublicAssetByBadgeSlug(slug: string, now: string) {
+    const badge = [...this.badges.values()].find((item) =>
+      item.slug === slug && item.isActive && item.isVisible && !item.archivedAt &&
+      (!item.startsAt || item.startsAt <= now) &&
+      (!item.endsAt || item.endsAt > now)
+    );
+    if (!badge?.iconAssetId) return undefined;
+    const asset = this.assets.get(badge.iconAssetId);
+    if (!asset || asset.deletedAt) return undefined;
+    return { storageKey: asset.storageKey, contentType: asset.contentType };
   }
 }
 

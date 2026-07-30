@@ -22,6 +22,12 @@ export class BadgeAssignmentService {
   hasActive(userId: string, badgeDefinitionId: string) {
     return this.repository.hasActive(userId, badgeDefinitionId);
   }
+  listPublicBadges(userId: string) {
+    return this.repository.listPublicBadges(
+      userId,
+      new Date(this.now()).toISOString()
+    );
+  }
   assign(value: unknown, actorUserId: string) {
     const input = parseAssign(value);
     return this.repository.assign({

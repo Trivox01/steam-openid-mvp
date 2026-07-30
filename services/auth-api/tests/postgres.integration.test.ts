@@ -74,7 +74,18 @@ test("PostgreSQL repository integration and concurrency", {
       rarity: "exclusive" as const, priority: 100, isActive: true,
       isVisible: true, grantMode: "manual" as const
     };
-    const createdBadge = await badges.create(badgeDraft, user.id);
+    const asset = await badgeRepository.saveAsset({
+      storageKey: "tenant-a/badges/staging/00000000-0000-4000-8000-000000000005.png",
+      contentType: "image/png",
+      byteSize: 128,
+      width: 64,
+      height: 64,
+      isSquare: true
+    }, user.id);
+    const createdBadge = await badges.create({
+      ...badgeDraft,
+      iconAssetId: asset.id
+    }, user.id);
     assert.equal((await badges.get(createdBadge.id))?.slug, "staging-founder");
     const assignmentRepository = new PostgresBadgeAssignmentRepository(pool);
     await assignmentRepository.validateSchema();
@@ -120,6 +131,12 @@ test("PostgreSQL repository integration and concurrency", {
       badgeDefinitionId: createdBadge.id,
       sort: "assigned_asc"
     })).total, 2);
+    const publicBadges = await assignments.listPublicBadges(user.id);
+    assert.equal(publicBadges.length, 1);
+    assert.equal(publicBadges[0].badge.slug, "staging-founder");
+    assert.deepEqual(Object.keys(publicBadges[0].badge).sort(), [
+      "category", "description", "displayName", "iconUrl", "rarity", "slug"
+    ]);
     const slugRace = await Promise.allSettled([
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id),
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id)

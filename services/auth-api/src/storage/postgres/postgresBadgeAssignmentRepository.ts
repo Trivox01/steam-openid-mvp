@@ -9,6 +9,8 @@ import {
   type BadgeAssignmentSource
 } from "../../badgeAssignments/contracts.ts";
 import type { BadgeDefinition } from "../../badges/contracts.ts";
+import type { PublicBadgeCandidate } from "../../publicBadges/contracts.ts";
+import { PUBLIC_BADGE_LIMIT } from "../../publicBadges/contracts.ts";
 
 export class PostgresBadgeAssignmentRepository implements BadgeAssignmentRepository {
   private readonly pool: Pool;
@@ -81,6 +83,34 @@ export class PostgresBadgeAssignmentRepository implements BadgeAssignmentReposit
       [userId, badgeDefinitionId]
     );
     return Boolean(result.rowCount);
+  }
+
+  async listPublicBadges(userId: string, now: string): Promise<PublicBadgeCandidate[]> {
+    const result = await this.pool.query(
+      `SELECT bd.slug, bd.display_name, bd.description, bd.category, bd.rarity,
+              asset.storage_key
+       FROM badge_assignments ba
+       JOIN badge_definitions bd ON bd.id=ba.badge_definition_id
+       JOIN badge_assets asset ON asset.id=bd.icon_asset_id AND asset.deleted_at IS NULL
+       WHERE ba.user_id=$1 AND ba.revoked_at IS NULL
+         AND bd.is_active=true AND bd.is_visible=true AND bd.archived_at IS NULL
+         AND (bd.starts_at IS NULL OR bd.starts_at <= $2)
+         AND (bd.ends_at IS NULL OR bd.ends_at > $2)
+       ORDER BY bd.priority ASC, bd.rarity ASC, ba.assigned_at ASC, bd.id ASC
+       LIMIT $3`,
+      [userId, now, PUBLIC_BADGE_LIMIT]
+    );
+    return result.rows.map((row) => ({
+      storageKey: String(row.storage_key),
+      badge: {
+        slug: String(row.slug),
+        displayName: String(row.display_name),
+        description: String(row.description),
+        category: row.category,
+        rarity: row.rarity,
+        iconUrl: `/api/public/badge-icons/${encodeURIComponent(String(row.slug))}`
+      }
+    }));
   }
 
   assign(input: {

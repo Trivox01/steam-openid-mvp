@@ -7,6 +7,8 @@ import type {
 import { BadgeAssignmentError } from "./contracts.ts";
 import type { BadgeRepository } from "../badges/badgeRepository.ts";
 import type { AuthorizationRepository } from "../authorization/authorizationRepository.ts";
+import type { PublicBadgeCandidate } from "../publicBadges/contracts.ts";
+import { PUBLIC_BADGE_LIMIT } from "../publicBadges/contracts.ts";
 
 export interface BadgeAssignmentRepository {
   validateSchema(): Promise<void>;
@@ -27,6 +29,7 @@ export interface BadgeAssignmentRepository {
     reason?: string;
   }): Promise<BadgeAssignment>;
   hasActive(userId: string, badgeDefinitionId: string): Promise<boolean>;
+  listPublicBadges(userId: string, now: string): Promise<PublicBadgeCandidate[]>;
 }
 
 export class InMemoryBadgeAssignmentRepository implements BadgeAssignmentRepository {
@@ -69,6 +72,47 @@ export class InMemoryBadgeAssignmentRepository implements BadgeAssignmentReposit
       item.badgeDefinitionId === badgeDefinitionId &&
       !item.revokedAt
     );
+  }
+  async listPublicBadges(userId: string, now: string) {
+    const eligible: Array<{
+      badge: NonNullable<Awaited<ReturnType<BadgeRepository["get"]>>>;
+      assignedAt: string;
+      storageKey: string;
+    }> = [];
+    for (const assignment of this.assignments.values()) {
+      if (assignment.userId !== userId || assignment.revokedAt) continue;
+      const badge = await this.badges.get(assignment.badgeDefinitionId);
+      if (
+        !badge?.isActive || !badge.isVisible || badge.archivedAt ||
+        !badge.iconAssetId ||
+        (badge.startsAt && badge.startsAt > now) ||
+        (badge.endsAt && badge.endsAt <= now)
+      ) continue;
+      const asset = await this.badges.getAsset(badge.iconAssetId);
+      if (!asset || asset.deletedAt) continue;
+      eligible.push({ badge, assignedAt: assignment.assignedAt, storageKey: asset.storageKey });
+    }
+    return eligible
+      .sort((left, right) =>
+        left.badge.priority - right.badge.priority ||
+        left.badge.rarity.localeCompare(right.badge.rarity) ||
+        left.assignedAt.localeCompare(right.assignedAt) ||
+        left.badge.id.localeCompare(right.badge.id)
+      )
+      .slice(0, PUBLIC_BADGE_LIMIT)
+      .map(({ badge, storageKey }) => {
+        return {
+          storageKey,
+          badge: {
+            slug: badge.slug,
+            displayName: badge.displayName,
+            description: badge.description,
+            category: badge.category,
+            rarity: badge.rarity,
+            iconUrl: `/api/public/badge-icons/${encodeURIComponent(badge.slug)}`
+          }
+        };
+      });
   }
   async assign(input: {
     userId: string; badgeDefinitionId: string; actorUserId: string;
