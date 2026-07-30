@@ -16,9 +16,15 @@ import { Surface } from "../components/ui/Surface";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { useTranslation } from "../i18n/TranslationContext";
 import type { AuthorizationSnapshot } from "../features/developer-center/authorizationTypes";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { BadgeManagementPanel } from "../features/developer-center/badges/BadgeManagementPanel";
 import { services } from "../services/compositionRoot";
+const BadgeAssignmentsPanel = lazy(async () => {
+  const module = await import(
+    "../features/developer-center/assignments/BadgeAssignmentsPanel"
+  );
+  return { default: module.BadgeAssignmentsPanel };
+});
 
 const sections = [
   ["overview", LayoutDashboard, false],
@@ -39,7 +45,7 @@ export function DeveloperCenterPage({
   snapshot: AuthorizationSnapshot;
 }) {
   const { t } = useTranslation();
-  const [activeSection, setActiveSection] = useState<"overview" | "badges">("overview");
+  const [activeSection, setActiveSection] = useState<"overview" | "badges" | "assignments">("overview");
   const highestRole = [...snapshot.roles].sort(
     (left, right) => right.priority - left.priority
   )[0];
@@ -59,26 +65,41 @@ export function DeveloperCenterPage({
 
       <div className="developer-layout">
         <Surface as="nav" className="developer-section-nav" aria-label={t("developer.sections")}>
-          {sections.map(([id, Icon, disabled]) => (
-            <button
-              key={id}
-              type="button"
-              className={activeSection === id ? "active" : ""}
-              disabled={disabled}
-              aria-current={activeSection === id ? "page" : undefined}
-              title={disabled ? t("developer.comingSoon") : undefined}
-              onClick={() => {
-                if (id === "overview" || id === "badges") setActiveSection(id);
-              }}
-            >
-              <Icon size={18} aria-hidden="true" />
-              <span>{t(`developer.section.${id}`)}</span>
-              {disabled ? <small>{t("developer.comingSoon")}</small> : null}
-            </button>
-          ))}
+          {sections.map(([id, Icon, originallyDisabled]) => {
+            if (
+              id === "assignments" &&
+              !snapshot.permissions.includes("badges.view_assignments")
+            ) return null;
+            const disabled = originallyDisabled && id !== "assignments";
+            return (
+              <button
+                key={id}
+                type="button"
+                className={activeSection === id ? "active" : ""}
+                disabled={disabled}
+                aria-current={activeSection === id ? "page" : undefined}
+                title={disabled ? t("developer.comingSoon") : undefined}
+                onClick={() => {
+                  if (
+                    id === "overview" ||
+                    id === "badges" ||
+                    id === "assignments"
+                  ) setActiveSection(id);
+                }}
+              >
+                <Icon size={18} aria-hidden="true" />
+                <span>{t(`developer.section.${id}`)}</span>
+                {disabled ? <small>{t("developer.comingSoon")}</small> : null}
+              </button>
+            );
+          })}
         </Surface>
 
-        {activeSection === "badges" ? (
+        {activeSection === "assignments" ? (
+          <Suspense fallback={<Surface className="badge-state">{t("developer.assignments.loading")}</Surface>}>
+            <BadgeAssignmentsPanel snapshot={snapshot} client={services.badgeAssignments}/>
+          </Suspense>
+        ) : activeSection === "badges" ? (
           <BadgeManagementPanel snapshot={snapshot} client={services.badgeAdmin} />
         ) : <div className="developer-overview">
           <div className="developer-overview-heading">

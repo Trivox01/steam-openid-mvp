@@ -26,6 +26,10 @@ import {
   isAdminBadgeAssignmentPath
 } from "./routes/adminBadgeAssignments.ts";
 import type { BadgeAssignmentService } from "./badgeAssignments/badgeAssignmentService.ts";
+import {
+  ASSIGNMENT_USERS_PATH,
+  handleAdminAssignmentUsers
+} from "./routes/adminAssignmentUsers.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
@@ -72,11 +76,16 @@ export function createRouter(
       Boolean(steamAuthDependencies?.badgeAssignments) &&
       Boolean(steamAuthDependencies?.authorization) &&
       Boolean(steamAuthDependencies?.sessions);
+    const isAssignmentUserRoute =
+      url.pathname === ASSIGNMENT_USERS_PATH &&
+      Boolean(steamAuthDependencies?.authorization) &&
+      Boolean(steamAuthDependencies?.sessions);
     if (
       isSteamAuthRoute ||
       isAuthorizationRoute ||
       isBadgeRoute ||
-      isBadgeAssignmentRoute
+      isBadgeAssignmentRoute ||
+      isAssignmentUserRoute
     ) {
       const cors = applyCorsHeaders(
         request,
@@ -127,6 +136,13 @@ export function createRouter(
       authorization: steamAuthDependencies!.authorization!,
       sessions: steamAuthDependencies!.sessions!
     })) return;
+    if (
+      isAssignmentUserRoute &&
+      await handleAdminAssignmentUsers(request, response, url, {
+        authorization: steamAuthDependencies!.authorization!,
+        sessions: steamAuthDependencies!.sessions!
+      })
+    ) return;
     if (
       isBadgeAssignmentRoute &&
       await handleAdminBadgeAssignments(request, response, url, {

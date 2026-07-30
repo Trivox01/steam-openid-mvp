@@ -79,6 +79,24 @@ test("assignment routes enforce permissions and expose stable lifecycle errors",
       reason: "manual acceptance"
     };
     assert.equal((await fetch(`${harness.baseUrl}/api/admin/badge-assignments`)).status, 401);
+    const userPicker = await fetch(
+      `${harness.baseUrl}/api/admin/badge-assignment-users?page=1&pageSize=20`,
+      { headers: { authorization: `Bearer ${actorSession.token}` } }
+    );
+    assert.equal(userPicker.status, 200);
+    const userPickerPayload = await userPicker.json() as {
+      items: Array<Record<string, unknown>>;
+    };
+    assert.ok(userPickerPayload.items.some((item) => item.id === target.id));
+    assert.deepEqual(
+      Object.keys(userPickerPayload.items[0]).sort(),
+      ["displayName", "id", "status"]
+    );
+    assert.ok(userPickerPayload.items.every((item) => !("steamId64" in item)));
+    assert.equal((await fetch(
+      `${harness.baseUrl}/api/admin/badge-assignment-users`,
+      { headers: { authorization: `Bearer ${unprivilegedSession.token}` } }
+    )).status, 403);
     assert.equal((await fetch(`${harness.baseUrl}/api/admin/badge-assignments`, {
       method: "POST",
       headers: {

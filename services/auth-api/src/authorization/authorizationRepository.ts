@@ -7,6 +7,12 @@ export interface AuthorizationUser {
   steamId64: string;
 }
 
+export interface AuthorizationUserSummary {
+  id: string;
+  displayName: string;
+  status: "active";
+}
+
 export interface AuthorizationRole {
   id: string;
   slug: string;
@@ -33,6 +39,11 @@ export interface AuthorizationRepository {
   ensureAuthenticatedUser(steamId64: string, authenticatedAt: string): Promise<AuthorizationUser>;
   findUserById(userId: string): Promise<AuthorizationUser | undefined>;
   findUserBySteamId(steamId64: string): Promise<AuthorizationUser | undefined>;
+  listUserSummaries(input: {
+    search?: string;
+    page: number;
+    pageSize: number;
+  }): Promise<{ items: AuthorizationUserSummary[]; total: number }>;
   getUserRoles(userId: string): Promise<AuthorizationRole[]>;
   getRolePermissions(roleIds: readonly string[]): Promise<PermissionKey[]>;
   getUserPermissionOverrides(userId: string): Promise<PermissionOverride[]>;
@@ -79,6 +90,23 @@ export class InMemoryAuthorizationRepository implements AuthorizationRepository 
   async findUserById(userId: string) { return this.users.get(userId); }
   async findUserBySteamId(steamId64: string) {
     return [...this.users.values()].find((user) => user.steamId64 === steamId64);
+  }
+  async listUserSummaries(input: {
+    search?: string; page: number; pageSize: number;
+  }) {
+    const query = input.search?.trim().toLowerCase();
+    const users = [...this.users.values()].filter((user) =>
+      !query || user.id.toLowerCase().includes(query)
+    );
+    const start = (input.page - 1) * input.pageSize;
+    return {
+      items: users.slice(start, start + input.pageSize).map((user) => ({
+        id: user.id,
+        displayName: `User ${user.id.slice(0, 8)}`,
+        status: "active" as const
+      })),
+      total: users.length
+    };
   }
   async getUserRoles(userId: string) {
     return this.userRoles

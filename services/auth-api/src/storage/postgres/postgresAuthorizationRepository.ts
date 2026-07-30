@@ -76,6 +76,32 @@ export class PostgresAuthorizationRepository implements AuthorizationRepository 
     );
   }
 
+  async listUserSummaries(input: {
+    search?: string; page: number; pageSize: number;
+  }) {
+    const search = input.search?.trim().toLowerCase();
+    const where = search ? "WHERE lower(id::text) LIKE $1" : "";
+    const values: unknown[] = search ? [`%${search}%`] : [];
+    const count = await this.pool.query(
+      `SELECT count(*) FROM users ${where}`, values
+    );
+    values.push(input.pageSize, (input.page - 1) * input.pageSize);
+    const rows = await this.pool.query(
+      `SELECT id FROM users ${where}
+       ORDER BY created_at DESC
+       LIMIT $${values.length - 1} OFFSET $${values.length}`,
+      values
+    );
+    return {
+      items: rows.rows.map((row) => ({
+        id: String(row.id),
+        displayName: `User ${String(row.id).slice(0, 8)}`,
+        status: "active" as const
+      })),
+      total: Number(count.rows[0]?.count ?? 0)
+    };
+  }
+
   async getUserRoles(userId: string) {
     return this.query<AuthorizationRole>(
       `SELECT r.id, r.slug, r.display_name AS "displayName",

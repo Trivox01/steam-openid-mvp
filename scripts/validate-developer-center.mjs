@@ -7,6 +7,10 @@ import {
 } from "../src/features/developer-center/AuthorizationClient.ts";
 import { AuthorizationStore } from "../src/features/developer-center/AuthorizationStore.ts";
 import { BadgeAdminClient, BadgeAdminError } from "../src/features/developer-center/badges/BadgeAdminClient.ts";
+import {
+  BadgeAssignmentClient,
+  BadgeAssignmentClientError
+} from "../src/features/developer-center/assignments/BadgeAssignmentClient.ts";
 
 const SESSION = {
   token: "memory-only-session",
@@ -74,6 +78,38 @@ test("Badge admin client expires the session on 401 and preserves HTTP errors", 
       (error) => error instanceof BadgeAdminError &&
         error.status === 401 &&
         error.message === "AUTHENTICATION_REQUIRED"
+    );
+    assert.equal(sessions.expired, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Badge assignment client preserves domain errors and prevents stale sessions", async () => {
+  const originalFetch = globalThis.fetch;
+  const sessions = new FakeSessionSource(SESSION);
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return Response.json({ error: "BADGE_ALREADY_ASSIGNED" }, { status: 409 });
+  };
+  try {
+    await assert.rejects(
+      new BadgeAssignmentClient("https://auth.example.test", sessions).assign({
+        userId: "00000000-0000-4000-8000-000000000001",
+        badgeDefinitionId: "00000000-0000-4000-8000-000000000002"
+      }),
+      (error) => error instanceof BadgeAssignmentClientError &&
+        error.status === 409 && error.code === "BADGE_ALREADY_ASSIGNED"
+    );
+    assert.equal(calls, 1);
+    globalThis.fetch = async () => Response.json(
+      { error: "AUTHENTICATION_REQUIRED" }, { status: 401 }
+    );
+    await assert.rejects(
+      new BadgeAssignmentClient("https://auth.example.test", sessions)
+        .list(new URLSearchParams()),
+      (error) => error instanceof BadgeAssignmentClientError && error.status === 401
     );
     assert.equal(sessions.expired, true);
   } finally {
@@ -194,11 +230,12 @@ test("account switching ignores the previous account request", async () => {
 });
 
 test("Sidebar, route guard, and Overview enforce the Developer Center contract", async () => {
-  const [sidebar, route, page, app] = await Promise.all([
+  const [sidebar, route, page, app, assignments] = await Promise.all([
     readFile(new URL("../src/components/layout/Sidebar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/features/developer-center/DeveloperCenterRoute.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/DeveloperCenterPage.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/App.tsx", import.meta.url), "utf8")
+    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/features/developer-center/assignments/BadgeAssignmentsPanel.tsx", import.meta.url), "utf8")
   ]);
   assert.match(sidebar, /canAccessDeveloperCenter\s*\?\s*item\("developer"/);
   assert.match(route, /state\.status === "forbidden"/);
@@ -208,6 +245,14 @@ test("Sidebar, route guard, and Overview enforce the Developer Center contract",
   assert.match(page, /snapshot\.permissions\.length/);
   assert.doesNotMatch(page, /sessionToken|steamId|databaseId|pollSecret/);
   assert.match(app, /#\/developer/);
+  assert.match(page, /badges\.view_assignments/);
+  assert.match(assignments, /badges\.assign/);
+  assert.match(assignments, /badges\.revoke/);
+  assert.match(assignments, /BADGE_ALREADY_ASSIGNED/);
+  assert.match(assignments, /AbortController/);
+  assert.match(assignments, /aria-modal="true"/);
+  assert.match(assignments, /event\.key === "Escape"/);
+  assert.doesNotMatch(assignments, /steamId64|optimistic/i);
 });
 
 class FakeSessionSource {

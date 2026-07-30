@@ -1071,6 +1071,82 @@ html[dir="rtl"] .game-v2-hero__copy h1,html[dir="rtl"] .achievement-x-card__body
   .onboarding-actions button { flex: 1 1 100%; }
 }
 
+/* Developer Center — badge assignments */
+.assignment-admin { min-width:0; }
+.assignment-admin .badge-admin-header { margin-block-end:1rem; }
+.assignment-toolbar {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(130px,1fr));
+  gap:.7rem;
+  padding:.85rem;
+  margin-block-end:1rem;
+}
+.assignment-toolbar label,.assignment-form label {
+  display:grid;gap:.35rem;color:var(--text-muted);font-size:.72rem;font-weight:650;
+}
+.assignment-toolbar select,.assignment-toolbar input,
+.assignment-form select,.assignment-form textarea,.assignment-form input {
+  width:100%;min-width:0;padding:.62rem .7rem;border:1px solid var(--border);
+  border-radius:var(--radius-md);color:var(--text-primary);background:var(--panel-solid);
+}
+.assignment-reset {
+  display:flex;align-items:center;justify-content:center;gap:.4rem;min-height:40px;
+  align-self:end;border:1px solid var(--border);border-radius:var(--radius-md);
+  color:var(--text-secondary);background:transparent;
+}
+.assignment-reset span { min-width:19px;padding:2px 5px;border-radius:999px;color:var(--accent);background:var(--accent-soft); }
+.assignment-list { overflow:hidden;padding:0; }
+.assignment-row {
+  display:grid;grid-template-columns:42px minmax(130px,1.2fr) minmax(130px,1fr) auto minmax(145px,1fr) minmax(150px,1fr) auto;
+  align-items:center;gap:.75rem;padding:.8rem;border-block-end:1px solid var(--border);
+}
+.assignment-row:last-child { border-block-end:0; }
+.assignment-row > div { min-width:0;display:grid;gap:.18rem; }
+.assignment-row span,.assignment-row strong,.assignment-row small {
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.assignment-row small { color:var(--text-muted);font-size:.68rem; }
+.assignment-icon { width:38px;aspect-ratio:1;display:grid;place-items:center;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-md);color:var(--accent);background:var(--panel); }
+.assignment-icon img { width:100%;height:100%;object-fit:cover; }
+.assignment-actions { display:flex!important;grid-auto-flow:column;gap:.35rem!important; }
+.assignment-actions button { width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-secondary);background:transparent; }
+.assignment-actions button.danger,.danger-button { color:var(--danger); }
+.assignment-notice { margin:.65rem 0;color:var(--success);font-size:.78rem; }
+.assignment-dialog { width:min(calc(100vw - 2rem),620px);max-height:calc(100vh - 2rem);overflow:auto;padding:1rem; }
+.assignment-dialog > header { display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-block-end:1rem; }
+.assignment-dialog h3 { margin:0; }
+.assignment-dialog > header button { width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:transparent; }
+.assignment-dialog footer { display:flex;justify-content:flex-end;gap:.65rem;margin-block-start:1rem; }
+.assignment-dialog footer button { min-height:40px;padding-inline:1rem; }
+.assignment-form { display:grid;gap:.85rem; }
+.assignment-form textarea { min-height:88px;resize:vertical; }
+.assignment-form dl { display:grid;grid-template-columns:auto 1fr;gap:.45rem 1rem;margin:0; }
+.assignment-form dt,.assignment-details dt { color:var(--text-muted); }
+.assignment-form dd,.assignment-details dd { margin:0; }
+.assignment-preview { display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:.65rem;padding:.8rem; }
+.assignment-preview div { display:grid;min-width:0; }
+.assignment-preview small { color:var(--text-muted);direction:ltr; }
+.assignment-preview p { grid-column:1/-1;margin:0;color:var(--text-secondary); }
+.assignment-details { display:grid;gap:.15rem;margin:0; }
+.assignment-details > div { display:grid;grid-template-columns:minmax(120px,.7fr) minmax(0,1fr);gap:1rem;padding:.65rem;border-radius:var(--radius-sm); }
+.assignment-details > div:nth-child(odd) { background:color-mix(in srgb,var(--panel) 75%,transparent); }
+.danger-button { border:1px solid color-mix(in srgb,var(--danger) 45%,var(--border));background:color-mix(in srgb,var(--danger) 9%,transparent); }
+
+@media (max-width:1180px) {
+  .assignment-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .assignment-row { grid-template-columns:42px minmax(0,1.2fr) minmax(0,1fr) auto auto; }
+  .assignment-row > div:nth-of-type(3),.assignment-row > div:nth-of-type(4) { display:none; }
+}
+@media (max-width:680px) {
+  .assignment-toolbar { grid-template-columns:1fr; }
+  .assignment-row { grid-template-columns:42px minmax(0,1fr) auto; }
+  .assignment-row > div:nth-of-type(2),.assignment-row > .ds-status-badge { display:none; }
+  .assignment-details > div { grid-template-columns:1fr;gap:.25rem; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .assignment-dialog,.assignment-row,.assignment-actions button { transition:none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .onboarding-progress span,
   .onboarding-actions button { transition: none; }
