@@ -1,5 +1,6 @@
 use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
+use std::time::Instant;
 use tauri::State;
 
 use crate::{
@@ -124,6 +125,7 @@ pub async fn steam_get_game_achievements(
     database: State<'_, DatabaseState>,
     secrets: State<'_, SecretStore>,
 ) -> Result<SteamGameAchievements, SteamCommandError> {
+    let started = Instant::now();
     let steam_id = read_steam_id(&database)
         .map_err(|code| SteamCommandError { code })?
         .ok_or_else(|| SteamCommandError { code: "steam_not_connected".to_string() })?;
@@ -132,8 +134,19 @@ pub async fn steam_get_game_achievements(
         .ok_or_else(|| SteamCommandError { code: "api_key_unavailable".to_string() })?;
     let client = SteamClient::new()
         .map_err(|error| SteamCommandError { code: error.code().to_string() })?;
-    client.get_game_achievements(&steam_id, &api_key, app_id).await
-        .map_err(|error| SteamCommandError { code: error.code().to_string() })
+    let result = client.get_game_achievements(&steam_id, &api_key, app_id).await;
+    #[cfg(debug_assertions)]
+    match &result {
+        Ok(payload) => eprintln!(
+            "[steam-achievements] app_id={} achievements_received={} outcome=success duration_ms={}",
+            app_id, payload.achievements.len(), started.elapsed().as_millis()
+        ),
+        Err(error) => eprintln!(
+            "[steam-achievements] app_id={} achievements_received=0 outcome=failed reason={} duration_ms={}",
+            app_id, error.code(), started.elapsed().as_millis()
+        ),
+    }
+    result.map_err(|error| SteamCommandError { code: error.code().to_string() })
 }
 
 fn connection_error(error: SteamError) -> SteamConnectionResult {

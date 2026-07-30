@@ -14,6 +14,7 @@ pub enum SteamError {
     ApiKeyUnavailable,
     GameUnsupported,
     NoAchievements,
+    GameNotOwned,
 }
 
 impl SteamError {
@@ -33,6 +34,7 @@ impl SteamError {
             Self::ApiKeyUnavailable => "api_key_unavailable",
             Self::GameUnsupported => "game_unsupported",
             Self::NoAchievements => "no_achievements",
+            Self::GameNotOwned => "game_not_owned",
         }
     }
 
@@ -52,6 +54,7 @@ impl SteamError {
             Self::ApiKeyUnavailable => "Reconnect Steam to make the API key available.",
             Self::GameUnsupported => "This game does not expose achievements through Steam Web API.",
             Self::NoAchievements => "This game has no Steam achievements.",
+            Self::GameNotOwned => "The connected Steam account does not own this game.",
         }
     }
 }

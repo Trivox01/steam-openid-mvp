@@ -1,4 +1,4 @@
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use reqwest::{Client, StatusCode};
 use std::collections::BTreeMap;
@@ -121,28 +121,69 @@ impl SteamClient {
         let schema_text = self.get_text(
             GAME_SCHEMA_ENDPOINT,
             &[("key", api_key.trim()), ("appid", &app_id_text), ("l", "english")],
+            app_id,
+            "schema",
         ).await?;
         let player_text = self.get_text(
             PLAYER_ACHIEVEMENTS_ENDPOINT,
             &[("key", api_key.trim()), ("steamid", steam_id), ("appid", &app_id_text), ("l", "english")],
+            app_id,
+            "player-achievements",
         ).await?;
         let global_text = self.get_text(
             GLOBAL_ACHIEVEMENTS_ENDPOINT,
             &[("gameid", &app_id_text)],
+            app_id,
+            "global-percentages",
         ).await.ok();
         merge_achievement_payloads(app_id, &schema_text, &player_text, global_text.as_deref())
     }
 
-    async fn get_text(&self, endpoint: &str, query: &[(&str, &str)]) -> Result<String, SteamError> {
-        let response = self.http.get(endpoint).query(query).send().await.map_err(map_request_error)?;
+    async fn get_text(
+        &self,
+        endpoint: &str,
+        query: &[(&str, &str)],
+        app_id: u32,
+        operation: &'static str,
+    ) -> Result<String, SteamError> {
+        let started = Instant::now();
+        let response = match self.http.get(endpoint).query(query).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                let mapped = map_request_error(error);
+                log_steam_request(app_id, operation, None, mapped.code(), started.elapsed());
+                return Err(mapped);
+            }
+        };
+        let status = response.status();
         match response.status() {
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => return Err(SteamError::InvalidApiKey),
-            StatusCode::TOO_MANY_REQUESTS => return Err(SteamError::RateLimited),
-            StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND => return Err(SteamError::GameUnsupported),
-            status if !status.is_success() => return Err(SteamError::ApiUnavailable),
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+                log_steam_request(app_id, operation, Some(status.as_u16()), "invalid_api_key", started.elapsed());
+                return Err(SteamError::InvalidApiKey);
+            }
+            StatusCode::TOO_MANY_REQUESTS => {
+                log_steam_request(app_id, operation, Some(status.as_u16()), "rate_limited", started.elapsed());
+                return Err(SteamError::RateLimited);
+            }
+            StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND => {
+                log_steam_request(app_id, operation, Some(status.as_u16()), "game_unsupported", started.elapsed());
+                return Err(SteamError::GameUnsupported);
+            }
+            status if !status.is_success() => {
+                log_steam_request(app_id, operation, Some(status.as_u16()), "steam_api_unavailable", started.elapsed());
+                return Err(SteamError::ApiUnavailable);
+            }
             _ => {}
         }
-        response.text().await.map_err(|_| SteamError::InvalidResponse)
+        let result = response.text().await.map_err(|_| SteamError::InvalidResponse);
+        log_steam_request(
+            app_id,
+            operation,
+            Some(status.as_u16()),
+            if result.is_ok() { "success" } else { "invalid_response" },
+            started.elapsed(),
+        );
+        result
     }
 }
 
@@ -171,7 +212,14 @@ pub(crate) fn merge_achievement_payloads(
         serde_json::from_str(player_payload).map_err(|_| SteamError::InvalidResponse)?;
     let mut warnings = Vec::new();
     let player_items = match player.playerstats {
-        Some(stats) if !stats.success && stats.error.is_some() => return Err(SteamError::PrivateLibrary),
+        Some(stats) if !stats.success && stats.error.is_some() => {
+            let error = stats.error.unwrap_or_default().to_ascii_lowercase();
+            return Err(if error.contains("does not own") || error.contains("not own") {
+                SteamError::GameNotOwned
+            } else {
+                SteamError::PrivateLibrary
+            });
+        }
         Some(stats) if stats.success => stats.achievements.unwrap_or_default(),
         _ => {
             warnings.push("player_stats_unavailable".to_string());
@@ -334,6 +382,27 @@ fn map_request_error(error: reqwest::Error) -> SteamError {
     }
 }
 
+#[cfg(debug_assertions)]
+fn log_steam_request(
+    app_id: u32,
+    operation: &str,
+    http_status: Option<u16>,
+    outcome: &str,
+    duration: Duration,
+) {
+    eprintln!(
+        "[steam-achievements] app_id={} operation={} http_status={} outcome={} duration_ms={}",
+        app_id,
+        operation,
+        http_status.map_or_else(|| "none".to_string(), |value| value.to_string()),
+        outcome,
+        duration.as_millis()
+    );
+}
+
+#[cfg(not(debug_assertions))]
+fn log_steam_request(_: u32, _: &str, _: Option<u16>, _: &str, _: Duration) {}
+
 #[cfg(test)]
 mod tests {
     use super::{merge_achievement_payloads, owned_games_query, parse_owned_games_payload};
@@ -418,6 +487,10 @@ mod tests {
         assert!(matches!(
             merge_achievement_payloads(20, schema, r#"{"playerstats":{"success":false,"error":"Profile is not public"}}"#, None),
             Err(SteamError::PrivateLibrary)
+        ));
+        assert!(matches!(
+            merge_achievement_payloads(20, schema, r#"{"playerstats":{"success":false,"error":"User does not own this game"}}"#, None),
+            Err(SteamError::GameNotOwned)
         ));
         let partial = merge_achievement_payloads(20, schema, "{}", None).expect("missing player stats is partial");
         assert!(!partial.achievements[0].unlocked);

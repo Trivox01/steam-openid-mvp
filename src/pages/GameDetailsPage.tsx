@@ -28,6 +28,7 @@ import {
 } from "../services/gameDetailsExperience";
 import { isAchievementUnlocked } from "../services/achievementData";
 import { services } from "../services/compositionRoot";
+import { SteamAchievementSyncError } from "../services/platform/SteamAchievementSyncService";
 import type { Achievement, AchievementId, Game, GameId } from "../types";
 
 const PAGE_SIZE = 120;
@@ -91,8 +92,12 @@ export function GameDetailsPage({
       const item = result.games.find((entry) => entry.gameId === game.id) ?? result.games[0];
       setSyncMessage(syncResultMessage(item?.status, item?.errorCode, t));
       publishLibraryChange();
-    } catch {
-      setSyncMessage(t("gameDetails.sync.error"));
+    } catch (error) {
+      setSyncMessage(syncResultMessage(
+        "failed",
+        error instanceof SteamAchievementSyncError ? error.code : "unknown",
+        t
+      ));
     } finally {
       setSyncing(false);
     }
@@ -386,6 +391,23 @@ function getSyncState(game: Game): "never" | "success" | "partial" | "unsupporte
 }
 
 function syncResultMessage(status: string | undefined, code: string | undefined, t: (key: string) => string) {
+  const codeMessages: Record<string, string> = {
+    steam_api_unavailable: "gameDetails.sync.apiUnavailable",
+    no_internet: "gameDetails.sync.apiUnavailable",
+    invalid_response: "gameDetails.sync.apiUnavailable",
+    api_key_unavailable: "gameDetails.sync.apiKeyMissing",
+    empty_api_key: "gameDetails.sync.apiKeyMissing",
+    invalid_api_key: "gameDetails.sync.apiKeyMissing",
+    no_achievements: "gameDetails.sync.noAchievements",
+    game_unsupported: "gameDetails.sync.noAchievements",
+    game_not_owned: "gameDetails.sync.notOwned",
+    timeout: "gameDetails.sync.timeout",
+    rate_limited: "gameDetails.sync.rateLimited",
+    steam_not_connected: "gameDetails.sync.sessionExpired",
+    session_expired: "gameDetails.sync.sessionExpired",
+    local_storage_failed: "gameDetails.sync.storageFailed"
+  };
+  if (code && codeMessages[code]) return t(codeMessages[code]);
   if (code === "private_library") return t("gameDetails.privateDescription");
   if (status === "unsupported") return t("gameDetails.noAchievementsDescription");
   if (status === "partial") return t("gameDetails.partialDescription");

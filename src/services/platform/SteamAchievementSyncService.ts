@@ -16,6 +16,19 @@ const batchBlockingCodes = new Set([
   "api_key_unavailable", "invalid_api_key", "steam_not_connected",
   "private_library", "rate_limited", "no_internet", "timeout"
 ]);
+const safeSteamErrorCodes = new Set([
+  ...unsupportedCodes,
+  ...batchBlockingCodes,
+  "steam_api_unavailable", "invalid_response", "game_not_owned",
+  "steam_not_connected", "session_expired"
+]);
+
+export class SteamAchievementSyncError extends Error {
+  constructor(readonly code: string) {
+    super("Achievement synchronization failed");
+    this.name = "SteamAchievementSyncError";
+  }
+}
 
 export class SteamAchievementSyncService {
   private active?: Promise<SteamAchievementSyncResult>;
@@ -37,7 +50,9 @@ export class SteamAchievementSyncService {
   }
 
   syncGame(gameId: string) {
-    return this.sync({ gameIds: [gameId], maxGames: 1 });
+    return this.sync({ gameIds: [gameId], maxGames: 1 }).catch(() => {
+      throw new SteamAchievementSyncError("local_storage_failed");
+    });
   }
 
   getLastSync() {
@@ -79,9 +94,13 @@ export class SteamAchievementSyncService {
   }
 
   private async syncOne(game: Game, existing: import("../../types").Achievement[]): Promise<SteamAchievementGameSyncResult> {
+    const startedAt = performance.now();
+    let stage: "steam" | "sqlite" = "steam";
     try {
       const dto = await this.fetchWithRetry(game.appId);
+      logDevelopmentSync(game.appId, "steam", "success", dto.achievements.length, startedAt);
       const merged = mergeSteamAchievements(game.id, existing, dto);
+      stage = "sqlite";
       if (merged.changed.length) await this.achievements.saveAchievements(merged.changed);
       const unlocked = merged.complete.filter((item) => item.unlocked ?? Boolean(item.unlockedAt)).length;
       const total = merged.complete.length;
@@ -96,6 +115,7 @@ export class SteamAchievementSyncService {
         achievementsSyncStatus: dto.warnings.length ? "partial" : "success",
         achievementsSyncError: undefined
       });
+      logDevelopmentSync(game.appId, "sqlite", "success", dto.achievements.length, startedAt);
       return {
         gameId: game.id, appId: game.appId, gameName: game.name,
         status: dto.warnings.length ? "partial" : "success",
@@ -104,8 +124,7 @@ export class SteamAchievementSyncService {
         skipped: merged.skipped, warnings: dto.warnings
       };
     } catch (error) {
-      const code = error instanceof SteamIntegrationError ? error.code :
-        error instanceof Error ? error.message : "unknown";
+      const code = stage === "sqlite" ? "local_storage_failed" : safeErrorCode(error);
       const unsupported = unsupportedCodes.has(code);
       await this.games.updateGame({
         ...game,
@@ -113,6 +132,7 @@ export class SteamAchievementSyncService {
         achievementsSyncStatus: unsupported ? "unsupported" : "error",
         achievementsSyncError: code
       }).catch(() => undefined);
+      logDevelopmentSync(game.appId, stage, "failed", 0, startedAt, code);
       return {
         gameId: game.id, appId: game.appId, gameName: game.name,
         status: unsupported ? "unsupported" : "failed",
@@ -133,6 +153,34 @@ export class SteamAchievementSyncService {
       return this.provider.getGameAchievementsWithMetadata(appId);
     }
   }
+}
+
+function safeErrorCode(error: unknown) {
+  const candidate = error instanceof SteamIntegrationError ? error.code :
+    error instanceof SteamAchievementSyncError ? error.code : "unknown";
+  return safeSteamErrorCodes.has(candidate) ? candidate : "unknown";
+}
+
+function logDevelopmentSync(
+  appId: string,
+  stage: "steam" | "sqlite",
+  outcome: "success" | "failed",
+  achievementsReceived: number,
+  startedAt: number,
+  reason?: string
+) {
+  if (!import.meta.env.DEV) return;
+  const details = {
+    appId,
+    stage,
+    achievementsReceived,
+    httpStatus: undefined,
+    outcome,
+    durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+    reason
+  };
+  if (outcome === "failed") console.warn("[achievement-sync]", details);
+  else console.info("[achievement-sync]", details);
 }
 
 function syncTime(value?: string) {
