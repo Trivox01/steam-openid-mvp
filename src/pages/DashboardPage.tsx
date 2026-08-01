@@ -20,7 +20,7 @@ import {
 } from "../services/intelligence/achievementJourneyAdapter";
 import { GameCard } from "../components/games/GameCard";
 import { EmptyView, ErrorView } from "../components/ui/StateViews";
-import { GameArtwork } from "../components/ui/GameArtwork";
+import { AchievementIcon } from "../components/ui/AchievementIcon";
 import { ProgressBar } from "../components/ui/ProgressBar";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { Skeleton } from "../components/ui/Skeleton";
@@ -112,7 +112,7 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
               className="journey-achievement-button"
               onClick={() => onOpenAchievement(next.achievementId, next.gameId)}
             >
-              <GameArtwork src={nextAchievement.iconUrl} alt="" variant="cover" className="journey-achievement-art" />
+              <AchievementIcon src={nextAchievement.iconUrl} alt={`${nextAchievement.title} achievement icon`} className="journey-achievement-art" />
               <div>
                 <span dir="auto">{nextGame.name}</span>
                 <h2 dir="auto">{nextAchievement.title}</h2>

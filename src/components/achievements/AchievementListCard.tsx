@@ -1,6 +1,7 @@
 import { EyeOff, Gem, LockKeyhole, Trophy } from "lucide-react";
 import type { Achievement, Game } from "../../types";
 import { isAchievementUnlocked } from "../../services/achievementData";
+import { AchievementIcon } from "../ui/AchievementIcon";
 
 export function AchievementListCard({ achievement, game, onOpen }: { achievement: Achievement; game?: Game; onOpen: (achievement: Achievement) => void }) {
   const unlocked = isAchievementUnlocked(achievement);
@@ -9,7 +10,7 @@ export function AchievementListCard({ achievement, game, onOpen }: { achievement
   const hiddenLocked = achievement.isHidden && !unlocked;
   return (
     <button className={`full-achievement-card ${unlocked ? "unlocked" : "locked"} ${rare ? "rare" : ""}`} onClick={() => onOpen(achievement)}>
-      <div className="full-achievement-icon"><img src={unlocked ? achievement.iconUrl : achievement.lockedIconUrl || achievement.iconUrl} alt="" loading="lazy" decoding="async" />{unlocked ? <Trophy size={15} /> : <LockKeyhole size={15} />}</div>
+      <div className="full-achievement-icon"><AchievementIcon src={unlocked ? achievement.iconUrl : achievement.lockedIconUrl || achievement.iconUrl} alt={`${achievement.title} achievement icon`} />{unlocked ? <Trophy size={15} /> : <LockKeyhole size={15} />}</div>
       <div className="full-achievement-copy">
         <div className="achievement-labels"><span>{game?.name}</span>{rare && <b><Gem size={11} /> Rare</b>}{achievement.isHidden && <b><EyeOff size={11} /> Hidden</b>}</div>
         <h2>{hiddenLocked ? "Hidden achievement" : achievement.title}</h2>

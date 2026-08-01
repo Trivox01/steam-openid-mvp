@@ -5,7 +5,7 @@ import type { AchievementDensity, AchievementView } from "../../services/gameDet
 import { isRareAchievement } from "../../services/gameDetailsExperience";
 import { isAchievementUnlocked, knownAchievementRarity } from "../../services/achievementData";
 import { useTranslation } from "../../i18n/TranslationContext";
-import { GameArtwork } from "../ui/GameArtwork";
+import { AchievementIcon } from "../ui/AchievementIcon";
 import { StatusBadge } from "../ui/StatusBadge";
 
 type Props = {
@@ -51,7 +51,7 @@ export const AchievementExperienceCard = memo(function AchievementExperienceCard
       onClick={() => onOpen(achievement)}
       aria-label={`${t("gameDetails.achievementDetails")}: ${title}. ${stateLabel}`}
     >
-      <GameArtwork src={image} alt="" variant="cover" className="achievement-x-card__art" />
+      <AchievementIcon src={image} alt={`${title} achievement icon`} size={density === "compact" ? "compact" : "default"} className="achievement-x-card__art" />
       <span className="achievement-x-card__state-icon" aria-hidden="true">
         {!known ? <HelpCircle /> : unlocked ? <Trophy /> : <LockKeyhole />}
       </span>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { BarChart3, CheckCircle2, Clock3, Gem, Library, Target, Trophy } from "lucide-react";
 import { EmptyView, ErrorView, LoadingView } from "../components/ui/StateViews";
 import { GameArtwork } from "../components/ui/GameArtwork";
+import { AchievementIcon } from "../components/ui/AchievementIcon";
 import { PageHeader } from "../components/ui/PageHeader";
 import { ProgressBar } from "../components/ui/ProgressBar";
 import { SectionHeader } from "../components/ui/SectionHeader";
@@ -162,7 +163,7 @@ export function StatisticsPage({
               <div className="statistics-v2__achievement-list">{insights.topRareUnlocked.map((achievement) => {
                 const game = insights.gameById.get(achievement.gameId);
                 return <div key={achievement.id}>
-                  <img src={achievement.iconUrl} alt="" loading="lazy" decoding="async" />
+                  <AchievementIcon src={achievement.iconUrl} alt={`${achievement.title} achievement icon`} size="compact" />
                   <span><strong dir="auto">{achievement.title}</strong><small dir="auto">{game?.name}</small></span>
                   <b>{number.format(knownAchievementRarity(achievement)!)}%</b>
                 </div>;

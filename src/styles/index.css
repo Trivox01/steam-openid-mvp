@@ -2247,3 +2247,14 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 @media(max-width:520px){.game-v2-hero__copy>.nexus-shiny-button{width:100%;max-width:320px}.nexus-shiny-button--hero .nexus-shiny-button__content{white-space:normal;text-align:center}}
 @media(prefers-reduced-motion:reduce){.nexus-shiny-button{animation:none!important;transition:none!important}.nexus-shiny-button:hover:not(:disabled){transform:none}.nexus-shiny-button__spinner{animation:none}}
 @media(forced-colors:active){.nexus-shiny-button{border:1px solid ButtonText;background:ButtonFace;color:ButtonText;box-shadow:none}.nexus-shiny-button::before{display:none}.nexus-shiny-button:focus-visible{outline:3px solid Highlight}}
+
+/* Unified Steam-first achievement artwork with a stable Nexus fallback. */
+.achievement-icon{inline-size:var(--achievement-icon-size,48px);block-size:var(--achievement-icon-size,48px);flex:0 0 var(--achievement-icon-size,48px);display:grid;place-items:center;overflow:hidden;border:1px solid var(--border-muted);border-radius:11px;background:color-mix(in srgb,var(--surface-raised) 86%,var(--accent-subtle));box-shadow:var(--shadow-subtle)}
+.achievement-icon>img{inline-size:var(--achievement-icon-inner,44px);block-size:var(--achievement-icon-inner,44px);max-inline-size:calc(100% - 4px);max-block-size:calc(100% - 4px);display:block;object-fit:contain;border-radius:10px}
+.achievement-icon.is-fallback{background:radial-gradient(circle at 50% 38%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 70%),var(--surface-raised)}
+.achievement-icon.is-fallback>img{filter:drop-shadow(0 3px 7px color-mix(in srgb,var(--accent) 22%,transparent))}
+.achievement-icon--compact{border-radius:10px}
+.full-achievement-icon .achievement-icon,.achievement-dialog-hero .achievement-icon,.journey-achievement-art.achievement-icon,.achievement-x-card__art.achievement-icon{inline-size:var(--achievement-icon-size,48px);block-size:var(--achievement-icon-size,48px);aspect-ratio:1}
+.achievement-dialog-hero{width:48px}.journey-achievement-art.achievement-icon{width:48px}
+@media(max-width:560px){.achievement-icon{--achievement-icon-size:40px!important;--achievement-icon-inner:36px!important}.achievement-dialog-hero{width:40px}}
+@media(forced-colors:active){.achievement-icon{border:1px solid CanvasText;background:Canvas;box-shadow:none}.achievement-icon.is-fallback>img{filter:none}}
