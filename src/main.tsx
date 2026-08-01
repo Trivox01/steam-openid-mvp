@@ -7,6 +7,9 @@ import "./styles/index.css";
 import { AuthorizationProvider } from "./features/developer-center/AuthorizationContext";
 import { services } from "./services/compositionRoot";
 import { PublicBadgeProvider } from "./features/profile/publicBadges/PublicBadgeContext";
+import { installNativeDesktopInteractions } from "./services/nativeDesktopInteractions";
+
+installNativeDesktopInteractions();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

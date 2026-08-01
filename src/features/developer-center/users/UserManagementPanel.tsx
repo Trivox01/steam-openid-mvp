@@ -312,10 +312,11 @@ function Row({ label, value, ltr }: { label: string; value: string; ltr?: boolea
 function ShortIdentifier({ value }: { value: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
-  return <span className="user-short-id" dir="ltr" title={value}>
+  return <span className="user-short-id" dir="ltr" title={value} data-allow-copy>
     <code>{shortId(value)}</code>
     <button
       type="button"
+      data-allow-copy
       aria-label={t(copied ? "developer.users.copied" : "developer.users.copyUuid")}
       onClick={async () => {
         await navigator.clipboard.writeText(value);

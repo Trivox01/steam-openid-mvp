@@ -163,6 +163,9 @@
 }
 
 * { box-sizing:border-box;scrollbar-width:thin;scrollbar-color:var(--scrollbar-thumb) transparent; }
+body,#root,#root * { -webkit-user-select:none;user-select:none;-webkit-user-drag:none; }
+:where(input,textarea,[contenteditable]:not([contenteditable="false"]),[data-allow-copy],[data-allow-copy] *) { -webkit-user-select:text;user-select:text; }
+img,svg { -webkit-user-drag:none;user-drag:none; }
 html { scrollbar-gutter:stable; }
 *::-webkit-scrollbar { width:8px;height:8px; }
 *::-webkit-scrollbar-track { background:transparent; }
