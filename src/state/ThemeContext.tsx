@@ -16,7 +16,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", resolvedTheme === "dark");
-  }, [theme, resolvedTheme]);
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.documentElement.style.colorScheme = resolvedTheme;
+  }, [resolvedTheme]);
   const value = useMemo(() => ({
     theme, resolvedTheme, setTheme,
     toggleTheme: () => setTheme(resolvedTheme === "dark" ? "light" : "dark")

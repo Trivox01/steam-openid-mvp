@@ -6,7 +6,6 @@ type Props=Omit<ButtonHTMLAttributes<HTMLButtonElement>,"children">&{label:strin
 
 export function NexusShinyButton({label,icon,loading=false,variant,size,className="",...button}:Props){
  return <button {...button} className={`nexus-shiny-button nexus-shiny-button--${variant} nexus-shiny-button--${size} ${className}`.trim()} aria-busy={loading||undefined}>
-  <span className="nexus-shiny-button__glow" aria-hidden="true"/>
   <span className="nexus-shiny-button__content">{icon}{size==="hero"&&<span>{label}</span>}</span>
  </button>
 }
