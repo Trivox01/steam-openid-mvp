@@ -148,7 +148,7 @@ export function SteamOpenIdAccountSettings() {
           </div>
           <dl className="steam-openid-identity">
             <div>
-              <dt>SteamID64</dt>
+              <dt>{t("steam.accountId")}</dt>
               <dd dir="ltr">{identity.steamId}</dd>
             </div>
             <div>

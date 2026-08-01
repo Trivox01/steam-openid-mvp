@@ -7,11 +7,13 @@ import type { AchievementId, GameId } from "../types";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { services } from "../services/compositionRoot";
 import { isAchievementUnlocked, knownAchievementRarity } from "../services/achievementData";
+import { useTranslation } from "../i18n/TranslationContext";
 
 type AchievementFilter = "all" | "unlocked" | "locked" | "rare" | "hidden";
 type AchievementSort = "date" | "rarity" | "name";
 
 export function AchievementsPage({ onOpenAchievement }: { onOpenAchievement: (id: AchievementId, gameId: GameId) => void }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<AchievementFilter>("all");
   const [sort, setSort] = useState<AchievementSort>("date");
@@ -32,19 +34,19 @@ export function AchievementsPage({ onOpenAchievement }: { onOpenAchievement: (id
 
   return (
     <section className="content-page">
-      <PageHeader eyebrow="COLLECTION" title="Achievements" description={`${source.filter((item) => item.unlockedAt).length} unlocked achievements in your collection.`} />
+      <PageHeader eyebrow={t("achievements.eyebrow")} title={t("achievements.title")} description={t("achievements.description", { count: source.filter((item) => item.unlockedAt).length })} />
       <FilterToolbar>
-        <SearchField value={query} onChange={setQuery} placeholder="Search achievement or game..." />
+        <SearchField value={query} onChange={setQuery} placeholder={t("achievements.search")} />
         <SegmentedFilter value={filter} onChange={setFilter} options={[
-          { value: "all", label: "All" }, { value: "unlocked", label: "Unlocked" }, { value: "locked", label: "Locked" },
-          { value: "rare", label: "Rare" }, { value: "hidden", label: "Hidden" }
+          { value: "all", label: t("achievements.filter.all") }, { value: "unlocked", label: t("achievements.filter.unlocked") }, { value: "locked", label: t("achievements.filter.locked") },
+          { value: "rare", label: t("achievements.filter.rare") }, { value: "hidden", label: t("achievements.filter.hidden") }
         ]} />
-        <div className="toolbar-end"><SelectControl value={sort} onChange={setSort} label="Sort" options={[
-          { value: "date", label: "Unlock date" }, { value: "rarity", label: "Rarity" }, { value: "name", label: "Name" }
+        <div className="toolbar-end"><SelectControl value={sort} onChange={setSort} label={t("achievements.sort")} options={[
+          { value: "date", label: t("achievements.sort.date") }, { value: "rarity", label: t("achievements.sort.rarity") }, { value: "name", label: t("achievements.sort.name") }
         ]} /></div>
       </FilterToolbar>
       {achievements.length ? <div className="achievements-grid">{achievements.map((achievement) => <AchievementListCard key={achievement.id} achievement={achievement} game={games.find((game) => game.id === achievement.gameId)} onOpen={(item) => onOpenAchievement(item.id, item.gameId)} />)}</div> :
-        <EmptyView compact title="No achievements found" description="Adjust your search or choose another filter." />}
+        <EmptyView compact title={t("achievements.empty.title")} description={t("achievements.empty.description")} />}
     </section>
   );
 }

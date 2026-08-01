@@ -8,8 +8,8 @@ export function PlaceholderPage({ title, description, icon: Icon }: { title: str
       <h1>{title}</h1>
       <p>{description}</p>
       <div className="placeholder-panel">
-        <span>Foundation ready</span>
-        <strong>This workspace will be expanded in a future release.</strong>
+        <span>More is on the way</span>
+        <strong>This area is coming soon.</strong>
       </div>
     </motion.section>
   );

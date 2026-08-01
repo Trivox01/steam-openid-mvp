@@ -30,6 +30,7 @@
     "test:themes": "node --experimental-strip-types scripts/validate-themes.mjs",
     "test:native-ux": "node --experimental-strip-types scripts/validate-native-ux.mjs",
     "test:achievement-icons": "node --experimental-strip-types scripts/validate-achievement-icons.mjs",
+    "test:ux-copy": "node --experimental-strip-types scripts/validate-ux-microcopy.mjs",
     "test:steam-artwork": "node --experimental-strip-types scripts/validate-steam-artwork.mjs",
     "test:profile": "node --experimental-strip-types scripts/validate-profile-card.mjs",
     "test:badges": "node --experimental-strip-types scripts/validate-profile-badges.mjs",
