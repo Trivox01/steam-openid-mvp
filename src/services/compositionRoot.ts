@@ -41,6 +41,7 @@ import { GameLauncherService } from "./GameLauncherService";
 import { TauriSteamLaunchTransport } from "../integrations/steam/TauriSteamLaunchTransport";
 import { TauriSteamInstallationProbe } from "../integrations/steam/TauriSteamInstallationProbe";
 import { listen } from "@tauri-apps/api/event";
+import { ToolClient } from "../features/tools/ToolClient";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -71,6 +72,7 @@ const publicBadges = steamOpenId
 const userAdmin = steamOpenId
   ? new UserAdminClient(getSteamAuthApiBaseUrl(), steamOpenId)
   : undefined;
+const tools = (() => { try { return new ToolClient(getSteamAuthApiBaseUrl(), steamOpenId); } catch { return undefined; } })();
 if (userAdmin) {
   subscribeToAdminUserChanges((userId) => userAdmin.invalidate(userId));
 }
@@ -124,6 +126,7 @@ export const services = {
   badgeAssignments,
   publicBadges,
   userAdmin,
+  tools,
   steamLibrarySync: new SteamLibrarySyncService(steamProvider, games, sync),
   steamAchievementSync: new SteamAchievementSyncService(steamProvider, games, achievements, sync)
 };

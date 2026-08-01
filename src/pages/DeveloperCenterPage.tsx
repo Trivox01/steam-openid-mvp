@@ -11,6 +11,7 @@ import {
   Tags,
   UserCog,
   Users
+  ,Wrench, BadgeCheck, FolderTree
 } from "lucide-react";
 import { Surface } from "../components/ui/Surface";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -19,6 +20,7 @@ import type { AuthorizationSnapshot } from "../features/developer-center/authori
 import { lazy, Suspense, useState } from "react";
 import { BadgeManagementPanel } from "../features/developer-center/badges/BadgeManagementPanel";
 import { services } from "../services/compositionRoot";
+import { ToolsManagementPanel } from "../features/developer-center/tools/ToolsManagementPanel";
 const BadgeAssignmentsPanel = lazy(async () => {
   const module = await import(
     "../features/developer-center/assignments/BadgeAssignmentsPanel"
@@ -43,6 +45,9 @@ const sections = [
   ["flags", Flag, true],
   ["audit", Activity, true],
   ["diagnostics", Bug, true]
+  ,["tools", Wrench, false]
+  ,["toolBadges", BadgeCheck, false]
+  ,["toolCategories", FolderTree, false]
 ] as const;
 
 export function DeveloperCenterPage({
@@ -51,7 +56,7 @@ export function DeveloperCenterPage({
   snapshot: AuthorizationSnapshot;
 }) {
   const { t } = useTranslation();
-  const [activeSection, setActiveSection] = useState<"overview" | "users" | "badges" | "assignments">("overview");
+  const [activeSection, setActiveSection] = useState<"overview" | "users" | "badges" | "assignments" | "tools" | "toolBadges" | "toolCategories">("overview");
   const highestRole = [...snapshot.roles].sort(
     (left, right) => right.priority - left.priority
   )[0];
@@ -79,6 +84,9 @@ export function DeveloperCenterPage({
             if (id === "users" && !snapshot.permissions.includes("users.view")) {
               return null;
             }
+            if (id === "tools" && !snapshot.permissions.includes("tools.manage")) return null;
+            if (id === "toolBadges" && !snapshot.permissions.includes("tool_badges.manage")) return null;
+            if (id === "toolCategories" && !snapshot.permissions.includes("tool_categories.manage")) return null;
             const disabled = originallyDisabled && id !== "assignments" && id !== "users";
             return (
               <button
@@ -93,7 +101,7 @@ export function DeveloperCenterPage({
                     id === "overview" ||
                     id === "users" ||
                     id === "badges" ||
-                    id === "assignments"
+                    id === "assignments" || id === "tools" || id === "toolBadges" || id === "toolCategories"
                   ) setActiveSection(id);
                 }}
               >
@@ -121,6 +129,12 @@ export function DeveloperCenterPage({
           </Suspense>
         ) : activeSection === "badges" ? (
           <BadgeManagementPanel snapshot={snapshot} client={services.badgeAdmin} />
+        ) : activeSection === "tools" ? (
+          <ToolsManagementPanel client={services.tools} mode="tools" />
+        ) : activeSection === "toolBadges" ? (
+          <ToolsManagementPanel client={services.tools} mode="badges" />
+        ) : activeSection === "toolCategories" ? (
+          <ToolsManagementPanel client={services.tools} mode="categories" />
         ) : <div className="developer-overview">
           <div className="developer-overview-heading">
             <div>
