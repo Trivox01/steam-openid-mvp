@@ -2187,8 +2187,8 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 .nexus-play-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 26px color-mix(in srgb,var(--accent-primary,var(--accent)) 28%,transparent)}
 .nexus-play-button:focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}
 .nexus-play-button:disabled{cursor:not-allowed;opacity:.7}
-.nexus-play-button[data-status="running"],.nexus-play-button[data-status="alreadyRunning"]{border-color:color-mix(in srgb,var(--success) 60%,var(--border-default));background:color-mix(in srgb,var(--success) 50%,var(--surface-elevated))}
-.nexus-play-button[data-status="steamUnavailable"],.nexus-play-button[data-status="steamNotInstalled"],.nexus-play-button[data-status="gameUnavailable"],.nexus-play-button[data-status="launchFailed"]{background:var(--surface-elevated);color:var(--text-primary)}
+.nexus-play-button[data-status="running"]{border-color:color-mix(in srgb,var(--success) 60%,var(--border-default));background:color-mix(in srgb,var(--success) 50%,var(--surface-elevated))}
+.nexus-play-button[data-status="steam_unavailable"],.nexus-play-button[data-status="steam_not_installed"],.nexus-play-button[data-status="unknown"]{background:var(--surface-elevated);color:var(--text-primary)}
 .nexus-play-button--compact{width:36px;min-width:36px;min-height:36px;padding:0;border-radius:var(--radius-sm)}
 .nexus-play-button__spinner{animation:nexus-play-spin .8s linear infinite}
 @keyframes nexus-play-spin{to{transform:rotate(360deg)}}

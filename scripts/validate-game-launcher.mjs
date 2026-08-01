@@ -1,49 +1,29 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { GameLauncherService } from "../src/services/GameLauncherService.ts";
+import {GameLauncherService} from "../src/services/GameLauncherService.ts";
 
-assert.equal(GameLauncherService.buildLaunchUri("2807960"), "steam://run/2807960");
-for (const invalid of ["", "0", "-1", "12.3", "1/2", "4294967296", "abc"]) {
-  assert.throws(() => GameLauncherService.buildLaunchUri(invalid), /invalid_app_id/);
-}
+assert.equal(GameLauncherService.buildUri("run","2807960"),"steam://run/2807960");
+assert.equal(GameLauncherService.buildUri("install","578080"),"steam://install/578080");
+assert.equal(GameLauncherService.buildUri("store","2913300"),"steam://store/2913300");
+for(const invalid of ["","0","-1","12.3","1/2","4294967296","abc"])assert.throws(()=>GameLauncherService.buildLaunchUri(invalid),/invalid_app_id/);
 
-let resolveOpen;
-const calls = [];
-const pendingTransport = { open: (uri) => { calls.push(uri); return new Promise((resolve) => { resolveOpen = resolve; }); } };
-const launcher = new GameLauncherService(pendingTransport, undefined, () => true, undefined, 0);
-const first = launcher.launch("578080");
-const duplicate = launcher.launch("578080");
-assert.equal(first, duplicate, "duplicate clicks join the same launch task");
-await Promise.resolve();
-assert.equal(launcher.getSnapshot("578080").status, "launching");
-resolveOpen();
-assert.equal((await first).result, "launchRequested");
-assert.deepEqual(calls, ["steam://run/578080"]);
+const probe=(steamStatus,installed)=>({getState:async()=>({steamStatus,installed}),invalidate:async()=>undefined});
+const calls=[];let resolveOpen;
+const launcher=new GameLauncherService({open:(uri)=>{calls.push(uri);return new Promise(resolve=>{resolveOpen=resolve})}},probe("installed",true),undefined,undefined,0);
+assert.equal((await launcher.refresh("578080","owned")).availability,"installed");
+const first=launcher.act("578080","owned"),duplicate=launcher.act("578080","owned");assert.equal(first,duplicate);
+await Promise.resolve();assert.equal(launcher.getSnapshot("578080").actionStatus,"openingSteam");resolveOpen();await first;assert.deepEqual(calls,["steam://run/578080"]);
 
-const retryCalls = [];
-const retryLauncher = new GameLauncherService({ open: async (uri) => {
-  retryCalls.push(uri);
-  if (retryCalls.length === 1) throw new Error("handler unavailable");
-}}, undefined, () => true, undefined, 0);
-assert.equal((await retryLauncher.launch("2807960")).result, "launchRequested");
-assert.deepEqual(retryCalls, ["steam://run/2807960", "steam://open/main", "steam://run/2807960"]);
+const actions=[];
+for(const [status,installed,ownership,expected,uri] of [
+ ["installed",false,"owned","owned_not_installed","steam://install/10"],
+ ["installed",false,"not_owned","not_owned","steam://store/10"],
+ ["installed",false,"unknown","not_installed","steam://store/10"],
+ ["not_installed",false,"owned","steam_not_installed",null],
+ ["unavailable",false,"owned","steam_unavailable","steam://store/10"]
+]){const service=new GameLauncherService({open:async value=>actions.push(value)},probe(status,installed),undefined,undefined,0);assert.equal((await service.refresh("10",ownership)).availability,expected);if(uri){await service.act("10",ownership);assert.equal(actions.at(-1),uri)}}
+const running=new GameLauncherService({open:async()=>assert.fail("must not open")},probe("installed",true),{getState:async()=>"running"});assert.equal((await running.refresh("10","owned")).availability,"running");await running.act("10","owned");
 
-const missing = new GameLauncherService({ open: async () => { throw new Error("missing"); } }, undefined, () => true, undefined, 0);
-assert.equal((await missing.launch("2913300")).status, "steamNotInstalled");
-const running = new GameLauncherService({ open: async () => assert.fail("must not relaunch") }, { getState: async () => "running" });
-assert.equal((await running.launch("578080")).status, "alreadyRunning");
-const offline = new GameLauncherService({ open: async () => undefined }, undefined, () => false);
-assert.equal((await offline.launch("578080")).status, "offline");
-
-const card = fs.readFileSync("src/components/games/GameCard.tsx", "utf8");
-const details = fs.readFileSync("src/pages/GameDetailsPage.tsx", "utf8");
-const button = fs.readFileSync("src/components/games/PlayButton.tsx", "utf8");
-const styles = fs.readFileSync("src/styles/index.css", "utf8");
-assert.match(card, /<PlayButton/);
-assert.match(details, /<PlayButton/);
-assert.match(button, /event\.stopPropagation\(\)/);
-assert.match(button, /aria-busy/);
-assert.match(styles, /prefers-reduced-motion:reduce/);
-assert.match(styles, /forced-colors:active/);
-assert.doesNotMatch(`${card}\n${details}\n${button}`, /openUrl\(|steam:\/\/run\//, "components contain no direct launch logic");
-console.log("Game Launcher service, retry, deduplication, UI integration and accessibility validated.");
+const card=fs.readFileSync("src/components/games/GameCard.tsx","utf8"),details=fs.readFileSync("src/pages/GameDetailsPage.tsx","utf8"),button=fs.readFileSync("src/components/games/GameActionButton.tsx","utf8"),styles=fs.readFileSync("src/styles/index.css","utf8");
+assert.match(card,/<GameActionButton/);assert.match(details,/<GameActionButton/);assert.match(button,/event\.stopPropagation\(\)/);assert.match(button,/aria-busy/);assert.match(styles,/prefers-reduced-motion:reduce/);assert.match(styles,/forced-colors:active/);assert.doesNotMatch(`${card}\n${details}\n${button}`,/openUrl\(|steam:\/\/(run|install|store)\//);
+console.log("Game action availability, safe URI selection, deduplication and shared UI validated.");

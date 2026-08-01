@@ -17,7 +17,16 @@
           "url": "steam://run/*"
         },
         {
+          "url": "steam://install/*"
+        },
+        {
+          "url": "steam://store/*"
+        },
+        {
           "url": "steam://open/main"
+        },
+        {
+          "url": "https://store.steampowered.com/about/"
         }
       ]
     }

@@ -28,7 +28,7 @@ import {
 import { isAchievementUnlocked } from "../services/achievementData";
 import { services, smartSync } from "../services/compositionRoot";
 import type { Achievement, AchievementId, Game, GameId } from "../types";
-import { PlayButton } from "../components/games/PlayButton";
+import { GameActionButton } from "../components/games/GameActionButton";
 
 const PAGE_SIZE = 120;
 
@@ -153,7 +153,7 @@ export function GameDetailsPage({
                 ? t("gameDetails.achievementDataUnavailable")
                 : `${formatNumber(summary.unlocked, language)} / ${formatNumber(summary.total, language)}`}
             </strong>
-            {game.platform === "steam" && <PlayButton appId={game.appId} title={game.name} />}
+            {game.platform === "steam" && <GameActionButton appId={game.appId} title={game.name} owned />}
           </div>
         </div>
       </Surface>

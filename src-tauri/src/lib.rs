@@ -1,6 +1,7 @@
 mod commands;
 mod database;
 mod models;
+mod steam_installation;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -20,6 +21,21 @@ struct DesktopLifecycleState {
 #[tauri::command]
 fn set_tray_behavior_enabled(enabled: bool, state: tauri::State<'_, DesktopLifecycleState>) {
     state.minimize_to_tray.store(enabled, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn get_steam_installation_index(
+    force_refresh: bool,
+    state: tauri::State<'_, steam_installation::SteamInstallationProbe>,
+) -> steam_installation::SteamInstallationIndex {
+    state.index(force_refresh)
+}
+
+#[tauri::command]
+fn invalidate_steam_installation_index(
+    state: tauri::State<'_, steam_installation::SteamInstallationProbe>,
+) {
+    state.invalidate();
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -42,6 +58,7 @@ pub fn run() {
                 minimize_to_tray: AtomicBool::new(true),
                 ..Default::default()
             });
+            app.manage(steam_installation::SteamInstallationProbe::default());
 
             let open = MenuItem::with_id(app, "open-nexus", "Open Nexus", true, None::<&str>)?;
             let check = MenuItem::with_id(
@@ -100,6 +117,12 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if matches!(event, WindowEvent::Focused(true)) {
+                window
+                    .state::<steam_installation::SteamInstallationProbe>()
+                    .invalidate();
+                let _ = window.emit("nexus://steam-installation-invalidated", ());
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<DesktopLifecycleState>();
                 if state.minimize_to_tray.load(Ordering::Relaxed)
@@ -146,7 +169,9 @@ pub fn run() {
             commands::save_profile,
             commands::get_sync_metadata,
             commands::save_sync_metadata,
-            set_tray_behavior_enabled
+            set_tray_behavior_enabled,
+            get_steam_installation_index,
+            invalidate_steam_installation_index
         ])
         .run(tauri::generate_context!())
         .expect("error while running Achievement Nexus");

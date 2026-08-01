@@ -39,6 +39,7 @@ import {
 import { SmartSyncCoordinator } from "./SmartSyncCoordinator";
 import { GameLauncherService } from "./GameLauncherService";
 import { TauriSteamLaunchTransport } from "../integrations/steam/TauriSteamLaunchTransport";
+import { TauriSteamInstallationProbe } from "../integrations/steam/TauriSteamInstallationProbe";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -99,7 +100,7 @@ const steamSessions = steamOpenId ?? {
 export const steamProvider = new SteamProvider(steamData, steamSessions);
 export const gameLauncher = new GameLauncherService(
   new TauriSteamLaunchTransport(),
-  undefined,
+  new TauriSteamInstallationProbe(),
   undefined,
   import.meta.env.DEV
     ? ({ appId, launchUri, result, durationMs }) => console.info("[game-launch]", { appId, launchUri, result, durationMs })
@@ -134,6 +135,10 @@ export const smartSync = new SmartSyncCoordinator(
   }
 );
 export const applicationRefresh = new ApplicationRefreshCoordinator();
+applicationRefresh.register({
+  id: "steam-installation",
+  run: async () => { await gameLauncher.invalidate(); }
+});
 applicationRefresh.register({
   id: "local-library",
   run: async () => {
