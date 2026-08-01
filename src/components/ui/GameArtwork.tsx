@@ -107,6 +107,7 @@ export function GameArtwork({
 
   return (
     <span
+      data-artwork-source-kind={activeSource?.kind}
       className={mergeClassNames(
         "game-artwork",
         `game-artwork--${variant}`,

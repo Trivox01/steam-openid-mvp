@@ -107,7 +107,8 @@ export function GameDetailsPage({
 
   const { filtered, summary, recent, rareUnlocked, rareOpportunities, insight } = experience;
   const visibleAchievements = filtered.slice(0, visibleCount);
-  const syncState = getSyncState(game);
+  const hasAchievementData = allAchievements.length > 0 || game.totalAchievements > 0;
+  const syncState = getSyncState(game, hasAchievementData);
   const smartStatus = smartSync.getStatus(`achievements:${game.id}`);
   const smartMessage = smartStatus === "updating" || smartStatus === "queued"
     ? t("gameDetails.smartSync.updating")
@@ -129,7 +130,7 @@ export function GameDetailsPage({
         <GameArtwork src={game.backgroundUrl} sources={game.platform === "steam" ? steamArtworkSources({ appId: game.appId, kind: "hero", storedUrl: game.backgroundUrl, iconUrl: game.iconUrl }) : undefined} alt="" variant="background" className="game-v2-hero__background" eager appId={game.platform === "steam" ? game.appId : undefined} componentName="GameDetailsHero" />
         <div className="game-v2-hero__overlay" aria-hidden="true" />
         <div className="game-v2-hero__content">
-          <GameArtwork src={game.iconUrl || game.coverUrl} sources={game.platform === "steam" ? steamArtworkSources({ appId: game.appId, kind: "square", storedUrl: game.coverUrl, iconUrl: game.iconUrl }) : undefined} alt={game.name} variant="square" className="game-v2-hero__cover" eager appId={game.platform === "steam" ? game.appId : undefined} componentName="GameDetailsSquare" />
+          <GameArtwork src={game.coverUrl} sources={game.platform === "steam" ? steamArtworkSources({ appId: game.appId, kind: "cover", storedUrl: game.coverUrl, iconUrl: game.iconUrl }) : undefined} alt={t("gameDetails.coverAlt", { title: game.name })} variant="cover" className="game-v2-hero__cover" eager appId={game.platform === "steam" ? game.appId : undefined} componentName="GameDetailsCover" />
           <div className="game-v2-hero__copy">
             <div className="game-v2-hero__badges">
               <StatusBadge tone="accent"><span dir="ltr">{game.platform}</span></StatusBadge>
@@ -138,17 +139,17 @@ export function GameDetailsPage({
             </div>
             <h1 dir="auto">{game.name}</h1>
             <div className="game-v2-hero__metadata">
-              <span><Clock3 />{t("gameDetails.playtime", { hours: formatNumber(game.playtimeHours, language) })}</span>
-              <span>{formatLastPlayed(game.lastPlayedAt, language, t)}</span>
+              <span><Clock3 />{formatPlaytime(game.playtimeHours, language, t)}</span>
+              {isValidDate(game.lastPlayedAt) && <span>{formatLastPlayed(game.lastPlayedAt, language, t)}</span>}
             </div>
             {completion !== null ? (
               <ProgressBar value={completion} label={t("gameDetails.completion")} showValue />
             ) : (
-              <span className="game-v2-unknown-progress"><HelpCircle />{t("gameDetails.unavailable")}</span>
+              <span className="game-v2-unknown-progress"><HelpCircle />{t("gameDetails.achievementDataUnavailable")}</span>
             )}
             <strong className="game-v2-hero__achievement-count">
               {summary.unlocked === null || summary.total === null
-                ? t("gameDetails.unavailable")
+                ? t("gameDetails.achievementDataUnavailable")
                 : `${formatNumber(summary.unlocked, language)} / ${formatNumber(summary.total, language)}`}
             </strong>
           </div>
@@ -194,8 +195,10 @@ export function GameDetailsPage({
           <OverviewMetric icon={Trophy} label={t("gameDetails.unlocked")} value={formatOptional(summary.unlocked, language, t)} />
           <OverviewMetric icon={LockKeyhole} label={t("gameDetails.locked")} value={formatOptional(summary.locked, language, t)} />
           <OverviewMetric icon={Gem} label={t("gameDetails.rareUnlocked")} value={formatNumber(summary.rareUnlocked, language)} />
-          <OverviewMetric icon={Trophy} label={t("gameDetails.lastUnlocked")} value={summary.lastUnlocked?.title ?? t("gameDetails.unavailable")} auto />
-          <OverviewMetric icon={RefreshCw} label={t("gameDetails.lastSync")} value={formatDate(summary.lastSyncedAt, language, t)} />
+          <OverviewMetric icon={Trophy} label={t("gameDetails.lastUnlocked")} value={summary.lastUnlocked?.title ?? t("gameDetails.achievementDataUnavailable")} auto />
+          <OverviewMetric icon={RefreshCw} label={t("gameDetails.lastSync")} value={summary.lastSyncedAt
+            ? formatDate(summary.lastSyncedAt, language, t)
+            : t(hasAchievementData ? "gameDetails.achievementDataAvailable" : "gameDetails.achievementDataUnavailable")} />
         </div>
       </section>
 
@@ -389,12 +392,13 @@ function OverviewMetric({ icon: Icon, label, value, auto = false }: {
   return <Surface as="article" className="game-v2-metric" elevation="subtle"><Icon /><span>{label}</span><strong dir={auto ? "auto" : undefined}>{value}</strong></Surface>;
 }
 
-function getSyncState(game: Game): "never" | "success" | "partial" | "unsupported" | "private" | "failed" {
-  if (!game.achievementsSyncedAt || !game.achievementsSyncStatus || game.achievementsSyncStatus === "idle") return "never";
+function getSyncState(game: Game, hasAchievementData = game.totalAchievements > 0): "never" | "success" | "partial" | "unsupported" | "private" | "failed" {
   if (game.achievementsSyncError === "private_library") return "private";
   if (game.achievementsSyncStatus === "success") return "success";
   if (game.achievementsSyncStatus === "partial") return "partial";
   if (game.achievementsSyncStatus === "unsupported") return "unsupported";
+  if (hasAchievementData) return "success";
+  if (!game.achievementsSyncedAt || !game.achievementsSyncStatus || game.achievementsSyncStatus === "idle") return "never";
   return "failed";
 }
 
@@ -418,20 +422,30 @@ function formatLastPlayed(value: string, language: string, t: (key: string, valu
     : t("gameDetails.neverPlayed");
 }
 
+function isValidDate(value?: string) {
+  return Boolean(value && Number.isFinite(new Date(value).getTime()));
+}
+
+function formatPlaytime(value: number, language: string, t: (key: string, values?: Record<string, string | number>) => string) {
+  return Number.isFinite(value) && value >= 0
+    ? t("gameDetails.playtime", { hours: formatNumber(value, language) })
+    : t("gameDetails.playtimeUnavailable");
+}
+
 function formatDate(value: string | undefined, language: string, t: (key: string) => string) {
-  if (!value) return t("gameDetails.neverSynced");
+  if (!value) return t("gameDetails.achievementDataUnavailable");
   const date = new Date(value);
   return Number.isFinite(date.getTime())
     ? new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(date)
-    : t("gameDetails.unavailable");
+    : t("gameDetails.achievementDataUnavailable");
 }
 
 function formatOptional(value: number | null, language: string, t: (key: string) => string) {
-  return value === null ? t("gameDetails.unavailable") : formatNumber(value, language);
+  return value === null ? t("gameDetails.achievementDataUnavailable") : formatNumber(value, language);
 }
 
 function formatPercent(value: number | null, language: string, t: (key: string) => string) {
-  return value === null ? t("gameDetails.unavailable") : `${formatNumber(value, language)}%`;
+  return value === null ? t("gameDetails.achievementDataUnavailable") : `${formatNumber(value, language)}%`;
 }
 
 function formatNumber(value: number, language: string) {

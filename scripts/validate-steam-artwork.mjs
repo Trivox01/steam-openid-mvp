@@ -11,6 +11,7 @@ import { mergeSteamLibrary } from "../src/services/platform/SteamLibraryMerge.ts
 const fixtures = [
   [2807960, "Battlefield 6"],
   [2920270, "Super Sus"],
+  [578080, "PUBG"],
   [570, "Dota 2"]
 ];
 
@@ -74,7 +75,10 @@ assert.match(loader, /httpStatus: "unavailable_in_webview"/);
 
 const details = fs.readFileSync("src/pages/GameDetailsPage.tsx", "utf8");
 assert.match(details, /kind: "hero"/);
-assert.match(details, /kind: "square"/);
+assert.match(details, /kind: "cover"/);
+assert.match(details, /variant="cover"/);
+assert.match(details, /componentName="GameDetailsCover"/);
+assert.doesNotMatch(details, /GameDetailsSquare|src=\{game\.iconUrl \|\| game\.coverUrl\}/);
 const card = fs.readFileSync("src/components/games/GameCard.tsx", "utf8");
 assert.match(card, /kind: "cover"/);
 

@@ -41,13 +41,15 @@ export function calculateAchievementSummary(game: Game, achievements: Achievemen
     ["success", "partial", "unsupported"].includes(game.achievementsSyncStatus ?? "");
   const known = achievements.filter((item) => item.unlockStateKnown !== false);
   const unlocked = known.filter(isAchievementUnlocked);
-  const total = synchronized ? achievements.length : null;
-  const unlockedCount = synchronized ? unlocked.length : null;
+  const available = synchronized || achievements.length > 0;
+  const allUnlockStatesKnown = known.length === achievements.length;
+  const total = available ? achievements.length : null;
+  const unlockedCount = available ? unlocked.length : null;
   return {
     total,
     unlocked: unlockedCount,
-    locked: synchronized ? known.length - unlocked.length : null,
-    completion: synchronized && known.length === achievements.length && achievements.length
+    locked: available ? known.length - unlocked.length : null,
+    completion: available && allUnlockStatesKnown && achievements.length
       ? Math.round((unlocked.length / achievements.length) * 10_000) / 100
       : null,
     rareUnlocked: unlocked.filter(isRareAchievement).length,

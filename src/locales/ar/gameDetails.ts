@@ -98,5 +98,9 @@ export const gameDetails = {
   "gameDetails.nextAchievement": "الإنجاز التالي: {{name}}",
   "gameDetails.gameNotFound": "اللعبة غير موجودة",
   "gameDetails.gameNotFoundDescription": "لم تعد هذه اللعبة متاحة في مكتبتك.",
-  "gameDetails.loadError": "تعذر تحميل تفاصيل اللعبة. حاول مجددًا."
+  "gameDetails.loadError": "تعذر تحميل تفاصيل اللعبة. حاول مجددًا.",
+  "gameDetails.playtimeUnavailable": "بيانات وقت اللعب غير متاحة",
+  "gameDetails.coverAlt": "غلاف لعبة {{title}}",
+  "gameDetails.achievementDataUnavailable": "بيانات الإنجازات غير متاحة",
+  "gameDetails.achievementDataAvailable": "بيانات الإنجازات متاحة"
 } as const;

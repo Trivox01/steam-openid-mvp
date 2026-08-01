@@ -48,6 +48,7 @@ export function App() {
   const settingsRef = useRef<SettingsPageHandle>(null);
   const mainRef = useRef<HTMLElement>(null);
   const updateCheckRunning = useRef(false);
+  const scrollPositions = useRef(new Map<string, number>());
   const initialize = useCallback(async () => {
     setInitialization("loading");
     try {
@@ -113,6 +114,7 @@ export function App() {
 
   const performPageNavigation = (page: PageId) => {
     mainRef.current?.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0, behavior: "auto" });
     setActivePage(page);
     setHistory([]);
     setView({ kind: "page", page });
@@ -137,16 +139,27 @@ export function App() {
   };
   const openGame = useCallback((gameId: GameId) => {
     mainRef.current?.scrollTo({ top: 0 });
-    setView((current) => { setHistory((items) => [...items, current]); return { kind: "game", gameId }; });
+    setView((current) => {
+      scrollPositions.current.set(navigationViewKey(current), window.scrollY);
+      setHistory((items) => [...items, current]);
+      return { kind: "game", gameId };
+    });
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
   }, []);
   const openAchievement = useCallback((achievementId: AchievementId, gameId: GameId) => {
     mainRef.current?.scrollTo({ top: 0 });
-    setView((current) => { setHistory((items) => [...items, current]); return { kind: "achievement", achievementId, gameId }; });
+    setView((current) => {
+      scrollPositions.current.set(navigationViewKey(current), window.scrollY);
+      setHistory((items) => [...items, current]);
+      return { kind: "achievement", achievementId, gameId };
+    });
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
   }, []);
   const goBack = useCallback(() => {
     setHistory((items) => {
       const previous = items.at(-1) ?? { kind: "page", page: activePage } as NavigationView;
       setView(previous);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.get(navigationViewKey(previous)) ?? 0, behavior: "auto" }));
       return items.slice(0, -1);
     });
   }, [activePage]);
@@ -239,6 +252,12 @@ export function App() {
       )}
     </div>
   );
+}
+
+function navigationViewKey(view: NavigationView) {
+  if (view.kind === "page") return `page:${view.page}`;
+  if (view.kind === "game") return `game:${view.gameId}`;
+  return `achievement:${view.gameId}:${view.achievementId}`;
 }
 
 function GlobalRefreshStatus() {
