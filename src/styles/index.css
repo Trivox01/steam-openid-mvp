@@ -2180,3 +2180,18 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 .library-pagination button:disabled { opacity: .45; }
 [dir="rtl"] .library-pagination svg { transform: scaleX(-1); }
 @media (max-width: 720px) { .smart-library-strip { grid-auto-columns: minmax(190px, 78vw); } }
+
+/* Phase 4.1: one stable launch control shared by library cards and game details. */
+.nexus-play-button{width:max-content;min-width:148px;min-height:42px;display:inline-flex;align-items:center;justify-content:center;gap:.55rem;padding:.62rem .9rem;border:1px solid color-mix(in srgb,var(--accent-primary,var(--accent)) 55%,var(--border-default));border-radius:12px;color:#fff;background:linear-gradient(135deg,var(--accent-primary,var(--accent)),color-mix(in srgb,var(--accent-primary,var(--accent)) 66%,#321d69));box-shadow:0 8px 22px color-mix(in srgb,var(--accent-primary,var(--accent)) 20%,transparent);font:inherit;font-weight:750;line-height:1.15;cursor:pointer;transition:transform 140ms ease-out,box-shadow 140ms ease-out,border-color 140ms ease-out}
+.nexus-play-button svg{width:18px;height:18px;flex:0 0 auto}
+.nexus-play-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 26px color-mix(in srgb,var(--accent-primary,var(--accent)) 28%,transparent)}
+.nexus-play-button:focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}
+.nexus-play-button:disabled{cursor:not-allowed;opacity:.7}
+.nexus-play-button[data-status="running"],.nexus-play-button[data-status="alreadyRunning"]{border-color:color-mix(in srgb,var(--success) 60%,var(--border-default));background:color-mix(in srgb,var(--success) 50%,var(--surface-elevated))}
+.nexus-play-button[data-status="steamUnavailable"],.nexus-play-button[data-status="steamNotInstalled"],.nexus-play-button[data-status="gameUnavailable"],.nexus-play-button[data-status="launchFailed"]{background:var(--surface-elevated);color:var(--text-primary)}
+.nexus-play-button--compact{width:36px;min-width:36px;min-height:36px;padding:0;border-radius:var(--radius-sm)}
+.nexus-play-button__spinner{animation:nexus-play-spin .8s linear infinite}
+@keyframes nexus-play-spin{to{transform:rotate(360deg)}}
+@media(max-width:520px){.game-v2-hero__copy>.nexus-play-button{width:100%;max-width:320px}}
+@media(prefers-reduced-motion:reduce){.nexus-play-button{transition:none}.nexus-play-button:hover:not(:disabled){transform:none}.nexus-play-button__spinner{animation:none}}
+@media(forced-colors:active){.nexus-play-button{border:1px solid ButtonText;background:ButtonFace;color:ButtonText}.nexus-play-button:focus-visible{outline:3px solid Highlight}}

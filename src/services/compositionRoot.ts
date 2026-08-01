@@ -37,6 +37,8 @@ import {
   skipped
 } from "./ApplicationRefreshCoordinator";
 import { SmartSyncCoordinator } from "./SmartSyncCoordinator";
+import { GameLauncherService } from "./GameLauncherService";
+import { TauriSteamLaunchTransport } from "../integrations/steam/TauriSteamLaunchTransport";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -95,6 +97,14 @@ const steamSessions = steamOpenId ?? {
   expireSession: () => undefined
 };
 export const steamProvider = new SteamProvider(steamData, steamSessions);
+export const gameLauncher = new GameLauncherService(
+  new TauriSteamLaunchTransport(),
+  undefined,
+  undefined,
+  import.meta.env.DEV
+    ? ({ appId, launchUri, result, durationMs }) => console.info("[game-launch]", { appId, launchUri, result, durationMs })
+    : undefined
+);
 
 export const repositories = { games, achievements, activities, settings, profile, sync };
 export const services = {

@@ -12,6 +12,12 @@
       "allow": [
         {
           "url": "https://steamcommunity.com/openid/login*"
+        },
+        {
+          "url": "steam://run/*"
+        },
+        {
+          "url": "steam://open/main"
         }
       ]
     }

@@ -15,6 +15,7 @@ import { Skeleton } from "../ui/Skeleton";
 import { StatusBadge } from "../ui/StatusBadge";
 import { Surface } from "../ui/Surface";
 import { steamArtworkSources } from "../../services/platform/steamArtwork";
+import { PlayButton } from "./PlayButton";
 
 type GameCardProps = GameCardActions & {
   game: GameCardData;
@@ -130,6 +131,7 @@ function QuickActions({ game, onViewAchievements, onViewDetails, onFavoriteChang
   };
   return (
     <div className="nexus-game-card__quick-actions" role="group" aria-label={t("gameCard.quickActions")}>
+      {game.platform === "steam" && <PlayButton appId={game.platformGameId} title={game.title} compact />}
       {onTrackedChange && <button type="button" data-track-game-id={game.id} className={game.tracked ? "is-active" : ""} disabled={game.tracking} aria-busy={game.tracking || undefined} title={t(game.tracked ? "games.untrack" : "games.track", { title: game.title })} onClick={(event) => act(event, () => void onTrackedChange(game.id, !game.tracked))} aria-label={t(game.tracking ? "gameCard.trackProcessing" : game.tracked ? "games.untrack" : "games.track", { title: game.title })}>{game.tracking ? <LoaderCircle className="nexus-game-card__track-spinner" size={15} /> : <Bookmark size={15} fill={game.tracked ? "currentColor" : "none"} />}</button>}
       {onViewAchievements && <button type="button" onClick={(event) => act(event, () => onViewAchievements(game.id))} aria-label={t("gameCard.achievementsLabel", { title: game.title })}><ListChecks size={15} /></button>}
       {onViewDetails && <button type="button" onClick={(event) => act(event, () => onViewDetails(game.id))} aria-label={t("gameCard.detailsLabel", { title: game.title })}><MoreHorizontal size={16} /></button>}
