@@ -76,6 +76,7 @@ export class GameLauncherService {
   }
 
   async invalidate(){await this.installationProbe.invalidate();await Promise.all([...this.ownership].map(([appId,ownership])=>this.refresh(appId,ownership,true)));}
+  async installationChanged(appId?:string){const entries=appId?(this.ownership.has(appId)?[[appId,this.ownership.get(appId)!] as const]:[]):[...this.ownership];await Promise.all(entries.map(([id,ownership])=>this.refresh(id,ownership)));}
 
   private async performAction(appId:string,ownership:GameOwnership){
     let snapshot=this.getSnapshot(appId);

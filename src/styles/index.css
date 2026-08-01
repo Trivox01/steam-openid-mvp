@@ -2181,17 +2181,19 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 [dir="rtl"] .library-pagination svg { transform: scaleX(-1); }
 @media (max-width: 720px) { .smart-library-strip { grid-auto-columns: minmax(190px, 78vw); } }
 
-/* Phase 4.1: one stable launch control shared by library cards and game details. */
-.nexus-play-button{width:max-content;min-width:148px;min-height:42px;display:inline-flex;align-items:center;justify-content:center;gap:.55rem;padding:.62rem .9rem;border:1px solid color-mix(in srgb,var(--accent-primary,var(--accent)) 55%,var(--border-default));border-radius:12px;color:#fff;background:linear-gradient(135deg,var(--accent-primary,var(--accent)),color-mix(in srgb,var(--accent-primary,var(--accent)) 66%,#321d69));box-shadow:0 8px 22px color-mix(in srgb,var(--accent-primary,var(--accent)) 20%,transparent);font:inherit;font-weight:750;line-height:1.15;cursor:pointer;transition:transform 140ms ease-out,box-shadow 140ms ease-out,border-color 140ms ease-out}
-.nexus-play-button svg{width:18px;height:18px;flex:0 0 auto}
-.nexus-play-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 26px color-mix(in srgb,var(--accent-primary,var(--accent)) 28%,transparent)}
-.nexus-play-button:focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}
-.nexus-play-button:disabled{cursor:not-allowed;opacity:.7}
-.nexus-play-button[data-status="running"]{border-color:color-mix(in srgb,var(--success) 60%,var(--border-default));background:color-mix(in srgb,var(--success) 50%,var(--surface-elevated))}
-.nexus-play-button[data-status="steam_unavailable"],.nexus-play-button[data-status="steam_not_installed"],.nexus-play-button[data-status="unknown"]{background:var(--surface-elevated);color:var(--text-primary)}
-.nexus-play-button--compact{width:36px;min-width:36px;min-height:36px;padding:0;border-radius:var(--radius-sm)}
-.nexus-play-button__spinner{animation:nexus-play-spin .8s linear infinite}
-@keyframes nexus-play-spin{to{transform:rotate(360deg)}}
-@media(max-width:520px){.game-v2-hero__copy>.nexus-play-button{width:100%;max-width:320px}}
-@media(prefers-reduced-motion:reduce){.nexus-play-button{transition:none}.nexus-play-button:hover:not(:disabled){transform:none}.nexus-play-button__spinner{animation:none}}
-@media(forced-colors:active){.nexus-play-button{border:1px solid ButtonText;background:ButtonFace;color:ButtonText}.nexus-play-button:focus-visible{outline:3px solid Highlight}}
+/* Phase 4.1: lightweight Nexus shine shared by every game action. */
+.nexus-shiny-button{--nexus-action-a:var(--accent-primary,var(--accent));--nexus-action-b:#7357ff;position:relative;isolation:isolate;overflow:hidden;width:max-content;min-width:148px;min-height:42px;display:inline-flex;align-items:center;justify-content:center;padding:1px;border:0;border-radius:13px;color:#fff;background:linear-gradient(110deg,var(--nexus-action-a),#b78cff,var(--nexus-action-b),var(--nexus-action-a));background-size:260% 100%;box-shadow:0 8px 24px color-mix(in srgb,var(--nexus-action-a) 22%,transparent);font:inherit;font-weight:750;line-height:1.15;cursor:pointer;transition:transform 150ms ease-out,box-shadow 150ms ease-out,filter 150ms ease-out}
+.nexus-shiny-button::before{content:"";position:absolute;inset:1px;border-radius:12px;background:linear-gradient(145deg,color-mix(in srgb,var(--surface-elevated) 91%,var(--nexus-action-a)),color-mix(in srgb,#100d1b 94%,var(--nexus-action-b)));z-index:-1}
+.nexus-shiny-button__glow{position:absolute;inset:-100% -35%;background:linear-gradient(100deg,transparent 42%,rgba(255,255,255,.24) 50%,transparent 58%);transform:translateX(-38%);pointer-events:none}
+.nexus-shiny-button__content{min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:.55rem;padding:.6rem .9rem;white-space:nowrap}
+.nexus-shiny-button svg{width:18px;height:18px;flex:0 0 auto}.nexus-shiny-button:hover:not(:disabled){transform:translateY(-1px);filter:saturate(1.13);box-shadow:0 11px 28px color-mix(in srgb,var(--nexus-action-a) 31%,transparent)}.nexus-shiny-button:active:not(:disabled){transform:translateY(1px)}
+.nexus-shiny-button:focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}.nexus-shiny-button:disabled{cursor:not-allowed;opacity:.62;filter:saturate(.65)}
+.nexus-shiny-button--install{--nexus-action-a:#7659e8;--nexus-action-b:#348fd6}.nexus-shiny-button--store,.nexus-shiny-button--neutral{--nexus-action-a:#625b79;--nexus-action-b:#81799c;box-shadow:0 7px 18px rgba(0,0,0,.2)}.nexus-shiny-button--running{--nexus-action-a:#278467;--nexus-action-b:#4aaa82}
+.nexus-shiny-button--compact{width:36px;min-width:36px;min-height:36px;border-radius:10px}.nexus-shiny-button--compact::before{border-radius:9px}.nexus-shiny-button--compact .nexus-shiny-button__content{padding:0}.nexus-shiny-button__spinner{animation:nexus-action-spin .8s linear infinite}
+.nexus-game-card__quick-actions .nexus-shiny-button{width:36px;height:36px;padding:1px;border:0;color:#fff;background:linear-gradient(110deg,var(--nexus-action-a),#a685ff,var(--nexus-action-b),var(--nexus-action-a));background-size:260% 100%;box-shadow:0 6px 16px color-mix(in srgb,var(--nexus-action-a) 20%,transparent)}
+.nexus-game-card__quick-actions .nexus-shiny-button:hover,.nexus-game-card__quick-actions .nexus-shiny-button:focus-visible{border:0;color:#fff}
+@keyframes nexus-action-shine{to{background-position:260% 0}}@keyframes nexus-action-sweep{50%,100%{transform:translateX(38%)}}@keyframes nexus-action-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:no-preference){.nexus-shiny-button--hero{animation:nexus-action-shine 5s linear infinite}.nexus-shiny-button--hero .nexus-shiny-button__glow{animation:nexus-action-sweep 5s ease-in-out infinite}.nexus-shiny-button--compact:hover .nexus-shiny-button__glow{transform:translateX(30%);transition:transform .45s ease-out}}
+@media(max-width:520px){.game-v2-hero__copy>.nexus-shiny-button{width:100%;max-width:320px}.nexus-shiny-button--hero .nexus-shiny-button__content{white-space:normal;text-align:center}}
+@media(prefers-reduced-motion:reduce){.nexus-shiny-button,.nexus-shiny-button__glow{animation:none!important;transition:none!important}.nexus-shiny-button:hover:not(:disabled){transform:none}.nexus-shiny-button__spinner{animation:none}}
+@media(forced-colors:active){.nexus-shiny-button{border:1px solid ButtonText;background:ButtonFace;color:ButtonText;box-shadow:none}.nexus-shiny-button::before,.nexus-shiny-button__glow{display:none}.nexus-shiny-button:focus-visible{outline:3px solid Highlight}}

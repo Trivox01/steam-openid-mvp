@@ -11,6 +11,7 @@ export class TauriSteamInstallationProbe implements SteamInstallationProbe {
     const index=await this.load(forceRefresh);return {steamStatus:index.steamStatus,installed:index.installedAppIds.includes(appId)};
   }
   async invalidate(){this.index=undefined;this.active=undefined;if(isTauriRuntime())await invoke("invalidate_steam_installation_index").catch(()=>undefined)}
+  replaceIndex(index:Index){this.index=index;this.active=undefined}
   private load(forceRefresh:boolean){
     if(this.index&&!forceRefresh)return Promise.resolve(this.index);if(this.active)return this.active;
     const task=invoke<Index>("get_steam_installation_index",{forceRefresh}).then(index=>(this.index=index,index)).finally(()=>{if(this.active===task)this.active=undefined});this.active=task;return task;

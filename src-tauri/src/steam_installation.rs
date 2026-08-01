@@ -1,10 +1,12 @@
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::{
     collections::{BTreeSet, HashMap},
     env, fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::Mutex,
+    sync::{mpsc, Arc, Mutex},
+    thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -23,10 +25,75 @@ struct CachedIndex {
     value: SteamInstallationIndex,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct SteamInstallationProbe {
-    cache: Mutex<Option<CachedIndex>>,
+    cache: Arc<Mutex<Option<CachedIndex>>>,
 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamManifestChange {
+    pub app_id: Option<String>,
+    pub index: SteamInstallationIndex,
+}
+
+enum WatcherCommand { Event(Event), Stop }
+
+pub struct SteamManifestWatcher { sender: mpsc::Sender<WatcherCommand> }
+
+impl SteamManifestWatcher {
+    pub fn start<F>(probe: SteamInstallationProbe, emit: F) -> notify::Result<Self>
+    where F: Fn(SteamManifestChange) + Send + 'static {
+        let (sender, receiver) = mpsc::channel();
+        let callback_sender = sender.clone();
+        let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| {
+            if let Ok(mut event) = result { event.paths.retain(|path|is_watched_file(path));if !event.paths.is_empty(){let _ = callback_sender.send(WatcherCommand::Event(event));} }
+        })?;
+        let mut watched=BTreeSet::new();configure_watcher(&mut watcher,&mut watched);
+        thread::Builder::new().name("steam-manifest-watcher".into()).spawn(move || {
+            watcher_loop(watcher, watched, receiver, probe, emit);
+        }).map_err(notify::Error::io)?;
+        Ok(Self { sender })
+    }
+}
+
+impl Drop for SteamManifestWatcher { fn drop(&mut self) { let _ = self.sender.send(WatcherCommand::Stop); } }
+
+fn watcher_loop<F>(mut watcher: RecommendedWatcher, mut watched:BTreeSet<PathBuf>, receiver: mpsc::Receiver<WatcherCommand>, probe: SteamInstallationProbe, emit: F)
+where F: Fn(SteamManifestChange) {
+    loop {
+        let Ok(command) = receiver.recv() else { break };
+        match command {
+            WatcherCommand::Stop => break,
+            WatcherCommand::Event(first) => {
+                let Some((paths,library_folders_changed))=collect_debounced(first,&receiver,Duration::from_millis(750)) else{return};
+                let app_ids:BTreeSet<String>=paths.iter().filter_map(|path| manifest_app_id(path)).collect();
+                probe.invalidate();let index=probe.index(true);
+                emit(SteamManifestChange { app_id:(app_ids.len()==1).then(||app_ids.into_iter().next()).flatten(), index });
+                if library_folders_changed { configure_watcher(&mut watcher,&mut watched); }
+            }
+        }
+    }
+}
+
+fn collect_debounced(first:Event,receiver:&mpsc::Receiver<WatcherCommand>,wait:Duration)->Option<(Vec<PathBuf>,bool)>{
+    let mut paths=first.paths;let mut library_folders_changed=paths.iter().any(|path|is_library_folders(path));
+    loop{match receiver.recv_timeout(wait){Ok(WatcherCommand::Event(event))=>{library_folders_changed|=event.paths.iter().any(|path|is_library_folders(path));paths.extend(event.paths)},Ok(WatcherCommand::Stop)|Err(mpsc::RecvTimeoutError::Disconnected)=>return None,Err(mpsc::RecvTimeoutError::Timeout)=>return Some((paths,library_folders_changed))}}
+}
+
+fn configure_watcher(watcher:&mut RecommendedWatcher,watched:&mut BTreeSet<PathBuf>) {
+    let next=watcher_paths();for path in watched.difference(&next){let _=watcher.unwatch(path);}for path in next.difference(watched){let _=watcher.watch(path,RecursiveMode::NonRecursive);}*watched=next;
+}
+
+fn watcher_paths()->BTreeSet<PathBuf>{
+    let candidates=steam_candidates();let Some(root)=candidates.iter().find(|path|path.join("steamapps").is_dir()) else{return BTreeSet::new()};
+    let mut paths=BTreeSet::from([root.join("steamapps")]);
+    if let Ok(contents)=fs::read_to_string(root.join("steamapps/libraryfolders.vdf")){for library in parse_library_paths(&contents){let steamapps=library.join("steamapps");if steamapps.is_dir(){paths.insert(steamapps);}}}
+    paths
+}
+fn is_library_folders(path:&Path)->bool{path.file_name().is_some_and(|name|name.eq_ignore_ascii_case("libraryfolders.vdf"))}
+fn is_watched_file(path:&Path)->bool{is_library_folders(path)||manifest_app_id(path).is_some()}
+fn manifest_app_id(path:&Path)->Option<String>{let name=path.file_name()?.to_str()?;let id=name.strip_prefix("appmanifest_")?.strip_suffix(".acf")?;valid_app_id(id).then(||id.to_string())}
 
 impl SteamInstallationProbe {
     pub fn index(&self, force_refresh: bool) -> SteamInstallationIndex {
@@ -308,5 +375,28 @@ mod tests {
         assert_eq!(probe.index(false).installed_app_ids, vec!["10"]);
         probe.invalidate();
         assert_ne!(probe.index(false).scanned_at, 1);
+    }
+    #[test]
+    fn install_modify_and_uninstall_change_the_index() {
+        let root=temp("transitions");manifest(&root,"60","2");assert!(build_index(&[root.clone()]).installed_app_ids.is_empty());
+        manifest(&root,"60","4");assert_eq!(build_index(&[root.clone()]).installed_app_ids,vec!["60"]);
+        fs::remove_file(root.join("steamapps/appmanifest_60.acf")).unwrap();assert!(build_index(&[root]).installed_app_ids.is_empty());
+    }
+    #[test]
+    fn watcher_events_are_debounced_and_target_the_app() {
+        let (sender,receiver)=mpsc::channel();let first=Event::new(notify::EventKind::Create(notify::event::CreateKind::File)).add_path(PathBuf::from("appmanifest_70.acf"));
+        sender.send(WatcherCommand::Event(Event::new(notify::EventKind::Modify(notify::event::ModifyKind::Any)).add_path(PathBuf::from("libraryfolders.vdf")))).unwrap();
+        let (paths,libraries)=collect_debounced(first,&receiver,Duration::from_millis(1)).unwrap();assert_eq!(paths.len(),2);assert!(libraries);assert_eq!(manifest_app_id(&paths[0]).as_deref(),Some("70"));
+    }
+    #[test]
+    fn watcher_drop_requests_cleanup() {
+        let (sender,receiver)=mpsc::channel();{let _watcher=SteamManifestWatcher{sender};}assert!(matches!(receiver.recv().unwrap(),WatcherCommand::Stop));
+    }
+    #[test]
+    fn operating_system_watcher_observes_a_new_manifest() {
+        let root=temp("notify");let (sender,receiver)=mpsc::channel();
+        let mut watcher=notify::recommended_watcher(move|result:notify::Result<Event>|{if let Ok(event)=result{let _=sender.send(event);}}).unwrap();
+        watcher.watch(&root.join("steamapps"),RecursiveMode::NonRecursive).unwrap();manifest(&root,"80","4");
+        let event=receiver.recv_timeout(Duration::from_secs(3)).unwrap();assert!(event.paths.iter().any(|path|manifest_app_id(path).as_deref()==Some("80")));
     }
 }

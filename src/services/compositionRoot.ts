@@ -40,6 +40,7 @@ import { SmartSyncCoordinator } from "./SmartSyncCoordinator";
 import { GameLauncherService } from "./GameLauncherService";
 import { TauriSteamLaunchTransport } from "../integrations/steam/TauriSteamLaunchTransport";
 import { TauriSteamInstallationProbe } from "../integrations/steam/TauriSteamInstallationProbe";
+import { listen } from "@tauri-apps/api/event";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -98,14 +99,16 @@ const steamSessions = steamOpenId ?? {
   expireSession: () => undefined
 };
 export const steamProvider = new SteamProvider(steamData, steamSessions);
+const steamInstallationProbe = new TauriSteamInstallationProbe();
 export const gameLauncher = new GameLauncherService(
   new TauriSteamLaunchTransport(),
-  new TauriSteamInstallationProbe(),
+  steamInstallationProbe,
   undefined,
   import.meta.env.DEV
     ? ({ appId, launchUri, result, durationMs }) => console.info("[game-launch]", { appId, launchUri, result, durationMs })
     : undefined
 );
+if (persistent) void listen<{appId?:string;index:{steamStatus:"installed"|"not_installed"|"unavailable";installedAppIds:string[];scannedAt:number}}>("nexus://steam-installation-changed",({payload})=>{steamInstallationProbe.replaceIndex(payload.index);void gameLauncher.installationChanged(payload.appId)});
 
 export const repositories = { games, achievements, activities, settings, profile, sync };
 export const services = {

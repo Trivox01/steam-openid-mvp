@@ -59,6 +59,11 @@ pub fn run() {
                 ..Default::default()
             });
             app.manage(steam_installation::SteamInstallationProbe::default());
+            let probe = app.state::<steam_installation::SteamInstallationProbe>().inner().clone();
+            let handle = app.handle().clone();
+            if let Ok(watcher) = steam_installation::SteamManifestWatcher::start(probe, move |change| {
+                let _ = handle.emit("nexus://steam-installation-changed", change);
+            }) { app.manage(watcher); }
 
             let open = MenuItem::with_id(app, "open-nexus", "Open Nexus", true, None::<&str>)?;
             let check = MenuItem::with_id(
