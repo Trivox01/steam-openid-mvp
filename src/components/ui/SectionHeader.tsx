@@ -11,7 +11,7 @@ export function SectionHeader({ title, description, action, className }: Section
   return (
     <header className={["ds-section-header", className].filter(Boolean).join(" ")}>
       <div>
-        <h2>{title}</h2>
+        <h2 className="nexus-display-title">{title}</h2>
         {description && <p>{description}</p>}
       </div>
       {action && <div className="ds-section-header__action">{action}</div>}

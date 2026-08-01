@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "Nexus Arabic Display";
+  src: url("../assets/fonts/arabic/thmanyah-serif-display-bold.otf") format("opentype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   font-family: Inter, "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color: #27272a;
@@ -52,6 +60,8 @@
   --shadow-elevated: 0 18px 48px rgba(24,24,27,.11);
   --shadow-glow: 0 10px 30px rgba(109,40,217,.18);
   --font-mono: "JetBrains Mono","Cascadia Code","SFMono-Regular",Consolas,monospace;
+  --font-arabic-ui: "Segoe UI",Tahoma,Arial,sans-serif;
+  --font-arabic-display: "Nexus Arabic Display",var(--font-arabic-ui);
   /* Design Bible v1 semantic tokens */
   --background-canvas: var(--bg);
   --background-sidebar: var(--sidebar);
@@ -112,6 +122,13 @@
   --z-toast: 120;
   --skeleton-base: var(--soft);
   --skeleton-highlight: var(--panel-elevated);
+}
+
+html[lang="ar"] .nexus-display-title {
+  font-family:var(--font-arabic-display);
+  font-weight:700;
+  line-height:1.25;
+  letter-spacing:normal;
 }
 
 .dark {

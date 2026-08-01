@@ -9,7 +9,7 @@ export function SteamConnectionStep({ state, profile, error, onConnect, onBack, 
 }) {
   const { t } = useTranslation();
   return <div className="first-launch-step">
-    <p className="first-launch-eyebrow">Steam</p><h1>{t("onboarding.steam.title")}</h1><p className="first-launch-lead">{t("onboarding.steam.body")}</p>
+    <p className="first-launch-eyebrow">Steam</p><h1 className="nexus-display-title">{t("onboarding.steam.title")}</h1><p className="first-launch-lead">{t("onboarding.steam.body")}</p>
     {state === "connected" && profile ? <div className="first-launch-connected"><CheckCircle2/><div><strong dir="auto">{profile.personaName}</strong><span>{t("onboarding.steam.connected")}</span></div></div> :
       <div className="first-launch-form">
         <p><ShieldCheck size={16}/>{t("steam.openId.securityNotice")}</p>

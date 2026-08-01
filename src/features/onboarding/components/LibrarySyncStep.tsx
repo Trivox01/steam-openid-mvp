@@ -8,7 +8,7 @@ export function LibrarySyncStep({ profile, preferences, state, result, error, on
 }) {
   const { t } = useTranslation();
   return <div className="first-launch-step">
-    <p className="first-launch-eyebrow">{t("onboarding.library.eyebrow")}</p><h1>{result ? t("onboarding.library.ready") : t("onboarding.library.title")}</h1>
+    <p className="first-launch-eyebrow">{t("onboarding.library.eyebrow")}</p><h1 className="nexus-display-title">{result ? t("onboarding.library.ready") : t("onboarding.library.title")}</h1>
     <p className="first-launch-lead">{profile ? t("onboarding.library.connectedBody") : t("onboarding.library.skippedBody")}</p>
     {profile && !result && <button className="first-launch-primary" type="button" disabled={state === "syncing"} onClick={() => void onSync()}>{state === "syncing" ? t("onboarding.library.syncing") : t("onboarding.library.sync")}</button>}
     {result && <dl className="first-launch-summary"><div><dt>{t("onboarding.library.received")}</dt><dd>{result.fetched}</dd></div><div><dt>{t("onboarding.library.new")}</dt><dd>{result.inserted}</dd></div><div><dt>{t("onboarding.library.updated")}</dt><dd>{result.updated}</dd></div><div><dt>{t("onboarding.library.skipped")}</dt><dd>{result.skipped}</dd></div></dl>}

@@ -6,9 +6,8 @@ export function WelcomeStep({ onNext }: { onNext: () => void }) {
   return <div className="first-launch-step">
     <div className="first-launch-mark"><Sparkles /></div>
     <p className="first-launch-eyebrow">Achievement Nexus</p>
-    <h1>{t("onboarding.welcome.title")}</h1>
+    <h1 className="nexus-display-title">{t("onboarding.welcome.title")}</h1>
     <p className="first-launch-lead">{t("onboarding.welcome.body")}</p>
     <button autoFocus className="first-launch-primary" type="button" onClick={onNext}>{t("onboarding.welcome.start")}</button>
   </div>;
 }
-

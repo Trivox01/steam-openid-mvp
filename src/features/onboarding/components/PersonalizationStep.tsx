@@ -7,7 +7,7 @@ export function PersonalizationStep({ preferences, onChange, onBack, onNext }: {
 }) {
   const { t } = useTranslation();
   return <div className="first-launch-step">
-    <p className="first-launch-eyebrow">{t("onboarding.personalize.eyebrow")}</p><h1>{t("onboarding.personalize.title")}</h1>
+    <p className="first-launch-eyebrow">{t("onboarding.personalize.eyebrow")}</p><h1 className="nexus-display-title">{t("onboarding.personalize.title")}</h1>
     <div className="first-launch-options">
       <fieldset><legend>{t("settings.language")}</legend><div className="first-launch-choice">
         {(["en","ar"] as const).map(language => <button type="button" aria-pressed={preferences.language === language} onClick={() => void onChange({...preferences, language})} key={language}>{t(`settings.language.${language}`)}</button>)}

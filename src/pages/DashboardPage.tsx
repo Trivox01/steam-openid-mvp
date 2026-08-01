@@ -72,7 +72,7 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
         <div className="journey-hero__content">
           <span className="journey-eyebrow"><Sparkles size={14} />{t("journey.eyebrow")}</span>
           <p>{t("journey.welcome", { name: firstName })}</p>
-          <h1>{t("journey.heroTitle")}</h1>
+          <h1 className="nexus-display-title">{t("journey.heroTitle")}</h1>
           <div className="journey-hero__summary">
             {primaryJourney
               ? t(primaryJourney.translationKey, primaryJourney.translationParams)

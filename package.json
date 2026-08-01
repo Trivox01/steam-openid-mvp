@@ -28,6 +28,7 @@
     "test:smart-library": "node --experimental-strip-types scripts/validate-smart-library.mjs",
     "test:game-launcher": "node --experimental-strip-types scripts/validate-game-launcher.mjs",
     "test:themes": "node --experimental-strip-types scripts/validate-themes.mjs",
+    "test:arabic-typography": "node --experimental-strip-types scripts/validate-arabic-typography.mjs",
     "test:native-ux": "node --experimental-strip-types scripts/validate-native-ux.mjs",
     "test:achievement-icons": "node --experimental-strip-types scripts/validate-achievement-icons.mjs",
     "test:ux-copy": "node --experimental-strip-types scripts/validate-ux-microcopy.mjs",
