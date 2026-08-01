@@ -44,6 +44,7 @@ import type { SteamDataClient } from "./steam/steamDataClient.ts";
 import { PollingRateLimiter } from "./security/pollingRateLimiter.ts";
 import { handleTools, isToolPath } from "./routes/tools.ts";
 import type { ToolService } from "./tools/toolService.ts";
+import type { ToolAssetStorages } from "./tools/toolAssetStorage.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
@@ -53,6 +54,7 @@ type RouterDependencies = SteamAuthRouteDependencies & {
   steamData?: SteamDataClient;
   steamDataRateLimiter?: PollingRateLimiter;
   tools?: ToolService;
+  toolAssets?: ToolAssetStorages;
 };
 
 export function createRouter(
@@ -114,7 +116,7 @@ export function createRouter(
       Boolean(steamAuthDependencies?.steamData) &&
       Boolean(steamAuthDependencies?.steamDataRateLimiter) &&
       Boolean(steamAuthDependencies?.sessions);
-    const isToolsRoute = isToolPath(url.pathname) && Boolean(steamAuthDependencies?.tools) &&
+    const isToolsRoute = isToolPath(url.pathname) && Boolean(steamAuthDependencies?.tools) && Boolean(steamAuthDependencies?.toolAssets) && Boolean(steamAuthDependencies?.badges) &&
       Boolean(steamAuthDependencies?.authorization) && Boolean(steamAuthDependencies?.sessions);
     if (
       isSteamAuthRoute ||
@@ -168,7 +170,9 @@ export function createRouter(
       await handleTools(request, response, url, {
         tools: steamAuthDependencies!.tools!,
         authorization: steamAuthDependencies!.authorization!,
-        sessions: steamAuthDependencies!.sessions!
+        sessions: steamAuthDependencies!.sessions!,
+        assets: steamAuthDependencies!.badges!.repository,
+        toolAssets: steamAuthDependencies!.toolAssets!
       })
     ) return;
     if (

@@ -1,20 +1,54 @@
-import type{IncomingMessage,ServerResponse}from"node:http";import{AuthorizationError}from"../authorization/contracts.ts";import type{AuthorizationService}from"../authorization/authorizationService.ts";import type{SessionTokenService}from"../authorization/sessionTokenService.ts";import{ToolError}from"../tools/contracts.ts";import{parseToolBadge,parseToolCategory,parseToolQuery,type ToolService}from"../tools/toolService.ts";
-type Deps={tools:ToolService;authorization:AuthorizationService;sessions:SessionTokenService};
-export function isToolPath(p:string){return p==="/api/tools"||/^\/api\/tools\/[a-z0-9-]+$/.test(p)||p.startsWith("/api/admin/tools")||p.startsWith("/api/admin/tool-badges")||p.startsWith("/api/admin/tool-categories");}
-export async function handleTools(req:IncomingMessage,res:ServerResponse,url:URL,d:Deps){if(!isToolPath(url.pathname))return false;let actor:string|undefined;try{
- if(url.pathname==="/api/tools"&&req.method==="GET"){const q=parseToolQuery(url.searchParams);return json(res,200,{...(await d.tools.list(q)),page:q.page,pageSize:q.pageSize});}
- const publicMatch=url.pathname.match(/^\/api\/tools\/([a-z0-9-]+)$/);if(publicMatch&&req.method==="GET"){const x=await d.tools.getBySlug(publicMatch[1]);if(!x)throw new ToolError("TOOL_NOT_FOUND");return json(res,200,x);}
- const user=await d.sessions.authenticateBearer(typeof req.headers.authorization==="string"?req.headers.authorization:undefined);actor=user.id;
- if(url.pathname==="/api/admin/tools"&&req.method==="GET"){await d.authorization.requirePermission(actor,"tools.manage");const q=parseToolQuery(url.searchParams,true);return json(res,200,{...(await d.tools.list(q)),page:q.page,pageSize:q.pageSize});}
- if(url.pathname==="/api/admin/tools"&&req.method==="POST"){await d.authorization.requirePermission(actor,"tools.manage");return json(res,201,await d.tools.create(await body(req),actor));}
- const tool=url.pathname.match(/^\/api\/admin\/tools\/([0-9a-f-]+)(?:\/(archive|reactivate))?$/i);if(tool){await d.authorization.requirePermission(actor,"tools.manage");if(req.method==="PATCH"&&!tool[2])return json(res,200,await d.tools.update(tool[1],await body(req),actor));if(req.method==="POST"&&tool[2])return json(res,200,tool[2]==="archive"?await d.tools.archive(tool[1],actor):await d.tools.reactivate(tool[1],actor));}
- if(url.pathname==="/api/admin/tool-badges"&&req.method==="GET"){await d.authorization.requirePermission(actor,"tool_badges.manage");return json(res,200,{items:await d.tools.badges.list(url.searchParams.get("archived")==="true")});}
- if(url.pathname==="/api/admin/tool-badges"&&req.method==="POST"){await d.authorization.requirePermission(actor,"tool_badges.manage");return json(res,201,await d.tools.badges.create(parseToolBadge(await body(req)),actor));}
- const badge=url.pathname.match(/^\/api\/admin\/tool-badges\/([0-9a-f-]+)(?:\/(archive|reactivate))?$/i);if(badge){await d.authorization.requirePermission(actor,"tool_badges.manage");if(req.method==="PATCH"&&!badge[2])return json(res,200,await d.tools.badges.update(badge[1],parseToolBadge(await body(req)),actor));if(req.method==="POST"&&badge[2])return json(res,200,await d.tools.badges.setArchived(badge[1],badge[2]==="archive",actor));}
- if(url.pathname==="/api/admin/tool-categories"&&req.method==="GET"){await d.authorization.requirePermission(actor,"tool_categories.manage");return json(res,200,{items:await d.tools.categories.list(url.searchParams.get("archived")==="true")});}
- if(url.pathname==="/api/admin/tool-categories"&&req.method==="POST"){await d.authorization.requirePermission(actor,"tool_categories.manage");return json(res,201,await d.tools.categories.create(parseToolCategory(await body(req)),actor));}
- const category=url.pathname.match(/^\/api\/admin\/tool-categories\/([0-9a-f-]+)(?:\/(archive|reactivate))?$/i);if(category){await d.authorization.requirePermission(actor,"tool_categories.manage");if(req.method==="PATCH"&&!category[2])return json(res,200,await d.tools.categories.update(category[1],parseToolCategory(await body(req)),actor));if(req.method==="POST"&&category[2])return json(res,200,await d.tools.categories.setArchived(category[1],category[2]==="archive",actor));}
- return json(res,405,{error:"METHOD_NOT_ALLOWED"});
-}catch(e){if(e instanceof AuthorizationError&&actor)await d.authorization.repository.writeAuditEvent({actorUserId:actor,action:"tool.action_denied",targetType:"tool",metadata:{path:url.pathname,method:req.method??"UNKNOWN"}}).catch(()=>{});const code=e instanceof ToolError||e instanceof AuthorizationError?e.code:e instanceof Error&&e.message.includes("slug")?"TOOL_SLUG_CONFLICT":"TOOL_OPERATION_FAILED";const status=code==="AUTHENTICATION_REQUIRED"?401:code==="PERMISSION_DENIED"?403:code.endsWith("NOT_FOUND")?404:code.includes("CONFLICT")||code==="TOOL_METADATA_IN_USE"?409:code==="TOOL_OPERATION_FAILED"?500:400;return json(res,status,{error:code});}}
-async function body(req:IncomingMessage){const chunks:Buffer[]=[];let n=0;for await(const c of req){n+=c.length;if(n>128*1024)throw new ToolError("INVALID_TOOL");chunks.push(c);}try{return JSON.parse(Buffer.concat(chunks).toString("utf8"));}catch{throw new ToolError("INVALID_JSON");}}
-function json(res:ServerResponse,status:number,p:object){const b=JSON.stringify(p);res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":status===200?"public, max-age=60, stale-while-revalidate=120":"no-store","x-content-type-options":"nosniff","content-length":Buffer.byteLength(b)});res.end(b);return true;}
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { AuthorizationError } from "../authorization/contracts.ts";
+import type { AuthorizationService } from "../authorization/authorizationService.ts";
+import type { SessionTokenService } from "../authorization/sessionTokenService.ts";
+import { ToolError } from "../tools/contracts.ts";
+import { parseToolBadge, parseToolCategory, parseToolQuery, type ToolService } from "../tools/toolService.ts";
+import type { BadgeRepository } from "../badges/badgeRepository.ts";
+import { BadgeAssetNotFoundError, validateBadgeAsset, type BadgeAssetStorage } from "../badges/badgeAssetStorage.ts";
+import { persistBadgeAsset } from "../badges/badgeAssetLifecycle.ts";
+
+type Deps = { tools: ToolService; authorization: AuthorizationService; sessions: SessionTokenService; assets: BadgeRepository; toolAssets: { icon: BadgeAssetStorage; cover: BadgeAssetStorage; routed: BadgeAssetStorage } };
+export function isToolPath(path: string) { return path === "/api/tools" || /^\/api\/tools\/[a-z0-9-]+$/.test(path) || /^\/api\/tool-assets\/[0-9a-f-]+\/content$/i.test(path) || path.startsWith("/api/admin/tools") || path.startsWith("/api/admin/tool-assets") || path.startsWith("/api/admin/tool-badges") || path.startsWith("/api/admin/tool-categories"); }
+
+export async function handleTools(req: IncomingMessage, res: ServerResponse, url: URL, deps: Deps) {
+  if (!isToolPath(url.pathname)) return false;
+  let actor: string | undefined;
+  try {
+    if (url.pathname === "/api/tools" && req.method === "GET") { const query = parseToolQuery(url.searchParams); return json(res, 200, { ...await deps.tools.list(query), page: query.page, pageSize: query.pageSize }); }
+    const publicTool = url.pathname.match(/^\/api\/tools\/([a-z0-9-]+)$/);
+    if (publicTool && req.method === "GET") { const tool = await deps.tools.getBySlug(publicTool[1]); if (!tool) throw new ToolError("TOOL_NOT_FOUND"); return json(res, 200, tool); }
+    const content = url.pathname.match(/^\/api\/tool-assets\/([0-9a-f-]+)\/content$/i);
+    if (content && req.method === "GET") {
+      const asset = await deps.assets.getAsset(content[1]); if (!asset || asset.deletedAt) return empty(res, 404);
+      try { const bytes = await deps.toolAssets.routed.read(asset.storageKey); res.writeHead(200, { "content-type": asset.contentType, "content-length": bytes.length, "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff" }); res.end(bytes); return true; }
+      catch (error) { if (error instanceof BadgeAssetNotFoundError) return empty(res, 404); throw error; }
+    }
+    const user = await deps.sessions.authenticateBearer(typeof req.headers.authorization === "string" ? req.headers.authorization : undefined); actor = user.id;
+    const upload = url.pathname.match(/^\/api\/admin\/tool-assets\/(icon|cover)$/);
+    if (upload && req.method === "POST") { await deps.authorization.requirePermission(actor, "tools.manage"); const bytes = await binary(req, 2 * 1024 * 1024); const declared = typeof req.headers["content-type"] === "string" ? req.headers["content-type"].split(";")[0] : undefined; const asset = validateBadgeAsset(bytes, declared); return json(res, 201, await persistBadgeAsset(deps.assets, deps.toolAssets[upload[1] as "icon" | "cover"], asset, actor)); }
+    if (url.pathname === "/api/admin/tool-assets/missing" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tools.manage"); const candidates = (await deps.assets.listAvailableAssets(500)).filter(asset => asset.storageKey.includes("/tools/") || asset.storageKey.startsWith("tools/")); const missing: Array<{ id: string }> = []; for (const asset of candidates) if (!await deps.toolAssets.routed.exists(asset.storageKey)) missing.push({ id: asset.id }); return json(res, 200, { items: missing }); }
+    if (url.pathname === "/api/admin/tools" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tools.manage"); const query = parseToolQuery(url.searchParams, true); return json(res, 200, { ...await deps.tools.list(query), page: query.page, pageSize: query.pageSize }); }
+    if (url.pathname === "/api/admin/tools" && req.method === "POST") { await deps.authorization.requirePermission(actor, "tools.manage"); return json(res, 201, await deps.tools.create(await body(req), actor)); }
+    const tool = url.pathname.match(/^\/api\/admin\/tools\/([0-9a-f-]+)(?:\/(archive|reactivate))?$/i);
+    if (tool) { await deps.authorization.requirePermission(actor, "tools.manage"); if (req.method === "PATCH" && !tool[2]) return json(res, 200, await deps.tools.update(tool[1], await body(req), actor)); if (req.method === "POST" && tool[2]) return json(res, 200, tool[2] === "archive" ? await deps.tools.archive(tool[1], actor) : await deps.tools.reactivate(tool[1], actor)); }
+    if (url.pathname === "/api/admin/tool-badges" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tool_badges.manage"); return json(res, 200, { items: await deps.tools.badges.list(url.searchParams.get("archived") === "true") }); }
+    if (url.pathname === "/api/admin/tool-badges" && req.method === "POST") { await deps.authorization.requirePermission(actor, "tool_badges.manage"); return json(res, 201, await deps.tools.badges.create(parseToolBadge(await body(req)), actor)); }
+    const badge = url.pathname.match(/^\/api\/admin\/tool-badges\/([0-9a-f-]+)(?:\/(archive|reactivate))?$/i);
+    if (badge) { await deps.authorization.requirePermission(actor, "tool_badges.manage"); if (req.method === "PATCH" && !badge[2]) return json(res, 200, await deps.tools.badges.update(badge[1], parseToolBadge(await body(req)), actor)); if (req.method === "POST" && badge[2]) return json(res, 200, await deps.tools.badges.setArchived(badge[1], badge[2] === "archive", actor)); }
+    if (url.pathname === "/api/admin/tool-categories" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tool_categories.manage"); return json(res, 200, { items: await deps.tools.categories.list(url.searchParams.get("archived") === "true") }); }
+    if (url.pathname === "/api/admin/tool-categories" && req.method === "POST") { await deps.authorization.requirePermission(actor, "tool_categories.manage"); return json(res, 201, await deps.tools.categories.create(parseToolCategory(await body(req)), actor)); }
+    const category = url.pathname.match(/^\/api\/admin\/tool-categories\/([0-9a-f-]+)(?:\/(archive|reactivate))?$/i);
+    if (category) { await deps.authorization.requirePermission(actor, "tool_categories.manage"); if (req.method === "PATCH" && !category[2]) return json(res, 200, await deps.tools.categories.update(category[1], parseToolCategory(await body(req)), actor)); if (req.method === "POST" && category[2]) return json(res, 200, await deps.tools.categories.setArchived(category[1], category[2] === "archive", actor)); }
+    return json(res, 405, { error: "METHOD_NOT_ALLOWED" });
+  } catch (error) {
+    if (error instanceof AuthorizationError && actor) await deps.authorization.repository.writeAuditEvent({ actorUserId: actor, action: "tool.action_denied", targetType: "tool", metadata: { path: url.pathname, method: req.method ?? "UNKNOWN" } }).catch(() => {});
+    const code = error instanceof ToolError || error instanceof AuthorizationError ? error.code : error instanceof Error && error.message.includes("slug") ? "TOOL_SLUG_CONFLICT" : error instanceof Error && error.name === "BadgeError" ? error.message : "TOOL_OPERATION_FAILED";
+    const status = code === "AUTHENTICATION_REQUIRED" ? 401 : code === "PERMISSION_DENIED" ? 403 : code.endsWith("NOT_FOUND") ? 404 : code.includes("CONFLICT") || code === "TOOL_METADATA_IN_USE" ? 409 : code === "TOOL_OPERATION_FAILED" ? 500 : 400;
+    return json(res, status, { error: code });
+  }
+}
+async function body(req: IncomingMessage) { const bytes = await binary(req, 128 * 1024); try { return JSON.parse(bytes.toString("utf8")); } catch { throw new ToolError("INVALID_JSON"); } }
+async function binary(req: IncomingMessage, max: number) { const chunks: Buffer[] = []; let length = 0; for await (const chunk of req) { length += chunk.length; if (length > max) throw new ToolError("INVALID_TOOL"); chunks.push(chunk); } return Buffer.concat(chunks); }
+function empty(res: ServerResponse, status: number) { res.writeHead(status, { "cache-control": "no-store", "x-content-type-options": "nosniff" }); res.end(); return true; }
+function json(res: ServerResponse, status: number, payload: object) { const value = JSON.stringify(payload); res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": status === 200 ? "public, max-age=60, stale-while-revalidate=120" : "no-store", "x-content-type-options": "nosniff", "content-length": Buffer.byteLength(value) }); res.end(value); return true; }

@@ -47,16 +47,18 @@ fn open_external_tool_url(app: tauri::AppHandle, url: String) -> Result<(), Stri
 }
 
 fn validate_external_tool_url(value: &str) -> Result<url::Url, String> {
+    if !value.is_ascii() { return Err("unsafe_external_url".into()); }
     let parsed = url::Url::parse(value).map_err(|_| "unsafe_external_url".to_string())?;
     if parsed.scheme() != "https" || !parsed.username().is_empty() || parsed.password().is_some() || parsed.port().is_some() {
         return Err("unsafe_external_url".into());
     }
-    let host = parsed.host_str().ok_or_else(|| "unsafe_external_url".to_string())?.to_ascii_lowercase();
+      let host = parsed.host_str().ok_or_else(|| "unsafe_external_url".to_string())?.to_ascii_lowercase();
+      if host.split('.').any(|label| label.starts_with("xn--")) { return Err("unsafe_external_url".into()); }
     if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") || !host.contains('.') {
         return Err("unsafe_external_url".into());
     }
     if let Ok(ip) = host.parse::<IpAddr>() {
-        let blocked = match ip { IpAddr::V4(v) => v.is_private() || v.is_loopback() || v.is_link_local() || v.is_unspecified() || v.is_multicast(), IpAddr::V6(v) => v.is_loopback() || v.is_unspecified() || v.is_unique_local() || v.is_unicast_link_local() || v.is_multicast() };
+          let blocked = match ip { IpAddr::V4(v) => { let octets=v.octets(); v.is_private() || v.is_loopback() || v.is_link_local() || v.is_unspecified() || v.is_multicast() || (octets[0]==100 && (64..=127).contains(&octets[1])) }, IpAddr::V6(v) => v.is_loopback() || v.is_unspecified() || v.is_unique_local() || v.is_unicast_link_local() || v.is_multicast() };
         if blocked { return Err("unsafe_external_url".into()); }
     }
     Ok(parsed)
@@ -210,6 +212,6 @@ pub fn run() {
 #[cfg(test)]
 mod external_tool_url_tests {
     use super::validate_external_tool_url;
-    #[test] fn accepts_public_https() { assert!(validate_external_tool_url("https://example.com/download?q=1").is_ok()); }
-    #[test] fn rejects_unsafe_destinations() { for value in ["javascript:alert(1)","data:text/plain,x","file:///tmp/x","http://example.com","https://localhost/x","https://127.0.0.1/x","https://10.0.0.1/x","https://[::1]/x","https://user:pass@example.com/x"] { assert!(validate_external_tool_url(value).is_err(), "{value}"); } }
+    #[test] fn accepts_public_https() { for value in ["https://example.com/download?q=1", "https://www.mediafire.com/file/example/tool.zip/file"] { assert!(validate_external_tool_url(value).is_ok(), "{value}"); } }
+    #[test] fn rejects_unsafe_destinations() { for value in ["javascript:alert(1)","data:text/plain,x","file:///tmp/x","http://example.com","https://localhost/x","https://127.0.0.1/x","https://10.0.0.1/x","https://100.64.0.1/x","https://[::1]/x","https://user:pass@example.com/x","https://example.com:8443/x","https://аррӏе.example/x","https://xn--80ak6aa92e.example/x","not a url"] { assert!(validate_external_tool_url(value).is_err(), "{value}"); } }
 }

@@ -16,6 +16,8 @@ import { PostgresBadgeAssignmentRepository } from "../src/storage/postgres/postg
 import { BadgeAssignmentService } from "../src/badgeAssignments/badgeAssignmentService.ts";
 import { PostgresUserRepository } from "../src/storage/postgres/postgresUserRepository.ts";
 import { UserService } from "../src/users/userService.ts";
+import { PostgresToolRepositories, PostgresToolBadgeRepository, PostgresToolCategoryRepository } from "../src/storage/postgres/postgresToolRepositories.ts";
+import { ToolService } from "../src/tools/toolService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -51,7 +53,7 @@ test("PostgreSQL repository integration and concurrency", {
       "SELECT count(*) FROM permissions"
     );
     assert.equal(Number(roleCount.rows[0].count), 5);
-    assert.equal(Number(permissionCount.rows[0].count), 20);
+    assert.equal(Number(permissionCount.rows[0].count), 24);
     const badgeRepository = new PostgresBadgeRepository(pool);
     await badgeRepository.validateSchema();
     const cleanupStorageKey =
@@ -70,6 +72,25 @@ test("PostgreSQL repository integration and concurrency", {
     );
     assert.equal(Number(cleanupCount.rows[0].count), 1);
     const badges = new BadgeService(badgeRepository);
+    const toolRoot = new PostgresToolRepositories(pool);
+    await toolRoot.validateSchema();
+    const toolBadges = new PostgresToolBadgeRepository(toolRoot);
+    const toolCategories = new PostgresToolCategoryRepository(toolRoot);
+    const tools = new ToolService(toolRoot, toolBadges, toolCategories, badgeRepository);
+    const toolCategory = await toolCategories.create({ name: "Utilities", slug: "utilities", description: "Useful tools", displayOrder: 1, isActive: true }, user.id);
+    const toolBadge = await toolBadges.create({ name: "Verified", slug: "verified", color: "purple", iconKey: "badge-check", displayOrder: 1, isActive: true }, user.id);
+    const toolAsset = await badgeRepository.saveAsset({ storageKey: "tenant-a/tools/staging/icons/00000000-0000-4000-8000-000000000006.png", contentType: "image/png", byteSize: 128, width: 48, height: 48, isSquare: true }, user.id);
+    const toolDraft = { name: "Staging Tool", slug: "staging-tool", shortDescription: "Staging validation", fullDescription: "PostgreSQL relationship validation", version: "1.0.0", developerName: "Nexus", externalDownloadUrl: "https://example.com/download", downloadTrust: "official" as const, iconAssetId: toolAsset.id, categoryId: toolCategory.id, badgeIds: [toolBadge.id], isFeatured: true, isActive: true, publishedAt: "2026-08-01T00:00:00Z" };
+    const createdTool = await tools.create(toolDraft, user.id);
+    assert.equal(createdTool.iconAssetId, toolAsset.id);
+    assert.equal(createdTool.category?.slug, "utilities");
+    assert.equal(createdTool.badges[0]?.slug, "verified");
+    const toolSlugRace = await Promise.allSettled([tools.create({ ...toolDraft, slug: "concurrent-tool", name: "Concurrent A" }, user.id), tools.create({ ...toolDraft, slug: "concurrent-tool", name: "Concurrent B" }, user.id)]);
+    assert.equal(toolSlugRace.filter(item => item.status === "fulfilled").length, 1);
+    assert.ok((await tools.archive(createdTool.id, user.id)).archivedAt);
+    assert.equal((await tools.list({ page: 1, pageSize: 20, activeOnly: true, includeArchived: false, sort: "newest" })).items.some(item => item.id === createdTool.id), false);
+    const toolIndexes = await pool.query<{ count: string }>("SELECT count(*) FROM pg_indexes WHERE schemaname=current_schema() AND indexname IN ('tool_definitions_public_idx','tool_definitions_category_idx','tool_badge_assignments_badge_idx','tool_definitions_icon_asset_idx','tool_definitions_cover_asset_idx')");
+    assert.equal(Number(toolIndexes.rows[0].count), 5);
     const badgeDraft = {
       slug: "staging-founder", displayName: "Staging Founder",
       description: "Migration validation", category: "special" as const,

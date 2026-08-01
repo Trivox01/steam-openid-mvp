@@ -1,3 +1,4 @@
+-- PostgreSQL backend migration 009. This is independent from Desktop SQLite migration 009.
 INSERT INTO permissions (id, key, description, category) VALUES
  ('permission-tools-view','tools.view','tools view','tools'),
  ('permission-tools-manage','tools.manage','tools manage','tools'),

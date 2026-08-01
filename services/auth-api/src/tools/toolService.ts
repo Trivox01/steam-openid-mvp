@@ -3,13 +3,19 @@ import type { ToolRepository } from "./toolRepository.ts";
 import type { ToolBadgeRepository } from "./toolBadgeRepository.ts";
 import type { ToolCategoryRepository } from "./toolCategoryRepository.ts";
 import { normalizeSafeExternalUrl } from "./safeExternalUrl.ts";
+import type { BadgeAssetStorage } from "../badges/badgeAssetStorage.ts";
+import type { BadgeRepository } from "../badges/badgeRepository.ts";
+import { removeUnusedBadgeAsset } from "../badges/badgeAssetLifecycle.ts";
 
 export class ToolService {
   readonly repository: ToolRepository;
   readonly badges: ToolBadgeRepository;
   readonly categories: ToolCategoryRepository;
-  constructor(repository: ToolRepository, badges: ToolBadgeRepository, categories: ToolCategoryRepository) {
+  private readonly assets?: BadgeRepository;
+  private readonly assetStorage?: BadgeAssetStorage;
+  constructor(repository: ToolRepository, badges: ToolBadgeRepository, categories: ToolCategoryRepository, assets?: BadgeRepository, assetStorage?: BadgeAssetStorage) {
     this.repository = repository; this.badges = badges; this.categories = categories;
+    this.assets = assets; this.assetStorage = assetStorage;
   }
   list(query: ToolListQuery) { return this.repository.list(query); }
   getBySlug(slug: string, publicOnly = true) { return this.repository.getBySlug(slug, publicOnly); }
@@ -17,7 +23,15 @@ export class ToolService {
   async update(id: string, value: unknown, actor: string) {
     const current = await this.repository.get(id); if (!current) throw new ToolError("TOOL_NOT_FOUND");
     if (current.archivedAt) throw new ToolError("TOOL_ARCHIVED");
-    return this.repository.update(id, await this.parseTool(value), actor);
+    const updated = await this.repository.update(id, await this.parseTool(value), actor);
+    if (this.assets && this.assetStorage) {
+      for (const oldId of [current.iconAssetId, current.coverAssetId]) {
+        if (oldId && oldId !== updated.iconAssetId && oldId !== updated.coverAssetId) {
+          await removeUnusedBadgeAsset(this.assets, this.assetStorage, oldId, actor, "icon_replaced");
+        }
+      }
+    }
+    return updated;
   }
   archive(id: string, actor: string) { return this.repository.setArchived(id, true, actor); }
   reactivate(id: string, actor: string) { return this.repository.setArchived(id, false, actor); }
@@ -26,14 +40,13 @@ export class ToolService {
     const slug = text(value.slug, 64); if (!slugPattern.test(slug)) throw new ToolError("INVALID_TOOL");
     const download = normalizeSafeExternalUrl(text(value.externalDownloadUrl, 2048));
     const website = optionalText(value.officialWebsiteUrl, 2048);
-    const iconUrl = optionalText(value.iconUrl, 2048); const coverUrl = optionalText(value.coverUrl, 2048);
     const normalizedWebsite = website ? normalizeSafeExternalUrl(website).url : undefined;
-    const normalizedIcon = iconUrl ? normalizeSafeExternalUrl(iconUrl).url : undefined;
-    const normalizedCover = coverUrl ? normalizeSafeExternalUrl(coverUrl).url : undefined;
+    const iconAssetId = optionalUuid(value.iconAssetId); const coverAssetId = optionalUuid(value.coverAssetId);
+    if (this.assets) for (const assetId of [iconAssetId, coverAssetId]) { const asset = assetId ? await this.assets.getAsset(assetId) : undefined; if (assetId && (!asset || asset.deletedAt)) throw new ToolError("TOOL_ASSET_NOT_FOUND"); }
     const categoryId = optionalUuid(value.categoryId); const badgeIds = uuidArray(value.badgeIds, 16);
     if (categoryId) { const category = await this.categories.get(categoryId); if (!category || category.archivedAt || !category.isActive) throw new ToolError("TOOL_REFERENCE_ARCHIVED"); }
     for (const badgeId of badgeIds) { const badge = await this.badges.get(badgeId); if (!badge || badge.archivedAt || !badge.isActive) throw new ToolError("TOOL_REFERENCE_ARCHIVED"); }
-    return { name:text(value.name,100), slug, shortDescription:text(value.shortDescription,220), fullDescription:text(value.fullDescription,5000), version:text(value.version,40), developerName:text(value.developerName,100), externalDownloadUrl:download.url, downloadTrust:enumValue(value.downloadTrust,["official","external","community"] as const), ...(normalizedWebsite?{officialWebsiteUrl:normalizedWebsite}:{}), ...(normalizedIcon?{iconUrl:normalizedIcon}:{}), ...(normalizedCover?{coverUrl:normalizedCover}:{}), ...(categoryId?{categoryId}:{}), badgeIds, isFeatured:boolean(value.isFeatured), isActive:boolean(value.isActive), ...(date(value.publishedAt)?{publishedAt:date(value.publishedAt)}:{}) };
+    return { name:text(value.name,100), slug, shortDescription:text(value.shortDescription,220), fullDescription:text(value.fullDescription,5000), version:text(value.version,40), developerName:text(value.developerName,100), externalDownloadUrl:download.url, downloadTrust:enumValue(value.downloadTrust,["official","external","community"] as const), ...(normalizedWebsite?{officialWebsiteUrl:normalizedWebsite}:{}), ...(iconAssetId?{iconAssetId}:{}), ...(coverAssetId?{coverAssetId}:{}), ...(categoryId?{categoryId}:{}), badgeIds, isFeatured:boolean(value.isFeatured), isActive:boolean(value.isActive), ...(date(value.publishedAt)?{publishedAt:date(value.publishedAt)}:{}) };
   }
 }
 

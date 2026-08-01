@@ -2297,3 +2297,5 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 .achievement-dialog .dialog-close{right:auto;inset-inline-end:14px}
 .dark .achievement-dialog-hero .achievement-icon{border-color:color-mix(in srgb,var(--accent) 26%,var(--border-muted));background:color-mix(in srgb,var(--surface-raised) 92%,var(--accent-subtle));box-shadow:inset 0 1px 0 color-mix(in srgb,var(--accent) 12%,transparent),0 4px 12px rgba(0,0,0,.16)}
 @media(max-width:560px){.achievement-dialog-hero{width:48px;margin-block-start:6px}.achievement-dialog-hero .achievement-icon{--achievement-icon-size:48px!important;--achievement-icon-inner:42px!important;inline-size:48px;block-size:48px}.achievement-dialog-hero .achievement-icon>img{inline-size:42px;block-size:42px}}
+/* Managed Tools artwork keeps a fixed fallback box without broad image hosts. */
+.tools-featured>.tools-featured__image{position:absolute;inset:0;z-index:-2;width:100%;height:100%;object-fit:cover}.tools-featured>svg.tools-featured__image{padding:72px;color:var(--accent-primary);opacity:.35}

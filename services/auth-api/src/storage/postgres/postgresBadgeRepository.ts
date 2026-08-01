@@ -174,12 +174,16 @@ export class PostgresBadgeRepository implements BadgeRepository {
              SELECT 1 FROM badge_definitions
              WHERE icon_asset_id=$1
            )
+           AND NOT EXISTS (
+             SELECT 1 FROM tool_definitions
+             WHERE icon_asset_id=$1 OR cover_asset_id=$1
+           )
          RETURNING storage_key`,
         [id]
       );
       if (!result.rowCount) {
         const used = await client.query(
-          "SELECT 1 FROM badge_definitions WHERE icon_asset_id=$1",
+          "SELECT 1 FROM badge_definitions WHERE icon_asset_id=$1 UNION ALL SELECT 1 FROM tool_definitions WHERE icon_asset_id=$1 OR cover_asset_id=$1",
           [id]
         );
         if (used.rowCount) throw new Error("badge_asset_in_use");

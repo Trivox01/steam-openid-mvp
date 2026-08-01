@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Download, ExternalLink, Package, X } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, X } from "lucide-react";
+import { ToolImage } from "../features/tools/ToolImage";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../runtime/environment";
 import { inspectToolUrl } from "../features/tools/safeToolUrl";
@@ -39,9 +40,9 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   return <article className="tool-details">
     <button className="back-button" type="button" onClick={onBack}><ArrowLeft />{t("onboarding.back")}</button>
     <header className="tool-details__hero">
-      {tool.coverUrl && <img className="tool-details__cover" src={tool.coverUrl} alt="" decoding="async" />}
+      <ToolImage className="tool-details__cover" src={tool.coverUrl} eager />
       <div>
-        {tool.iconUrl ? <img className="tool-details__icon" src={tool.iconUrl} alt="" decoding="async" /> : <Package className="tool-details__icon" />}
+        <ToolImage className="tool-details__icon" src={tool.iconUrl} eager />
         <div className="tool-card__badges">{tool.category && <span>{tool.category.name}</span>}{tool.badges.map((badge) => <span className={`tool-badge tool-badge--${badge.color}`} key={badge.id}>{badge.name}</span>)}</div>
         <h1 dir="auto">{tool.name}</h1><p>{tool.shortDescription}</p>
         <div className="tool-details__meta"><span dir="auto">{t("tools.by", { developer: tool.developerName })}</span><span dir="ltr">{t("tools.version", { version: tool.version })}</span><span>{t(`tools.trust.${tool.downloadTrust}`)}</span></div>

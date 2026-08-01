@@ -13,13 +13,14 @@ export interface ToolDefinition {
   id: string; name: string; slug: string; shortDescription: string; fullDescription: string;
   version: string; developerName: string; externalDownloadUrl: string; downloadDomain: string;
   downloadTrust: ToolTrustKind; officialWebsiteUrl?: string; iconUrl?: string; coverUrl?: string;
+  iconAssetId?: string; coverAssetId?: string;
   category?: ToolCategory; badges: ToolBadge[]; isFeatured: boolean; isActive: boolean;
   archivedAt?: string; publishedAt?: string; createdAt: string; updatedAt: string;
 }
 export interface ToolMutation {
   name: string; slug: string; shortDescription: string; fullDescription: string; version: string;
   developerName: string; externalDownloadUrl: string; downloadTrust: ToolTrustKind;
-  officialWebsiteUrl?: string; iconUrl?: string; coverUrl?: string; categoryId?: string;
+  officialWebsiteUrl?: string; iconAssetId?: string; coverAssetId?: string; categoryId?: string;
   badgeIds: string[]; isFeatured: boolean; isActive: boolean; publishedAt?: string;
 }
 export interface ToolListQuery {
@@ -35,7 +36,7 @@ export type ToolCategoryMutation = Omit<ToolCategory, "id" | "archivedAt" | "cre
 
 export type ToolErrorCode = "INVALID_TOOL" | "INVALID_TOOL_QUERY" | "INVALID_TOOL_URL" |
   "TOOL_NOT_FOUND" | "TOOL_ARCHIVED" | "TOOL_SLUG_CONFLICT" | "TOOL_BADGE_NOT_FOUND" |
-  "TOOL_CATEGORY_NOT_FOUND" | "TOOL_REFERENCE_ARCHIVED" | "TOOL_METADATA_IN_USE" | "INVALID_JSON";
+  "TOOL_CATEGORY_NOT_FOUND" | "TOOL_REFERENCE_ARCHIVED" | "TOOL_METADATA_IN_USE" | "TOOL_ASSET_NOT_FOUND" | "INVALID_JSON";
 export class ToolError extends Error {
   readonly code: ToolErrorCode;
   constructor(code: ToolErrorCode) { super(code); this.code = code; this.name = "ToolError"; }

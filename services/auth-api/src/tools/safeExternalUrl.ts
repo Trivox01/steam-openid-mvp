@@ -5,13 +5,14 @@ import { ToolError } from "./contracts.ts";
 const blockedNames = new Set(["localhost", "localhost.localdomain"]);
 
 export function normalizeSafeExternalUrl(value: string) {
+  if (!/^[\x00-\x7F]*$/.test(value)) throw new ToolError("INVALID_TOOL_URL");
   let parsed: URL;
   try { parsed = new URL(value.trim()); } catch { throw new ToolError("INVALID_TOOL_URL"); }
   if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.port) {
     throw new ToolError("INVALID_TOOL_URL");
   }
   const asciiHost = domainToASCII(parsed.hostname).toLowerCase();
-  if (!asciiHost || blockedNames.has(asciiHost) || asciiHost.endsWith(".localhost") || isPrivateHost(asciiHost)) {
+  if (!asciiHost || asciiHost.split(".").some(label => label.startsWith("xn--")) || blockedNames.has(asciiHost) || asciiHost.endsWith(".localhost") || isPrivateHost(asciiHost)) {
     throw new ToolError("INVALID_TOOL_URL");
   }
   parsed.hostname = asciiHost;
