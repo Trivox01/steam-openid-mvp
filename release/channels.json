@@ -1,0 +1,12 @@
+{
+  "active": "beta",
+  "channels": {
+    "development": { "enabled": false },
+    "staging": { "enabled": false },
+    "beta": {
+      "enabled": true,
+      "endpoint": "https://github.com/Trivox01/steam-openid-mvp/releases/latest/download/latest-beta.json"
+    },
+    "stable": { "enabled": false }
+  }
+}
