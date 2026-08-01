@@ -19,7 +19,7 @@ const REQUIRED_GAME_ACHIEVEMENT_COLUMNS: [&str; 3] = [
     "achievements_sync_error",
 ];
 
-fn migrations() -> [Migration; 8] {
+fn migrations() -> [Migration; 9] {
     [
         Migration {
             version: 1,
@@ -60,6 +60,11 @@ fn migrations() -> [Migration; 8] {
             version: 8,
             description: "normalize_steam_artwork_urls",
             action: MigrationAction::Sql(include_str!("../migrations/008_normalize_steam_artwork_urls.sql")),
+        },
+        Migration {
+            version: 9,
+            description: "smart_library",
+            action: MigrationAction::Sql(include_str!("../migrations/009_smart_library.sql")),
         },
     ]
 }
@@ -317,7 +322,7 @@ mod tests {
         let version: i64 = connection.query_row(
             "SELECT MAX(version) FROM _achievement_nexus_migrations", [], |row| row.get(0)
         ).expect("migration version should exist");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
         assert!(!super::table_exists(&connection, "steam_profile").expect("schema should load"));
     }
 

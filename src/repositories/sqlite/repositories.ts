@@ -3,6 +3,7 @@ import type { AchievementRepository, ActivityRepository, GameRepository, Profile
 import { databaseCommands as cmd } from "./commands";
 import { invokeDatabase } from "./invoke";
 import { achievementToRecord, activityToRecord, gameToRecord, profileToRecord, recordToAchievement, recordToActivity, recordToGame, recordToProfile, type AchievementRecord, type ActivityRecord, type GameRecord, type ProfileRecord, type SyncRecord } from "./mappers";
+import type { LibraryPage, LibraryQuery } from "../../types/library";
 
 export class SqliteGameRepository implements GameRepository {
   async getAllGames(){return (await invokeDatabase<GameRecord[]>(cmd.games.all)).map(recordToGame)}
@@ -10,6 +11,9 @@ export class SqliteGameRepository implements GameRepository {
   async saveGames(games:Game[]){await invokeDatabase<void>(cmd.games.save,{games:games.map(gameToRecord)})}
   async updateGame(game:Game){await invokeDatabase<void>(cmd.games.update,{game:gameToRecord(game)})}
   async clearGames(){await invokeDatabase<void>(cmd.games.clear)}
+  async queryGames(query:LibraryQuery){const page=await invokeDatabase<Omit<LibraryPage,"games">&{games:GameRecord[]}>(cmd.games.query,{query});return {...page,games:page.games.map(recordToGame)}}
+  async setTracked(id:GameId,tracked:boolean){await invokeDatabase<void>(cmd.games.tracked,{id,tracked})}
+  async recordOpened(id:GameId,openedAt:string){await invokeDatabase<void>(cmd.games.opened,{id,openedAt})}
 }
 export class SqliteAchievementRepository implements AchievementRepository {
   async getAchievements(){return (await invokeDatabase<AchievementRecord[]>(cmd.achievements.all)).map(recordToAchievement)}

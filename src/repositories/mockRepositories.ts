@@ -4,6 +4,8 @@ import type { AchievementRepository, ActivityRepository, GameRepository, Profile
 import type { SyncMetadata, UserProfile } from "../types";
 import { mockDashboardData } from "../data/mockData";
 import { defaultPreferences } from "../services/settingsPreferences";
+import type { LibraryQuery } from "../types/library";
+import { queryGamesInMemory } from "../services/smartLibraryRanking";
 
 export class MockGameRepository implements GameRepository {
   private games = structuredClone(mockGames);
@@ -12,6 +14,9 @@ export class MockGameRepository implements GameRepository {
   async saveGames(games: Game[]) { this.games = structuredClone(games); }
   async updateGame(game: Game) { this.games = this.games.map((item) => item.id === game.id ? structuredClone(game) : item); }
   async clearGames() { this.games = []; }
+  async queryGames(query: LibraryQuery) { return queryGamesInMemory(this.games, query); }
+  async setTracked(id: GameId, tracked: boolean) { const game=this.games.find((item)=>item.id===id); if(game) game.tracked=tracked; }
+  async recordOpened(id: GameId, openedAt: string) { const game=this.games.find((item)=>item.id===id); if(game) game.lastOpenedAt=openedAt; }
 }
 export class MockAchievementRepository implements AchievementRepository {
   private achievements = structuredClone(mockAchievements);

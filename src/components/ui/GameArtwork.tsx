@@ -23,6 +23,8 @@ type GameArtworkProps = {
 };
 
 const MAX_ARTWORK_ATTEMPTS = 6;
+const MAX_VALIDATION_CACHE_ENTRIES = 512;
+const artworkValidationCache = new Map<string, boolean>();
 const ALLOWED_ARTWORK_HOSTS = new Set([
   "shared.steamstatic.com",
   "shared.cloudflare.steamstatic.com",
@@ -143,6 +145,9 @@ export function GameArtwork({
 }
 
 async function hasMeaningfulArtworkContent(image: HTMLImageElement) {
+  const cacheKey = image.currentSrc || image.src;
+  const cached = artworkValidationCache.get(cacheKey);
+  if (cached !== undefined) return cached;
   try {
     const canvas = document.createElement("canvas");
     canvas.width = 16;
@@ -150,7 +155,10 @@ async function hasMeaningfulArtworkContent(image: HTMLImageElement) {
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) return true;
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return isMeaningfulArtworkPixels(context.getImageData(0, 0, canvas.width, canvas.height).data);
+    const result = isMeaningfulArtworkPixels(context.getImageData(0, 0, canvas.width, canvas.height).data);
+    artworkValidationCache.set(cacheKey, result);
+    if (artworkValidationCache.size > MAX_VALIDATION_CACHE_ENTRIES) artworkValidationCache.delete(artworkValidationCache.keys().next().value!);
+    return result;
   } catch {
     return true;
   }

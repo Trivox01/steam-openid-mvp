@@ -5,7 +5,7 @@ import {
   Heart,
   ListChecks,
   MoreHorizontal,
-  Play,
+  Bookmark,
   Trophy
 } from "lucide-react";
 import { useTranslation } from "../../i18n/TranslationContext";
@@ -35,7 +35,8 @@ export const GameCard = memo(function GameCard({
   onOpen,
   onViewAchievements,
   onViewDetails,
-  onFavoriteChange
+  onFavoriteChange,
+  onTrackedChange
 }: GameCardProps) {
   const { language, t } = useTranslation();
   const completion = clampPercent(game.completionPercent);
@@ -113,6 +114,7 @@ export const GameCard = memo(function GameCard({
           onViewAchievements={onViewAchievements}
           onViewDetails={onViewDetails}
           onFavoriteChange={onFavoriteChange}
+          onTrackedChange={onTrackedChange}
         />
       </div>
 
@@ -133,7 +135,7 @@ export const GameCardCompact = memo(function GameCardCompact(props: GameCardProp
   return <GameCard game={game} className={["nexus-game-card--compact", className].filter(Boolean).join(" ")} {...actions} />;
 });
 
-function QuickActions({ game, onOpen, onViewAchievements, onViewDetails, onFavoriteChange }: GameCardProps) {
+function QuickActions({ game, onViewAchievements, onViewDetails, onFavoriteChange, onTrackedChange }: GameCardProps) {
   const { t } = useTranslation();
   const act = (event: MouseEvent<HTMLButtonElement>, action: () => void) => {
     event.stopPropagation();
@@ -141,7 +143,7 @@ function QuickActions({ game, onOpen, onViewAchievements, onViewDetails, onFavor
   };
   return (
     <div className="nexus-game-card__quick-actions" role="group" aria-label={t("gameCard.quickActions")}>
-      <button type="button" onClick={(event) => act(event, () => onOpen(game.id))} aria-label={t("gameCard.openLabel", { title: game.title })}><Play size={15} /></button>
+      {onTrackedChange && <button type="button" className={game.tracked ? "is-active" : ""} onClick={(event) => act(event, () => onTrackedChange(game.id, !game.tracked))} aria-label={t(game.tracked ? "games.untrack" : "games.track", { title: game.title })}><Bookmark size={15} fill={game.tracked ? "currentColor" : "none"} /></button>}
       {onViewAchievements && <button type="button" onClick={(event) => act(event, () => onViewAchievements(game.id))} aria-label={t("gameCard.achievementsLabel", { title: game.title })}><ListChecks size={15} /></button>}
       {onViewDetails && <button type="button" onClick={(event) => act(event, () => onViewDetails(game.id))} aria-label={t("gameCard.detailsLabel", { title: game.title })}><MoreHorizontal size={16} /></button>}
       {onFavoriteChange && <button type="button" className={game.favorite ? "is-active" : ""} onClick={(event) => act(event, () => onFavoriteChange(game.id, !game.favorite))} aria-label={t(game.favorite ? "gameCard.removeFavoriteLabel" : "gameCard.addFavoriteLabel", { title: game.title })}><Heart size={15} fill={game.favorite ? "currentColor" : "none"} /></button>}

@@ -28,7 +28,14 @@ pub struct GameRecord {
     pub game_status: String,
     pub achievements_synced_at: Option<String>, pub achievements_sync_status: String,
     pub achievements_sync_error: Option<String>,
+    pub tracked: bool, pub last_opened_at: Option<String>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GameLibraryQueryRecord { pub search: String, pub filter: String, pub sort: String, pub offset: i64, pub limit: i64 }
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameLibraryPageRecord { pub games: Vec<GameRecord>, pub total: i64, pub offset: i64, pub limit: i64 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AchievementRecord {

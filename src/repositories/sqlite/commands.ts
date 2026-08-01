@@ -1,5 +1,5 @@
 export const databaseCommands = {
-  games: { all: "get_all_games", byId: "get_game_by_id", save: "upsert_games", update: "update_game", clear: "clear_games" },
+  games: { all: "get_all_games", byId: "get_game_by_id", query: "query_games", save: "upsert_games", update: "update_game", tracked: "set_game_tracked", opened: "record_game_opened", clear: "clear_games" },
   achievements: { all: "get_achievements", byGame: "get_achievements_by_game", byId: "get_achievement_by_id", save: "upsert_achievements", clear: "clear_achievements" },
   activities: { all: "get_activities", save: "save_activities", clear: "clear_activities" },
   preferences: { get: "get_preferences", save: "save_preferences", reset: "reset_preferences" },

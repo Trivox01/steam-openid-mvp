@@ -28,6 +28,7 @@ export type GameCardData = {
   completionPercent: number;
   lastPlayedAt?: string | null;
   favorite: boolean;
+  tracked?: boolean;
   hidden: boolean;
   status: GameCardStatus;
   accent?: GameCardAccent;
@@ -38,4 +39,5 @@ export type GameCardActions = {
   onViewAchievements?: (id: GameId) => void;
   onViewDetails?: (id: GameId) => void;
   onFavoriteChange?: (id: GameId, favorite: boolean) => void;
+  onTrackedChange?: (id: GameId, tracked: boolean) => void;
 };

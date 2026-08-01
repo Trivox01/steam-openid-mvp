@@ -2142,3 +2142,12 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+.smart-library-section { margin-block: 1.5rem; }
+.smart-library-section h2, .smart-library > section > h2 { margin: 0 0 .8rem; font-size: 1.05rem; }
+.smart-library-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 260px); gap: 1rem; overflow-x: auto; padding: .15rem .15rem 1rem; scroll-snap-type: inline proximity; }
+.smart-library-strip > * { scroll-snap-align: start; }
+.library-pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-block: 1.25rem; }
+.library-pagination button { display: inline-flex; align-items: center; gap: .35rem; min-height: 38px; padding-inline: .8rem; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-raised); color: inherit; }
+.library-pagination button:disabled { opacity: .45; }
+[dir="rtl"] .library-pagination svg { transform: scaleX(-1); }
+@media (max-width: 720px) { .smart-library-strip { grid-auto-columns: minmax(190px, 78vw); } }

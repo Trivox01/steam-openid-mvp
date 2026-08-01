@@ -4,18 +4,54 @@ use tauri::State;
 use crate::{database::DatabaseState, models::*};
 
 fn db_error(context: &str, error: rusqlite::Error) -> String { format!("{context}: {error}") }
+const GAME_COLUMNS: &str = "id,platform_id,platform_game_id,name,cover_url,background_url,playtime_minutes,achievements_unlocked,achievements_total,completion_percentage,last_played_at,playtime_two_weeks_minutes,playtime_windows_minutes,playtime_mac_minutes,playtime_linux_minutes,icon_url,synced_at,favorite,hidden,game_status,achievements_synced_at,achievements_sync_status,achievements_sync_error,tracked,last_opened_at";
 
 #[tauri::command]
 pub fn get_all_games(state: State<DatabaseState>) -> Result<Vec<GameRecord>, String> {
     let db = state.0.lock().map_err(|_| "Local database is unavailable".to_string())?;
-    let mut statement = db.prepare("SELECT id,platform_id,platform_game_id,name,cover_url,background_url,playtime_minutes,achievements_unlocked,achievements_total,completion_percentage,last_played_at,playtime_two_weeks_minutes,playtime_windows_minutes,playtime_mac_minutes,playtime_linux_minutes,icon_url,synced_at,favorite,hidden,game_status,achievements_synced_at,achievements_sync_status,achievements_sync_error FROM games ORDER BY last_played_at DESC").map_err(|e| db_error("Unable to query games", e))?;
+    let mut statement = db.prepare(&format!("SELECT {GAME_COLUMNS} FROM games ORDER BY last_played_at DESC")).map_err(|e| db_error("Unable to query games", e))?;
     let rows = statement.query_map([], map_game).map_err(|e| db_error("Unable to read games", e))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| db_error("Unable to decode games", e))
 }
 #[tauri::command]
+pub fn query_games(query: GameLibraryQueryRecord, state: State<DatabaseState>) -> Result<GameLibraryPageRecord, String> {
+    let limit = query.limit.clamp(1, 100);
+    let offset = query.offset.max(0);
+    if query.search.chars().count() > 120 { return Err("Library search is too long".into()); }
+    let filters = ["all","tracked","recent","hasAchievements","noAchievementData","completed","incomplete","hidden"];
+    let sorts = ["smart","recent","playtime","completion","nameAsc","nameDesc","synced","tracked"];
+    if !filters.contains(&query.filter.as_str()) || !sorts.contains(&query.sort.as_str()) { return Err("Invalid library query".into()); }
+    let db = state.0.lock().map_err(|_| "Local database is unavailable".to_string())?;
+    let pattern = format!("%{}%", query.search.trim().to_lowercase().replace('%', "\\%").replace('_', "\\_"));
+    let where_sql = "(?1='' OR LOWER(name) LIKE ?2 ESCAPE '\\' OR platform_game_id LIKE ?2 ESCAPE '\\') AND CASE ?3 WHEN 'tracked' THEN tracked=1 WHEN 'recent' THEN last_played_at IS NOT NULL WHEN 'hasAchievements' THEN achievements_total>0 WHEN 'noAchievementData' THEN achievements_total=0 WHEN 'completed' THEN achievements_total>0 AND completion_percentage>=100 WHEN 'incomplete' THEN achievements_total>0 AND completion_percentage<100 WHEN 'hidden' THEN hidden=1 ELSE hidden=0 END";
+    let order_sql = match query.sort.as_str() {
+        "recent" => "last_played_at DESC", "playtime" => "playtime_minutes DESC", "completion" => "completion_percentage DESC",
+        "nameAsc" => "name COLLATE NOCASE ASC", "nameDesc" => "name COLLATE NOCASE DESC", "synced" => "synced_at DESC",
+        "tracked" => "tracked DESC, last_opened_at DESC",
+        _ => "tracked DESC, CASE WHEN last_opened_at IS NULL THEN 0 ELSE 1 END DESC, last_opened_at DESC, CASE WHEN completion_percentage BETWEEN 70 AND 99.999 THEN 1 ELSE 0 END DESC, last_played_at DESC, playtime_minutes DESC",
+    };
+    let total: i64 = db.query_row(&format!("SELECT COUNT(*) FROM games WHERE {where_sql}"), params![query.search.trim(), pattern, query.filter], |row| row.get(0)).map_err(|e| db_error("Unable to count games", e))?;
+    let sql = format!("SELECT {GAME_COLUMNS} FROM games WHERE {where_sql} ORDER BY {order_sql}, name COLLATE NOCASE, platform_game_id LIMIT ?4 OFFSET ?5");
+    let mut statement = db.prepare(&sql).map_err(|e| db_error("Unable to query library", e))?;
+    let rows = statement.query_map(params![query.search.trim(), pattern, query.filter, limit, offset], map_game).map_err(|e| db_error("Unable to read library", e))?;
+    let games = rows.collect::<Result<Vec<_>,_>>().map_err(|e| db_error("Unable to decode library", e))?;
+    Ok(GameLibraryPageRecord { games, total, offset, limit })
+}
+
+#[tauri::command]
+pub fn set_game_tracked(id: String, tracked: bool, state: State<DatabaseState>) -> Result<(), String> {
+    let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;
+    db.execute("UPDATE games SET tracked=?1,updated_at=CURRENT_TIMESTAMP WHERE id=?2",params![tracked,id]).map(|_|()).map_err(|e|db_error("Unable to update tracked game",e))
+}
+#[tauri::command]
+pub fn record_game_opened(id: String, opened_at: String, state: State<DatabaseState>) -> Result<(), String> {
+    let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;
+    db.execute("UPDATE games SET last_opened_at=?1,updated_at=CURRENT_TIMESTAMP WHERE id=?2",params![opened_at,id]).map(|_|()).map_err(|e|db_error("Unable to record opened game",e))
+}
+#[tauri::command]
 pub fn get_game_by_id(id: String, state: State<DatabaseState>) -> Result<Option<GameRecord>, String> {
     let db = state.0.lock().map_err(|_| "Local database is unavailable".to_string())?;
-    db.query_row("SELECT id,platform_id,platform_game_id,name,cover_url,background_url,playtime_minutes,achievements_unlocked,achievements_total,completion_percentage,last_played_at,playtime_two_weeks_minutes,playtime_windows_minutes,playtime_mac_minutes,playtime_linux_minutes,icon_url,synced_at,favorite,hidden,game_status,achievements_synced_at,achievements_sync_status,achievements_sync_error FROM games WHERE id=?1", [id], map_game).optional().map_err(|e| db_error("Unable to read game", e))
+    db.query_row(&format!("SELECT {GAME_COLUMNS} FROM games WHERE id=?1"), [id], map_game).optional().map_err(|e| db_error("Unable to read game", e))
 }
 #[tauri::command]
 pub fn upsert_games(games: Vec<GameRecord>, state: State<DatabaseState>) -> Result<(), String> {
@@ -119,7 +155,7 @@ pub fn get_sync_metadata(platform_id:String,state:State<DatabaseState>)->Result<
 #[tauri::command]
 pub fn save_sync_metadata(item:SyncMetadataRecord,state:State<DatabaseState>)->Result<(),String>{let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;db.execute("INSERT INTO sync_metadata(platform_id,last_sync_at,sync_status,error_message) VALUES(?1,?2,?3,?4) ON CONFLICT(platform_id) DO UPDATE SET last_sync_at=excluded.last_sync_at,sync_status=excluded.sync_status,error_message=excluded.error_message,updated_at=CURRENT_TIMESTAMP",params![item.platform_id,item.last_sync_at,item.sync_status,item.error_message]).map(|_|()).map_err(|e|db_error("Unable to save sync metadata",e))}
 
-fn map_game(row:&rusqlite::Row)->rusqlite::Result<GameRecord>{Ok(GameRecord{id:row.get(0)?,platform_id:row.get(1)?,platform_game_id:row.get(2)?,name:row.get(3)?,cover_url:row.get(4)?,background_url:row.get(5)?,playtime_minutes:row.get(6)?,achievements_unlocked:row.get(7)?,achievements_total:row.get(8)?,completion_percentage:row.get(9)?,last_played_at:row.get(10)?,playtime_two_weeks_minutes:row.get(11)?,playtime_windows_minutes:row.get(12)?,playtime_mac_minutes:row.get(13)?,playtime_linux_minutes:row.get(14)?,icon_url:row.get(15)?,synced_at:row.get(16)?,favorite:row.get(17)?,hidden:row.get(18)?,game_status:row.get(19)?,achievements_synced_at:row.get(20)?,achievements_sync_status:row.get(21)?,achievements_sync_error:row.get(22)?})}
+fn map_game(row:&rusqlite::Row)->rusqlite::Result<GameRecord>{Ok(GameRecord{id:row.get(0)?,platform_id:row.get(1)?,platform_game_id:row.get(2)?,name:row.get(3)?,cover_url:row.get(4)?,background_url:row.get(5)?,playtime_minutes:row.get(6)?,achievements_unlocked:row.get(7)?,achievements_total:row.get(8)?,completion_percentage:row.get(9)?,last_played_at:row.get(10)?,playtime_two_weeks_minutes:row.get(11)?,playtime_windows_minutes:row.get(12)?,playtime_mac_minutes:row.get(13)?,playtime_linux_minutes:row.get(14)?,icon_url:row.get(15)?,synced_at:row.get(16)?,favorite:row.get(17)?,hidden:row.get(18)?,game_status:row.get(19)?,achievements_synced_at:row.get(20)?,achievements_sync_status:row.get(21)?,achievements_sync_error:row.get(22)?,tracked:row.get(23)?,last_opened_at:row.get(24)?})}
 fn map_achievement(row:&rusqlite::Row)->rusqlite::Result<AchievementRecord>{Ok(AchievementRecord{id:row.get(0)?,game_id:row.get(1)?,platform_achievement_id:row.get(2)?,name:row.get(3)?,description:row.get(4)?,icon_url:row.get(5)?,is_unlocked:row.get(6)?,is_hidden:row.get(7)?,rarity_percentage:row.get(8)?,unlocked_at:row.get(9)?,locked_icon_url:row.get(10)?,source:row.get(11)?,global_unlock_percent:row.get(12)?,synced_at:row.get(13)?,unlock_state_known:row.get(14)?})}
 fn upsert_game(db:&rusqlite::Connection,g:&GameRecord)->rusqlite::Result<usize>{db.execute("INSERT INTO games(id,platform_id,platform_game_id,name,cover_url,background_url,playtime_minutes,achievements_unlocked,achievements_total,completion_percentage,last_played_at,playtime_two_weeks_minutes,playtime_windows_minutes,playtime_mac_minutes,playtime_linux_minutes,icon_url,synced_at,favorite,hidden,game_status,achievements_synced_at,achievements_sync_status,achievements_sync_error) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23) ON CONFLICT(id) DO UPDATE SET platform_id=excluded.platform_id,platform_game_id=excluded.platform_game_id,name=excluded.name,cover_url=excluded.cover_url,background_url=excluded.background_url,playtime_minutes=excluded.playtime_minutes,achievements_unlocked=excluded.achievements_unlocked,achievements_total=excluded.achievements_total,completion_percentage=excluded.completion_percentage,last_played_at=excluded.last_played_at,playtime_two_weeks_minutes=excluded.playtime_two_weeks_minutes,playtime_windows_minutes=excluded.playtime_windows_minutes,playtime_mac_minutes=excluded.playtime_mac_minutes,playtime_linux_minutes=excluded.playtime_linux_minutes,icon_url=excluded.icon_url,synced_at=excluded.synced_at,favorite=excluded.favorite,hidden=excluded.hidden,game_status=excluded.game_status,achievements_synced_at=excluded.achievements_synced_at,achievements_sync_status=excluded.achievements_sync_status,achievements_sync_error=excluded.achievements_sync_error,updated_at=CURRENT_TIMESTAMP",params![g.id,g.platform_id,g.platform_game_id,g.name,g.cover_url,g.background_url,g.playtime_minutes,g.achievements_unlocked,g.achievements_total,g.completion_percentage,g.last_played_at,g.playtime_two_weeks_minutes,g.playtime_windows_minutes,g.playtime_mac_minutes,g.playtime_linux_minutes,g.icon_url,g.synced_at,g.favorite,g.hidden,g.game_status,g.achievements_synced_at,g.achievements_sync_status,g.achievements_sync_error])}
 fn query_achievements(state:&State<DatabaseState>,game_id:Option<String>)->Result<Vec<AchievementRecord>,String>{let db=state.0.lock().map_err(|_|"Local database is unavailable".to_string())?;let sql=if game_id.is_some(){"SELECT id,game_id,platform_achievement_id,name,description,icon_url,is_unlocked,is_hidden,rarity_percentage,unlocked_at,locked_icon_url,source,global_unlock_percent,synced_at,unlock_state_known FROM achievements WHERE game_id=?1 ORDER BY rarity_percentage"}else{"SELECT id,game_id,platform_achievement_id,name,description,icon_url,is_unlocked,is_hidden,rarity_percentage,unlocked_at,locked_icon_url,source,global_unlock_percent,synced_at,unlock_state_known FROM achievements ORDER BY unlocked_at DESC"};let mut s=db.prepare(sql).map_err(|e|db_error("Unable to query achievements",e))?;let rows=if let Some(id)=game_id{s.query_map([id],map_achievement)}else{s.query_map([],map_achievement)}.map_err(|e|db_error("Unable to read achievements",e))?;rows.collect::<Result<Vec<_>,_>>().map_err(|e|db_error("Unable to decode achievements",e))}

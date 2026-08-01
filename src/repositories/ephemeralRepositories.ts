@@ -17,6 +17,8 @@ import type {
   SyncMetadataRepository
 } from "./contracts";
 import { defaultPreferences } from "../services/settingsPreferences";
+import type { LibraryQuery } from "../types/library";
+import { queryGamesInMemory } from "../services/smartLibraryRanking";
 
 export class EphemeralGameRepository implements GameRepository {
   private games: Game[] = [];
@@ -30,6 +32,9 @@ export class EphemeralGameRepository implements GameRepository {
     else this.games[index] = structuredClone(game);
   }
   async clearGames() { this.games = []; }
+  async queryGames(query: LibraryQuery) { return queryGamesInMemory(this.games, query); }
+  async setTracked(id: GameId, tracked: boolean) { const game=this.games.find((item)=>item.id===id); if(game) game.tracked=tracked; }
+  async recordOpened(id: GameId, openedAt: string) { const game=this.games.find((item)=>item.id===id); if(game) game.lastOpenedAt=openedAt; }
 }
 
 export class EphemeralAchievementRepository implements AchievementRepository {

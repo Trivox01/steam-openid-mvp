@@ -122,6 +122,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_all_games,
             commands::get_game_by_id,
+            commands::query_games,
+            commands::set_game_tracked,
+            commands::record_game_opened,
             commands::upsert_games,
             commands::update_game,
             commands::clear_games,

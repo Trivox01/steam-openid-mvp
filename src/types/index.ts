@@ -35,6 +35,8 @@ export interface Game {
   achievementsSyncedAt?: string;
   achievementsSyncStatus?: "idle" | "success" | "partial" | "unsupported" | "error";
   achievementsSyncError?: string;
+  tracked?: boolean;
+  lastOpenedAt?: string;
 }
 
 export interface Achievement {

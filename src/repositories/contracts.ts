@@ -1,4 +1,5 @@
 import type { Achievement, AchievementId, Game, GameId, PlayerActivity, SyncMetadata, UserPreferences, UserProfile } from "../types";
+import type { LibraryPage, LibraryQuery } from "../types/library";
 
 export interface GameRepository {
   getAllGames(): Promise<Game[]>;
@@ -6,6 +7,9 @@ export interface GameRepository {
   saveGames(games: Game[]): Promise<void>;
   updateGame(game: Game): Promise<void>;
   clearGames(): Promise<void>;
+  queryGames(query: LibraryQuery): Promise<LibraryPage>;
+  setTracked(id: GameId, tracked: boolean): Promise<void>;
+  recordOpened(id: GameId, openedAt: string): Promise<void>;
 }
 export interface AchievementRepository {
   getAchievements(): Promise<Achievement[]>;

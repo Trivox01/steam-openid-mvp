@@ -1,4 +1,5 @@
 import type { AchievementDetails, GameDetails, GameId, AchievementId, UserPreferences } from "../types";
+import type { LibraryQuery } from "../types/library";
 import type { AchievementRepository, ActivityRepository, GameRepository, ProfileRepository, SettingsRepository } from "../repositories/contracts";
 import { defaultPreferences, normalizePreferences, preferencesEqual } from "./settingsPreferences";
 import { isAchievementUnlocked } from "./achievementData";
@@ -6,6 +7,9 @@ import { isAchievementUnlocked } from "./achievementData";
 export class GameService {
   constructor(private games: GameRepository, private achievements: AchievementRepository) {}
   list() { return this.games.getAllGames(); }
+  query(query: LibraryQuery) { return this.games.queryGames(query); }
+  track(id: GameId, tracked: boolean) { return this.games.setTracked(id, tracked); }
+  opened(id: GameId) { return this.games.recordOpened(id, new Date().toISOString()); }
   async details(id: GameId): Promise<GameDetails | undefined> {
     const game = await this.games.getGameById(id); if (!game) return undefined;
     const items = await this.achievements.getAchievementsByGame(id);
