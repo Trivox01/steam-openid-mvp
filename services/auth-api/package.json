@@ -11,7 +11,8 @@
     "test:steam-openid": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/config.test.ts tests/openIdVerifier.test.ts tests/redaction.test.ts tests/requestSecurity.test.ts tests/steamOpenIdHttpClient.test.ts tests/steamAuthRoutes.test.ts",
     "test:storage": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/storage.test.ts",
     "test:postgres": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.integration.test.ts",
-    "test:authorization": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/authorization.test.ts"
+    "test:authorization": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/authorization.test.ts",
+    "test:release-channel": "node --test tests/releaseChannel.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

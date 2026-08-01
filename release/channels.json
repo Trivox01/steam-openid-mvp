@@ -5,7 +5,7 @@
     "staging": { "enabled": false },
     "beta": {
       "enabled": true,
-      "endpoint": "https://raw.githubusercontent.com/Trivox01/steam-openid-mvp/release-manifests/beta/latest.json"
+      "endpointSource": "TAURI_UPDATER_ENDPOINT"
     },
     "stable": { "enabled": false }
   }

@@ -20,10 +20,12 @@ jobs:
     environment: beta-release
     env:
       RELEASE_TAG: ${{ inputs.tag }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
-      TAURI_UPDATER_ENDPOINT: https://raw.githubusercontent.com/Trivox01/steam-openid-mvp/release-manifests/beta/latest.json
+      TAURI_UPDATER_ENDPOINT: ${{ vars.TAURI_UPDATER_ENDPOINT }}
+      R2_RELEASES_ENDPOINT: ${{ vars.R2_RELEASES_ENDPOINT }}
+      R2_RELEASES_REGION: ${{ vars.R2_RELEASES_REGION }}
+      R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+      R2_RELEASES_PUBLIC_BASE_URL: ${{ vars.R2_RELEASES_PUBLIC_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,26 +37,46 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Require release signing material
         shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) { throw 'Missing updater private key secret.' }
           if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) { throw 'Missing updater key password secret.' }
           if ([string]::IsNullOrWhiteSpace($env:TAURI_UPDATER_PUBLIC_KEY)) { throw 'Missing updater public key variable.' }
+          @('TAURI_UPDATER_ENDPOINT','R2_RELEASES_ENDPOINT','R2_RELEASES_REGION','R2_RELEASES_BUCKET','R2_RELEASES_PUBLIC_BASE_URL','R2_RELEASES_ACCESS_KEY_ID','R2_RELEASES_SECRET_ACCESS_KEY') | ForEach-Object {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))) { throw "Missing required beta release setting: $_" }
+          }
+      - run: node scripts/validate-release.mjs
       - run: npm ci
-      - run: npm run release:validate
+      - run: npm ci --prefix services/auth-api
       - run: npm run release:validate-security
       - run: npm run typecheck
       - run: npm run typecheck:backend
       - run: npm test --if-present
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: node scripts/release/create-updater-config.mjs
+      - name: Load versioned release notes
+        id: notes
+        shell: pwsh
+        run: |
+          $version = (Get-Content release/version.json | ConvertFrom-Json).version
+          $body = Get-Content "docs/releases/$version.md" -Raw
+          "body<<NEXUS_NOTES" | Add-Content $env:GITHUB_OUTPUT
+          $body | Add-Content $env:GITHUB_OUTPUT
+          "NEXUS_NOTES" | Add-Content $env:GITHUB_OUTPUT
       - name: Build signed NSIS artifacts and create draft
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ inputs.tag }}
           releaseName: Achievement Nexus ${{ inputs.tag }}
-          releaseBody: See docs/releases for the bilingual release notes and tester guide.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: true
           args: --config src-tauri/tauri.release.conf.json --bundles nsis
@@ -65,3 +87,11 @@ jobs:
           $lines = $files | ForEach-Object { "$(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName | Select-Object -ExpandProperty Hash)  $($_.Name)" }
           $lines | Set-Content -Encoding utf8 src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
           gh release upload $env:RELEASE_TAG src-tauri/target/release/bundle/nsis/SHA256SUMS.txt --clobber
+      - name: Publish signed artifacts to the R2 Beta channel
+        env:
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+        run: node services/auth-api/scripts/publish-beta-release.mjs
+      - name: Attach channel manifest to the private draft
+        shell: pwsh
+        run: gh release upload $env:RELEASE_TAG src-tauri/target/release/bundle/nsis/latest.json --clobber

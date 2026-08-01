@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { root } from "./release/versioning.mjs";
 
 const forbiddenNames = [/\.key$/i, /\.pfx$/i, /\.p12$/i, /private.?key/i, /signing.?password/i];
@@ -15,4 +16,10 @@ function walk(directory) {
 }
 walk(root);
 if (findings.length) throw new Error(`Potential signing secrets committed: ${findings.join(", ")}`);
+const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
+const trackedSecrets = tracked.filter((name) => {
+  const basename = path.basename(name);
+  return (basename.startsWith(".env") && basename !== ".env.example") || /\.(key|pfx|p12)$/i.test(name);
+});
+if (trackedSecrets.length) throw new Error(`Secret-bearing file is tracked: ${trackedSecrets.join(", ")}`);
 console.log("Release secret filename scan passed.");
