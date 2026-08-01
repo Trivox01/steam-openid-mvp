@@ -5,7 +5,7 @@
     "staging": { "enabled": false },
     "beta": {
       "enabled": true,
-      "endpoint": "https://github.com/Trivox01/steam-openid-mvp/releases/latest/download/latest-beta.json"
+      "endpoint": "https://raw.githubusercontent.com/Trivox01/steam-openid-mvp/release-manifests/beta/latest.json"
     },
     "stable": { "enabled": false }
   }

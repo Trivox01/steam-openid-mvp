@@ -1,0 +1,67 @@
+name: Windows Beta Draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact release tag (v<version>)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-beta-draft-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    runs-on: windows-latest
+    environment: beta-release
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+      TAURI_UPDATER_ENDPOINT: https://raw.githubusercontent.com/Trivox01/steam-openid-mvp/release-manifests/beta/latest.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Require release signing material
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) { throw 'Missing updater private key secret.' }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) { throw 'Missing updater key password secret.' }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_UPDATER_PUBLIC_KEY)) { throw 'Missing updater public key variable.' }
+      - run: npm ci
+      - run: npm run release:validate
+      - run: npm run release:validate-security
+      - run: npm run typecheck
+      - run: npm run typecheck:backend
+      - run: npm test --if-present
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: node scripts/release/create-updater-config.mjs
+      - name: Build signed NSIS artifacts and create draft
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag }}
+          releaseName: Achievement Nexus ${{ inputs.tag }}
+          releaseBody: See docs/releases for the bilingual release notes and tester guide.
+          releaseDraft: true
+          prerelease: true
+          args: --config src-tauri/tauri.release.conf.json --bundles nsis
+      - name: Create SHA-256 checksums
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem src-tauri/target/release/bundle/nsis -File
+          $lines = $files | ForEach-Object { "$(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName | Select-Object -ExpandProperty Hash)  $($_.Name)" }
+          $lines | Set-Content -Encoding utf8 src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+          gh release upload $env:RELEASE_TAG src-tauri/target/release/bundle/nsis/SHA256SUMS.txt --clobber

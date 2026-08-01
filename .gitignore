@@ -7,3 +7,5 @@ src-tauri/target
 .env.*
 !.env.example
 .DS_Store
+# Generated only on a trusted release runner. Contains the updater public key.
+src-tauri/tauri.release.conf.json
