@@ -4,14 +4,13 @@ import {
   EyeOff,
   Heart,
   ListChecks,
+  LoaderCircle,
   MoreHorizontal,
   Bookmark,
-  Trophy
 } from "lucide-react";
 import { useTranslation } from "../../i18n/TranslationContext";
-import type { GameCardActions, GameCardData, GameCardStatus } from "../../types/gameCard";
+import type { GameCardActions, GameCardData } from "../../types/gameCard";
 import { GameArtwork } from "../ui/GameArtwork";
-import { ProgressBar } from "../ui/ProgressBar";
 import { Skeleton } from "../ui/Skeleton";
 import { StatusBadge } from "../ui/StatusBadge";
 import { Surface } from "../ui/Surface";
@@ -39,7 +38,7 @@ export const GameCard = memo(function GameCard({
   onTrackedChange
 }: GameCardProps) {
   const { language, t } = useTranslation();
-  const completion = clampPercent(game.completionPercent);
+  const completion = game.achievementCompletion;
   const isCompleted = completion === 100;
   const accentStyle: AccentStyle = game.accent ? {
     "--game-accent-primary": game.accent.accentPrimary,
@@ -80,27 +79,15 @@ export const GameCard = memo(function GameCard({
         />
         <div className="nexus-game-card__media-gradient" aria-hidden="true" />
         <div className="nexus-game-card__badges">
-          {!isCompleted && <StatusBadge tone={statusTone(game.status)}>{t(`gameCard.status.${game.status}`)}</StatusBadge>}
+          {game.syncState && <StatusBadge className="nexus-game-card__sync-badge" tone={syncTone(game.syncState)} title={t(`gameCard.sync.${game.syncState}.tooltip`)}>{t(`gameCard.sync.${game.syncState}`)}</StatusBadge>}
+          {game.tracked && <StatusBadge className="nexus-game-card__tracked-badge" tone="accent"><Bookmark size={11} />{t("gameCard.tracked")}</StatusBadge>}
           {game.hidden && <StatusBadge tone="neutral"><EyeOff size={12} />{t("gameCard.hidden")}</StatusBadge>}
-          {isCompleted && <StatusBadge tone="success"><Trophy size={12} />{t("gameCard.completed")}</StatusBadge>}
         </div>
+        {completion !== undefined && <ProgressRing value={completion} label={t("gameCard.completionLabel", { percent: Math.round(completion) })} />}
         {game.favorite && <Heart className="nexus-game-card__favorite-indicator" size={18} fill="currentColor" aria-label={t("gameCard.favorite")} />}
         <div className="nexus-game-card__hover-details">
-          <div className="nexus-game-card__completion">
-            <span>{t("gameCard.achievementProgress")}</span>
-            <strong>{Math.round(completion)}%</strong>
-          </div>
-          <ProgressBar
-            value={completion}
-            label={t("gameCard.achievementProgress")}
-            className="nexus-game-card__progress"
-          />
           <div className="nexus-game-card__meta">
             <span><Clock3 size={13} />{formatPlaytime(game.playtimeMinutes, language, t)}</span>
-            <span><Trophy size={13} />{t("gameCard.unlockedTotal", {
-              unlocked: formatNumber(game.unlockedAchievements, language),
-              total: formatNumber(game.totalAchievements, language)
-            })}</span>
           </div>
           <p className="nexus-game-card__last-played">
             {game.playtimeMinutes <= 0 || !game.lastPlayedAt || !Number.isFinite(new Date(game.lastPlayedAt).getTime())
@@ -143,7 +130,7 @@ function QuickActions({ game, onViewAchievements, onViewDetails, onFavoriteChang
   };
   return (
     <div className="nexus-game-card__quick-actions" role="group" aria-label={t("gameCard.quickActions")}>
-      {onTrackedChange && <button type="button" className={game.tracked ? "is-active" : ""} onClick={(event) => act(event, () => onTrackedChange(game.id, !game.tracked))} aria-label={t(game.tracked ? "games.untrack" : "games.track", { title: game.title })}><Bookmark size={15} fill={game.tracked ? "currentColor" : "none"} /></button>}
+      {onTrackedChange && <button type="button" data-track-game-id={game.id} className={game.tracked ? "is-active" : ""} disabled={game.tracking} aria-busy={game.tracking || undefined} title={t(game.tracked ? "games.untrack" : "games.track", { title: game.title })} onClick={(event) => act(event, () => void onTrackedChange(game.id, !game.tracked))} aria-label={t(game.tracking ? "gameCard.trackProcessing" : game.tracked ? "games.untrack" : "games.track", { title: game.title })}>{game.tracking ? <LoaderCircle className="nexus-game-card__track-spinner" size={15} /> : <Bookmark size={15} fill={game.tracked ? "currentColor" : "none"} />}</button>}
       {onViewAchievements && <button type="button" onClick={(event) => act(event, () => onViewAchievements(game.id))} aria-label={t("gameCard.achievementsLabel", { title: game.title })}><ListChecks size={15} /></button>}
       {onViewDetails && <button type="button" onClick={(event) => act(event, () => onViewDetails(game.id))} aria-label={t("gameCard.detailsLabel", { title: game.title })}><MoreHorizontal size={16} /></button>}
       {onFavoriteChange && <button type="button" className={game.favorite ? "is-active" : ""} onClick={(event) => act(event, () => onFavoriteChange(game.id, !game.favorite))} aria-label={t(game.favorite ? "gameCard.removeFavoriteLabel" : "gameCard.addFavoriteLabel", { title: game.title })}><Heart size={15} fill={game.favorite ? "currentColor" : "none"} /></button>}
@@ -166,15 +153,19 @@ export function GameCardSkeleton({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function statusTone(status: GameCardStatus): "neutral" | "accent" | "success" | "warning" {
-  if (status === "completed") return "success";
-  if (status === "playing") return "accent";
-  if (status === "abandoned") return "warning";
+function syncTone(status: NonNullable<GameCardData["syncState"]>): "neutral" | "accent" | "success" | "warning" {
+  if (status === "updated") return "success";
+  if (status === "updating") return "accent";
+  if (status === "needsUpdate") return "warning";
   return "neutral";
 }
 
-function clampPercent(value: number) {
-  return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
+function ProgressRing({ value, label }: { value: number; label: string }) {
+  const radius=15; const circumference=2*Math.PI*radius; const offset=circumference-(value/100)*circumference;
+  return <span className="nexus-game-card__progress-ring" role="img" aria-label={label} title={label}>
+    <svg viewBox="0 0 38 38" aria-hidden="true"><circle className="track" cx="19" cy="19" r={radius}/><circle className="value" cx="19" cy="19" r={radius} strokeDasharray={circumference} strokeDashoffset={offset}/></svg>
+    <strong>{Math.round(value)}<small>%</small></strong>
+  </span>;
 }
 
 function formatNumber(value: number, language: string) {

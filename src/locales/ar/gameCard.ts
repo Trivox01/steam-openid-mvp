@@ -24,5 +24,20 @@ export const gameCard = {
   "gameCard.density": "الكثافة",
   "gameCard.density.compact": "مضغوط",
   "gameCard.density.comfortable": "مريح",
-  "gameCard.density.large": "كبير"
+  "gameCard.density.large": "كبير",
+  "gameCard.tracked": "قيد المتابعة",
+  "gameCard.trackProcessing": "جارٍ تحديث متابعة {{title}}",
+  "gameCard.completionLabel": "إكمال الإنجازات: {{percent}} بالمئة",
+  "gameCard.sync.updated": "محدّثة",
+  "gameCard.sync.updated.tooltip": "بيانات الإنجازات محدّثة.",
+  "gameCard.sync.updating": "جارٍ التحديث",
+  "gameCard.sync.updating.tooltip": "جارٍ تحديث بيانات الإنجازات.",
+  "gameCard.sync.saved": "بيانات محفوظة",
+  "gameCard.sync.saved.tooltip": "يتم عرض بيانات الإنجازات المحفوظة على هذا الجهاز.",
+  "gameCard.sync.needsUpdate": "تحتاج تحديثًا",
+  "gameCard.sync.needsUpdate.tooltip": "تعذر تحديث بيانات الإنجازات.",
+  "gameCard.sync.offline": "غير متصل",
+  "gameCard.sync.offline.tooltip": "لا توجد بيانات إنجازات محفوظة أثناء عدم الاتصال.",
+  "gameCard.sync.unavailable": "بيانات الإنجازات غير متاحة",
+  "gameCard.sync.unavailable.tooltip": "لا توفر هذه اللعبة بيانات إنجازات مدعومة."
 } as const;

@@ -1,4 +1,5 @@
 import type { GameId, Platform } from "./index";
+import type { GameCardSyncState } from "../services/gameCardPresentation";
 
 export type GameCardStatus =
   | "notStarted"
@@ -31,6 +32,9 @@ export type GameCardData = {
   tracked?: boolean;
   hidden: boolean;
   status: GameCardStatus;
+  syncState?: GameCardSyncState;
+  achievementCompletion?: number;
+  tracking?: boolean;
   accent?: GameCardAccent;
 };
 
@@ -39,5 +43,5 @@ export type GameCardActions = {
   onViewAchievements?: (id: GameId) => void;
   onViewDetails?: (id: GameId) => void;
   onFavoriteChange?: (id: GameId, favorite: boolean) => void;
-  onTrackedChange?: (id: GameId, tracked: boolean) => void;
+  onTrackedChange?: (id: GameId, tracked: boolean) => void | Promise<void>;
 };
