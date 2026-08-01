@@ -74,6 +74,8 @@ export const GameCard = memo(function GameCard({
           alt={t("gameCard.coverAlt", { title: game.title })}
           variant="cover"
           className="nexus-game-card__artwork"
+          appId={game.platform === "steam" ? game.platformGameId : undefined}
+          imageSource={game.platform === "steam" ? "steam-store-cdn" : "stored"}
         />
         <div className="nexus-game-card__media-gradient" aria-hidden="true" />
         <div className="nexus-game-card__badges">

@@ -60,9 +60,22 @@ export function validateSteamLibrarySync() {
   assert(steamArtworkUrls(10, "../secret").iconUrl === "", "invalid hashes must not enter URLs");
   const artworkWithFallbacks = steamArtworkUrls(10, "abc123");
   assert(artworkWithFallbacks.coverUrl.includes("/10/library_600x900_2x.jpg"), "primary cover must be a vertical Steam library capsule");
-  assert(artworkWithFallbacks.coverFallbackUrls.length === 2, "cover fallback chain must be available");
+  assert(artworkWithFallbacks.coverFallbackUrls.length === 1, "cover loader must retry only once");
   assert(artworkWithFallbacks.coverFallbackUrls.every((url) => url.startsWith("https://")), "cover fallbacks must use HTTPS");
   assert(artworkWithFallbacks.iconUrl.includes("/10/abc123.jpg"), "icon hash must only build an icon URL");
+  assert(artworkWithFallbacks.coverUrl.startsWith("https://shared.steamstatic.com/"), "artwork must use the CSP-approved final Steam CDN origin");
+
+  const staleArtwork = {
+    ...existing,
+    coverUrl: "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/10/library_600x900_2x.jpg",
+    backgroundUrl: "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/10/library_hero.jpg"
+  };
+  const repaired = mergeSteamLibrary([staleArtwork], unchangedRemote, timestamp);
+  assert(
+    repaired.updated === 1 && repaired.changedGames[0]?.coverUrl === artwork.coverUrl &&
+      repaired.changedGames[0]?.backgroundUrl === artwork.backgroundUrl,
+    "successful refresh must replace stale cached artwork URLs"
+  );
 
   const secondSync = mergeSteamLibrary(
     result.changedGames,
@@ -70,7 +83,7 @@ export function validateSteamLibrarySync() {
     timestamp
   );
   assert(secondSync.inserted === 0, "a second sync must not insert duplicate Steam games");
-  return 20;
+  return 22;
 }
 
 function createGame(overrides: Partial<Game> = {}): Game {

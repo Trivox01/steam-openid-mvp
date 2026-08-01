@@ -1,9 +1,10 @@
 const safeHash = /^[a-f0-9]+$/i;
+const STORE_ASSET_ORIGIN = "https://shared.steamstatic.com";
 
 export function steamArtworkUrls(appId: number, iconHash?: string | null) {
   const id = Number.isSafeInteger(appId) && appId > 0 ? String(appId) : "";
   if (!id) return { coverUrl: "", backgroundUrl: "", iconUrl: "", coverFallbackUrls: [], backgroundFallbackUrls: [] };
-  const assetRoot = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${id}`;
+  const assetRoot = `${STORE_ASSET_ORIGIN}/store_item_assets/steam/apps/${id}`;
   return {
     coverUrl: `${assetRoot}/library_600x900_2x.jpg`,
     backgroundUrl: `${assetRoot}/library_hero.jpg`,
@@ -11,11 +12,9 @@ export function steamArtworkUrls(appId: number, iconHash?: string | null) {
       ? `https://media.steampowered.com/steamcommunity/public/images/apps/${id}/${iconHash}.jpg`
       : "",
     coverFallbackUrls: [
-      `${assetRoot}/library_600x900.jpg`,
       `${assetRoot}/header.jpg`
     ],
     backgroundFallbackUrls: [
-      `${assetRoot}/page_bg_generated_v6b.jpg`,
       `${assetRoot}/header.jpg`
     ]
   };

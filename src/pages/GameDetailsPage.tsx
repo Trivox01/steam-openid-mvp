@@ -126,10 +126,10 @@ export function GameDetailsPage({
       </button>
 
       <Surface className="game-v2-hero" elevation="elevated">
-        <GameArtwork src={game.backgroundUrl} fallbackSources={game.platform === "steam" ? steamArtworkFallbacks(game.appId, "background") : undefined} alt="" variant="background" className="game-v2-hero__background" eager />
+        <GameArtwork src={game.backgroundUrl} fallbackSources={game.platform === "steam" ? steamArtworkFallbacks(game.appId, "background") : undefined} alt="" variant="background" className="game-v2-hero__background" eager appId={game.platform === "steam" ? game.appId : undefined} imageSource={game.platform === "steam" ? "steam-store-cdn" : "stored"} />
         <div className="game-v2-hero__overlay" aria-hidden="true" />
         <div className="game-v2-hero__content">
-          <GameArtwork src={game.coverUrl} fallbackSources={game.platform === "steam" ? steamArtworkFallbacks(game.appId, "cover") : undefined} alt={game.name} variant="cover" className="game-v2-hero__cover" eager />
+          <GameArtwork src={game.coverUrl} fallbackSources={game.platform === "steam" ? steamArtworkFallbacks(game.appId, "cover") : undefined} alt={game.name} variant="cover" className="game-v2-hero__cover" eager appId={game.platform === "steam" ? game.appId : undefined} imageSource={game.platform === "steam" ? "steam-store-cdn" : "stored"} />
           <div className="game-v2-hero__copy">
             <div className="game-v2-hero__badges">
               <StatusBadge tone="accent"><span dir="ltr">{game.platform}</span></StatusBadge>

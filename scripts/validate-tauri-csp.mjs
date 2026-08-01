@@ -10,6 +10,7 @@ assert.doesNotMatch(csp, /'unsafe-eval'/);
 assert.match(csp, /connect-src[^;]*https:\/\/steam-openid-mvp-eo9i\.onrender\.com/);
 assert.doesNotMatch(csp, /connect-src[^;]*api\.steampowered\.com/);
 assert.match(csp, /img-src[^;]*https:\/\/shared\.cloudflare\.steamstatic\.com/);
+assert.match(csp, /img-src[^;]*https:\/\/shared\.steamstatic\.com/);
 assert.match(csp, /img-src[^;]*https:\/\/media\.steampowered\.com/);
 assert.doesNotMatch(csp, /img-src[^;]*https:\/\/api\.steampowered\.com/);
 assert.match(csp, /object-src 'none'/);

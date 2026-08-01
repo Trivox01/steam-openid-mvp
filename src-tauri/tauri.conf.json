@@ -24,8 +24,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://shared.cloudflare.steamstatic.com https://media.steampowered.com; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://steam-openid-mvp-eo9i.onrender.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
-      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://shared.cloudflare.steamstatic.com https://media.steampowered.com; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://steam-openid-mvp-eo9i.onrender.com ws://127.0.0.1:1421; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://shared.cloudflare.steamstatic.com https://shared.steamstatic.com https://media.steampowered.com; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://steam-openid-mvp-eo9i.onrender.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://shared.cloudflare.steamstatic.com https://shared.steamstatic.com https://media.steampowered.com; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://steam-openid-mvp-eo9i.onrender.com ws://127.0.0.1:1421; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }
   },
   "plugins": {},

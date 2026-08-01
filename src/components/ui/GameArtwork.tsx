@@ -9,6 +9,8 @@ type GameArtworkProps = {
   variant: "cover" | "background";
   className?: string;
   eager?: boolean;
+  appId?: string;
+  imageSource?: string;
 };
 
 const mergeClassNames = (...values: Array<string | false | undefined>) =>
@@ -20,11 +22,16 @@ export function GameArtwork({
   alt,
   variant,
   className,
-  eager = false
+  eager = false,
+  appId,
+  imageSource = "stored"
 }: GameArtworkProps) {
   const { t } = useTranslation();
   const sourceSignature = [src, ...fallbackSources].filter(Boolean).join("\n");
-  const sources = useMemo(() => sourceSignature.split("\n").filter(Boolean), [sourceSignature]);
+  const sources = useMemo(
+    () => [...new Set(sourceSignature.split("\n").filter(Boolean))].slice(0, 2),
+    [sourceSignature]
+  );
   const [sourceIndex, setSourceIndex] = useState(0);
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(
     sources.length ? "loading" : "error"
@@ -37,6 +44,16 @@ export function GameArtwork({
   }, [sources]);
 
   const activeSource = sources[sourceIndex];
+  const logFailure = (reason: string) => {
+    if (!import.meta.env.DEV) return;
+    console.warn("[game-artwork] load_failed", {
+      appId: appId || "unavailable",
+      imageUrl: activeSource,
+      source: sourceIndex === 0 ? imageSource : `${imageSource}:fallback`,
+      reason,
+      httpStatus: "unavailable"
+    });
+  };
 
   useEffect(() => {
     const image = imageRef.current;
@@ -44,9 +61,11 @@ export function GameArtwork({
     if (image.naturalWidth > 0) {
       setStatus("loaded");
     } else if (sourceIndex + 1 < sources.length) {
+      logFailure("completed_without_image_data");
       setSourceIndex((index) => index + 1);
       setStatus("loading");
     } else {
+      logFailure("completed_without_image_data");
       setStatus("error");
     }
   }, [activeSource, sourceIndex, sources.length]);
@@ -72,6 +91,7 @@ export function GameArtwork({
           decoding="async"
           onLoad={() => setStatus("loaded")}
           onError={() => {
+            logFailure("image_error_event");
             if (sourceIndex + 1 < sources.length) {
               setSourceIndex((index) => index + 1);
               setStatus("loading");
