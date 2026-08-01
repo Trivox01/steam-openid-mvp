@@ -52,8 +52,12 @@ test("cleanup is bounded and removes retained terminal memory records", async ()
 
 test("PostgreSQL migrations are ordered and contain no secret-bearing columns", async () => {
   const migrations = await loadPostgresMigrations();
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
   const sql = migrations.map((item) => item.sql).join("\n").toLowerCase();
+  assert.match(sql, /create table tool_definitions/);
+  assert.match(sql, /create table tool_badges/);
+  assert.match(sql, /create table tool_categories/);
+  assert.match(sql, /create table tool_badge_assignments/);
   assert.match(sql, /poll_secret_hash/);
   assert.match(sql, /nonce_hash/);
   assert.doesNotMatch(sql, /\bpoll_secret\b(?!_hash)/);
@@ -74,6 +78,6 @@ test("authorization schema validation derives its permission count from the regi
     "utf8"
   );
   assert.match(source, /PERMISSION_KEYS\.length/);
-  assert.equal(PERMISSION_KEYS.length, 20);
+  assert.equal(PERMISSION_KEYS.length, 24);
   assert.doesNotMatch(source, /permissions\[0\]\?\.count\)\s*!==\s*18/);
 });

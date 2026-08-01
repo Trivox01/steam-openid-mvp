@@ -42,6 +42,8 @@ import {
 } from "./routes/steamData.ts";
 import type { SteamDataClient } from "./steam/steamDataClient.ts";
 import { PollingRateLimiter } from "./security/pollingRateLimiter.ts";
+import { handleTools, isToolPath } from "./routes/tools.ts";
+import type { ToolService } from "./tools/toolService.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
@@ -50,6 +52,7 @@ type RouterDependencies = SteamAuthRouteDependencies & {
   users?: UserService;
   steamData?: SteamDataClient;
   steamDataRateLimiter?: PollingRateLimiter;
+  tools?: ToolService;
 };
 
 export function createRouter(
@@ -111,6 +114,8 @@ export function createRouter(
       Boolean(steamAuthDependencies?.steamData) &&
       Boolean(steamAuthDependencies?.steamDataRateLimiter) &&
       Boolean(steamAuthDependencies?.sessions);
+    const isToolsRoute = isToolPath(url.pathname) && Boolean(steamAuthDependencies?.tools) &&
+      Boolean(steamAuthDependencies?.authorization) && Boolean(steamAuthDependencies?.sessions);
     if (
       isSteamAuthRoute ||
       isAuthorizationRoute ||
@@ -119,7 +124,8 @@ export function createRouter(
       isAssignmentUserRoute ||
       isPublicBadgeRoute ||
       isUserRoute ||
-      isSteamDataRoute
+      isSteamDataRoute ||
+      isToolsRoute
     ) {
       const cors = applyCorsHeaders(
         request,
@@ -157,6 +163,14 @@ export function createRouter(
         return;
       }
     }
+    if (
+      isToolsRoute &&
+      await handleTools(request, response, url, {
+        tools: steamAuthDependencies!.tools!,
+        authorization: steamAuthDependencies!.authorization!,
+        sessions: steamAuthDependencies!.sessions!
+      })
+    ) return;
     if (
       isSteamDataRoute &&
       await handleSteamData(request, response, url, {

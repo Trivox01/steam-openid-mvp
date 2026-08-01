@@ -18,7 +18,11 @@ export const PERMISSION_KEYS = [
   "settings.view",
   "settings.edit",
   "audit.view",
-  "developer.tools"
+  "developer.tools",
+  "tools.view",
+  "tools.manage",
+  "tool_badges.manage",
+  "tool_categories.manage"
 ] as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[number];

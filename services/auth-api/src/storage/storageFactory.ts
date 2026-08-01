@@ -23,6 +23,10 @@ import {
 import { PostgresBadgeAssignmentRepository } from "./postgres/postgresBadgeAssignmentRepository.ts";
 import { InMemoryUserRepository, type UserRepository } from "../users/userRepository.ts";
 import { PostgresUserRepository } from "./postgres/postgresUserRepository.ts";
+import { InMemoryToolRepository, type ToolRepository } from "../tools/toolRepository.ts";
+import { InMemoryToolBadgeRepository, type ToolBadgeRepository } from "../tools/toolBadgeRepository.ts";
+import { InMemoryToolCategoryRepository, type ToolCategoryRepository } from "../tools/toolCategoryRepository.ts";
+import { PostgresToolRepositories, PostgresToolBadgeRepository, PostgresToolCategoryRepository } from "./postgres/postgresToolRepositories.ts";
 
 export interface InitializedStorage {
   repository: AuthTransactionRepository;
@@ -30,6 +34,9 @@ export interface InitializedStorage {
   badgeRepository: BadgeRepository;
   badgeAssignmentRepository: BadgeAssignmentRepository;
   userRepository: UserRepository;
+  toolRepository: ToolRepository;
+  toolBadgeRepository: ToolBadgeRepository;
+  toolCategoryRepository: ToolCategoryRepository;
   close(): Promise<void>;
 }
 
@@ -52,12 +59,18 @@ export async function initializeStorage(
       authorizationRepository,
       badgeAssignmentRepository
     );
+    const toolBadgeRepository = new InMemoryToolBadgeRepository();
+    const toolCategoryRepository = new InMemoryToolCategoryRepository();
+    const toolRepository = new InMemoryToolRepository(toolBadgeRepository, toolCategoryRepository);
     return {
       repository,
       authorizationRepository,
       badgeRepository,
       badgeAssignmentRepository,
       userRepository,
+      toolRepository,
+      toolBadgeRepository,
+      toolCategoryRepository,
       async close() {}
     };
   }
@@ -83,12 +96,19 @@ export async function initializeStorage(
     await badgeAssignmentRepository.validateSchema();
     const userRepository = new PostgresUserRepository(pool);
     await userRepository.validateSchema();
+    const toolRepository = new PostgresToolRepositories(pool);
+    await toolRepository.validateSchema();
+    const toolBadgeRepository = new PostgresToolBadgeRepository(toolRepository);
+    const toolCategoryRepository = new PostgresToolCategoryRepository(toolRepository);
     return {
       repository,
       authorizationRepository,
       badgeRepository,
       badgeAssignmentRepository,
       userRepository,
+      toolRepository,
+      toolBadgeRepository,
+      toolCategoryRepository,
       async close() {
         await pool.end();
       }

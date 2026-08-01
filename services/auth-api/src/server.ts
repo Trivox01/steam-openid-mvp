@@ -17,6 +17,7 @@ import { BadgeAssignmentService } from "./badgeAssignments/badgeAssignmentServic
 import { UserService } from "./users/userService.ts";
 import { SteamUserProfileClient } from "./steam/steamUserProfileClient.ts";
 import { SteamDataClient } from "./steam/steamDataClient.ts";
+import { ToolService } from "./tools/toolService.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -78,6 +79,7 @@ async function main() {
     storage.authorizationRepository
   );
   const badgeAssets = createBadgeAssetStorage(config);
+  const tools = new ToolService(storage.toolRepository, storage.toolBadgeRepository, storage.toolCategoryRepository);
   const bootstrapResult = await authorization.bootstrapOwner(
     config.bootstrapOwnerSteamId64
   );
@@ -114,7 +116,8 @@ async function main() {
       badgeAssets,
       users,
       steamData,
-      steamDataRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 1_000 })
+      steamDataRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 1_000 }),
+      tools
     })
   );
 
