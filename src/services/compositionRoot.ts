@@ -9,8 +9,6 @@ import {
 import { SqliteAchievementRepository, SqliteActivityRepository, SqliteGameRepository, SqliteProfileRepository, SqliteSettingsRepository, SqliteSyncMetadataRepository } from "../repositories/sqlite/repositories";
 import { isTauriRuntime } from "../runtime/environment";
 import { AchievementService, ActivityService, GameService, ProfileService, SettingsService, StatisticsService } from "./applicationServices";
-import { TauriSteamGateway } from "../integrations/steam/TauriSteamGateway";
-import { SteamConnectionService } from "./platform/SteamConnectionService";
 import { SteamProvider } from "./platform/SteamProvider";
 import { SteamLibrarySyncService } from "./platform/SteamLibrarySyncService";
 import { SteamAchievementSyncService } from "./platform/SteamAchievementSyncService";
@@ -20,7 +18,6 @@ import { SteamBackendDataClient } from "./platform/SteamBackendDataClient";
 import { SteamOpenIdDesktopRepository } from "../repositories/steamOpenIdDesktopRepository";
 import { TauriExternalUrlOpener } from "../integrations/steam/TauriExternalUrlOpener";
 import { getSteamAuthApiBaseUrl } from "../config/steamAuthApi";
-import { featureFlags } from "../config/featureFlags";
 import { AuthorizationClient } from "../features/developer-center/AuthorizationClient";
 import { AuthorizationStore } from "../features/developer-center/AuthorizationStore";
 import { BadgeAdminClient } from "../features/developer-center/badges/BadgeAdminClient";
@@ -47,7 +44,6 @@ const activities = persistent ? new SqliteActivityRepository() : new EphemeralAc
 const settings = persistent ? new SqliteSettingsRepository() : new EphemeralSettingsRepository();
 const profile = persistent ? new SqliteProfileRepository() : new EphemeralProfileRepository();
 const sync = persistent ? new SqliteSyncMetadataRepository() : new EphemeralSyncMetadataRepository();
-const steamConnection = new SteamConnectionService(new TauriSteamGateway());
 const steamOpenId = createSteamOpenIdService();
 const authorization = steamOpenId
   ? new AuthorizationStore(
@@ -75,7 +71,7 @@ if (userAdmin) {
 }
 
 function createSteamOpenIdService() {
-  if (!persistent || !featureFlags.steamOpenIdEnabled) return undefined;
+  if (!persistent) return undefined;
   try {
     return new SteamOpenIdSignInService(
       new SteamOpenIdClient(getSteamAuthApiBaseUrl()),
@@ -88,8 +84,16 @@ function createSteamOpenIdService() {
 }
 const steamData = steamOpenId
   ? new SteamBackendDataClient(getSteamAuthApiBaseUrl(), steamOpenId)
-  : steamConnection;
-export const steamProvider = new SteamProvider(steamConnection, steamData);
+  : {
+      available: false,
+      getOwnedGames: async () => { throw new Error("Steam backend is unavailable."); },
+      getGameAchievements: async () => { throw new Error("Steam backend is unavailable."); }
+    };
+const steamSessions = steamOpenId ?? {
+  getActiveSession: () => undefined,
+  expireSession: () => undefined
+};
+export const steamProvider = new SteamProvider(steamData, steamSessions);
 
 export const repositories = { games, achievements, activities, settings, profile, sync };
 export const services = {
@@ -99,7 +103,6 @@ export const services = {
   settings: new SettingsService(settings),
   profile: new ProfileService(profile),
   statistics: new StatisticsService(games, achievements),
-  steam: steamConnection,
   steamOpenId,
   authorization,
   badgeAdmin,
@@ -146,12 +149,6 @@ applicationRefresh.register({
   run: async () => {
     if (services.steamOpenId) {
       if (!services.steamOpenId.getActiveSession()) return skipped("session_expired");
-    } else {
-      if (!services.steam.available || !await services.steam.hasApiKey()) {
-        return skipped("steam_credentials_unavailable");
-      }
-      const legacyProfile = await services.steam.getSavedProfile();
-      if (!legacyProfile) return skipped("steam_profile_unavailable");
     }
     await services.steamLibrarySync.sync();
     publishLibraryChange();
@@ -162,12 +159,6 @@ applicationRefresh.register({
   run: async () => {
     if (services.steamOpenId) {
       if (!services.steamOpenId.getActiveSession()) return skipped("session_expired");
-    } else {
-      if (!services.steam.available || !await services.steam.hasApiKey()) {
-        return skipped("steam_credentials_unavailable");
-      }
-      const legacyProfile = await services.steam.getSavedProfile();
-      if (!legacyProfile) return skipped("steam_profile_unavailable");
     }
     await services.steamAchievementSync.sync();
     publishLibraryChange();

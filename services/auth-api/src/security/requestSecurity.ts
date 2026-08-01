@@ -57,6 +57,18 @@ export function getSecureTransportDiagnostic(
   };
 }
 
+/** Render appends the connecting client; the right-most hop cannot be replaced
+ * by a caller-controlled left-most X-Forwarded-For value. */
+export function getClientAddress(request: IncomingMessage, config: AuthApiConfig) {
+  if (config.trustProxy) {
+    const raw = request.headers["x-forwarded-for"];
+    const header = Array.isArray(raw) ? raw.at(-1) : raw;
+    const rightMost = header?.split(",").at(-1)?.trim();
+    if (rightMost && /^[0-9a-f:.]{2,45}$/i.test(rightMost)) return rightMost;
+  }
+  return request.socket.remoteAddress ?? "unknown";
+}
+
 function firstForwardedValue(value: string | string[] | undefined) {
   const header = Array.isArray(value) ? value[0] : value;
   return header?.split(",", 1)[0]?.trim();

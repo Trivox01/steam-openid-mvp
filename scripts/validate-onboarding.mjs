@@ -14,8 +14,7 @@ assert.equal(directionForLanguage("en"), "ltr");
 assert.equal(vortexMode(false, false), "static");
 assert.equal(vortexMode(true, true), "static");
 assert.equal(vortexMode(true, false), "animated");
-assert.equal(steamErrorTranslationKey("invalid_api_key"), "onboarding.steam.error.invalidKey");
-assert.equal(steamErrorTranslationKey("private_profile"), "onboarding.steam.error.private");
+assert.equal(steamErrorTranslationKey("cancelled"), "steam.openId.cancelled");
+assert.equal(steamErrorTranslationKey("expired"), "steam.openId.expired");
 assert.equal(steamErrorTranslationKey("network_error"), "onboarding.steam.error.network");
 console.log("Onboarding flow validation passed.");
-

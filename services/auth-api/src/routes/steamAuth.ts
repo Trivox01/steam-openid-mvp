@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   AuthTransactionError,
@@ -17,6 +17,7 @@ import type { OpenIdFields } from "../steam/openIdTypes.ts";
 import { StorageError } from "../storage/authRepository.ts";
 import type { AuthorizationService } from "../authorization/authorizationService.ts";
 import type { SessionTokenService } from "../authorization/sessionTokenService.ts";
+import { getClientAddress } from "../security/requestSecurity.ts";
 
 const MAX_JSON_BODY_BYTES = 4_096;
 const POLLING_INTERVAL_MS = 3_000;
@@ -28,6 +29,8 @@ export interface SteamAuthRouteDependencies {
   transactions: AuthTransactionService;
   verifier: SteamOpenIdVerifier;
   rateLimiter: PollingRateLimiter;
+  startRateLimiter?: PollingRateLimiter;
+  callbackRateLimiter?: PollingRateLimiter;
   logger: SafeLogger;
   authorization?: AuthorizationService;
   sessions?: SessionTokenService;
@@ -53,7 +56,7 @@ export function createSteamAuthRouteHandler(
       request.method === "GET" &&
       url.pathname === "/v1/auth/steam/callback"
     ) {
-      await handleCallback(response, url, dependencies);
+      await handleCallback(request, response, url, dependencies);
       return true;
     }
     if (
@@ -74,6 +77,7 @@ async function handleStart(
 ) {
   const context = requestContext("steam_auth_start", dependencies);
   try {
+    dependencies.startRateLimiter?.assertAllowed(`start:${getClientAddress(request, dependencies.config)}`);
     const body = await readJsonBody(request);
     const deviceId = typeof body.deviceId === "string" ? body.deviceId : "";
     const started = await dependencies.transactions.start({
@@ -94,6 +98,7 @@ async function handleStart(
     context.finish("success");
   } catch (error) {
     const code = safeErrorCode(error);
+    setRateLimitHeaders(response, error);
     writeJson(response, responseStatus(code, 400), {
       error: code
     });
@@ -102,6 +107,7 @@ async function handleStart(
 }
 
 async function handleCallback(
+  request: IncomingMessage,
   response: ServerResponse,
   url: URL,
   dependencies: SteamAuthRouteDependencies
@@ -110,6 +116,7 @@ async function handleCallback(
   const parsed = parseUniqueQuery(url);
   const authRequestId = parsed.ok ? parsed.fields.transaction : undefined;
   try {
+    dependencies.callbackRateLimiter?.assertAllowed(`callback:${getClientAddress(request, dependencies.config)}`);
     if (!parsed.ok || !authRequestId) {
       throw new CallbackError("malformed_response");
     }
@@ -159,6 +166,7 @@ async function handleCallback(
     context.finish("success");
   } catch (error) {
     const code = safeErrorCode(error);
+    setRateLimitHeaders(response, error);
     writeCallbackHtml(
       response,
       code === "auth_request_expired" ? 410 : responseStatus(code, 400),
@@ -184,12 +192,14 @@ async function handleStatus(
     if (!authRequestId || !pollSecret || !deviceId) {
       throw new CallbackError("invalid_request");
     }
+    dependencies.rateLimiter.assertAllowed(
+      `status:${getClientAddress(request, dependencies.config)}:${shortHash(authRequestId)}`
+    );
     const status = await dependencies.transactions.status(
       authRequestId,
       pollSecret,
       deviceId
     );
-    dependencies.rateLimiter.assertAllowed(authRequestId);
     const session = status.status === "verified" &&
       status.steamId &&
       status.authenticatedAt &&
@@ -349,9 +359,20 @@ function safeErrorCode(error: unknown) {
 }
 
 function responseStatus(code: string, fallback: number) {
+  if (code === "polling_rate_limited") return 429;
   if (code === "request_body_too_large") return 413;
   if (code === "database_unavailable" || code === "internal_error") return 503;
   return fallback;
+}
+
+function shortHash(value: string) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 24);
+}
+
+function setRateLimitHeaders(response: ServerResponse, error: unknown) {
+  if (error instanceof PollingRateLimitError) {
+    response.setHeader("retry-after", String(Math.max(1, Math.ceil(error.retryAfterMs / 1000))));
+  }
 }
 
 class CallbackError extends Error {

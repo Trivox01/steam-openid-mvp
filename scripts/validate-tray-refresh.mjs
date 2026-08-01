@@ -82,8 +82,9 @@ assert.match(rust, /"open-nexus"/);
 assert.match(rust, /"check-for-updates"/);
 assert.match(rust, /"quit-nexus"/);
 assert.match(rust, /api\.prevent_close\(\)/);
-assert.match(composition, /hasApiKey\(\)/);
-assert.match(composition, /skipped\("steam_credentials_unavailable"\)/);
+assert.match(composition, /getActiveSession\(\)/);
+assert.match(composition, /skipped\("session_expired"\)/);
+assert.doesNotMatch(composition, /hasApiKey|steam_credentials_unavailable/);
 assert.doesNotMatch(composition, /id:\s*"updater"/);
 
 console.log("Tray and application refresh validation passed.");

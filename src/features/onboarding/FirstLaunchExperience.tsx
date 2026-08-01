@@ -19,13 +19,13 @@ export function FirstLaunchExperience({ preferences, onPreferencesChange, onComp
   const { t } = useTranslation(); const reduce = useReducedMotion();
   const [state, setState] = useState<OnboardingState>({ step:"welcome", preferences, steamState:"disconnected", syncState:"idle" });
   const [finishing, setFinishing] = useState(false);
-  useEffect(() => { services.steam.getSavedProfile().then(profile => { if (profile) setState(s => ({...s, profile, steamState:"connected"})); }).catch(() => undefined); }, []);
+  useEffect(() => { services.steamOpenId?.getSavedIdentity().then(identity => { if (identity) setState(s => ({...s, profile: identityProfile(identity.steamId), steamState:"connected"})); }).catch(() => undefined); }, []);
   const next = () => setState(s => ({...s, step: moveStep(s.step, 1)}));
   const back = () => setState(s => ({...s, step: moveStep(s.step, -1)}));
   const changePreferences = async (nextPreferences: UserPreferences) => { setState(s => ({...s, preferences:nextPreferences})); await onPreferencesChange(nextPreferences); };
-  const connect = async (steamId: string, apiKey: string) => {
+  const connect = async () => {
     setState(s => ({...s, steamState:"checking", steamErrorCode:undefined}));
-    try { const result = await services.steam.connect({steamId, apiKey}); setState(s => result.success && result.profile ? {...s, steamState:"connected", profile:result.profile} : {...s, steamState:"error", steamErrorCode:result.errorCode}); }
+    try { const result = await services.steamOpenId?.signIn(new AbortController().signal); setState(s => result?.status === "verified" ? {...s, steamState:"connected", profile:identityProfile(result.identity.steamId)} : {...s, steamState:"error", steamErrorCode:result?.status}); }
     catch { setState(s => ({...s, steamState:"error", steamErrorCode:"network_error"})); }
   };
   const sync = async () => {
@@ -43,4 +43,8 @@ export function FirstLaunchExperience({ preferences, onPreferencesChange, onComp
         {state.step==="library" && <LibrarySyncStep profile={state.profile} preferences={state.preferences} state={state.syncState} result={state.syncResult} error={state.syncState==="error"?t("onboarding.library.error"):undefined} onSync={sync} onBack={back} onFinish={finish} finishing={finishing}/>}
       </motion.div></AnimatePresence>
     </section></main>;
+}
+
+function identityProfile(steamId: string): import("../../types").SteamProfile {
+  return { steamId, personaName: "Steam Player", profileUrl: "", avatarUrl: "", avatarMediumUrl: "", avatarFullUrl: "", visibilityState: 0 };
 }

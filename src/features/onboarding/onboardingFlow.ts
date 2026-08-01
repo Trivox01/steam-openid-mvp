@@ -13,10 +13,9 @@ export const directionForLanguage = (language: UserPreferences["language"]) => l
 export const vortexMode = (webglAvailable: boolean, reducedMotion: boolean) =>
   webglAvailable && !reducedMotion ? "animated" : "static";
 export const steamErrorTranslationKey = (code?: string) => ({
-  invalid_steam_id: "onboarding.steam.error.invalidId",
-  empty_api_key: "onboarding.steam.error.invalidKey",
-  invalid_api_key: "onboarding.steam.error.invalidKey",
-  private_profile: "onboarding.steam.error.private",
+  failed: "onboarding.steam.error.generic",
+  cancelled: "steam.openId.cancelled",
+  expired: "steam.openId.expired",
   network_error: "onboarding.steam.error.network",
   timeout: "onboarding.steam.error.timeout",
   rate_limited: "onboarding.steam.error.rateLimit"

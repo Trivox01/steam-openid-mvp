@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const assertions = await validateSteamAchievementSync();
-const [page, en, ar, rustClient, rustCommand, service] = await Promise.all([
+const [page, en, ar, backendClient, desktopClient, service] = await Promise.all([
   readFile(new URL("../src/pages/GameDetailsPage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/locales/en/gameDetails.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/locales/ar/gameDetails.ts", import.meta.url), "utf8"),
-  readFile(new URL("../src-tauri/src/steam/client.rs", import.meta.url), "utf8"),
-  readFile(new URL("../src-tauri/src/steam_commands.rs", import.meta.url), "utf8"),
+  readFile(new URL("../services/auth-api/src/steam/steamDataClient.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/services/platform/SteamBackendDataClient.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/services/platform/SteamAchievementSyncService.ts", import.meta.url), "utf8")
 ]);
 for (const key of [
@@ -20,11 +20,10 @@ for (const key of [
   assert.match(en, new RegExp(`gameDetails\\.sync\\.${key}`));
   assert.match(ar, new RegExp(`gameDetails\\.sync\\.${key}`));
 }
-assert.match(rustClient, /http_status=/);
-assert.match(rustClient, /duration_ms=/);
-assert.match(rustClient, /GetSchemaForGame\/v2/);
-assert.match(rustClient, /GetPlayerAchievements\/v1/);
-assert.match(rustCommand, /achievements_received=/);
+assert.match(backendClient, /GetSchemaForGame\/v2/);
+assert.match(backendClient, /GetPlayerAchievements\/v1/);
+assert.match(desktopClient, /authorization: `Bearer \$\{session\.token\}`/);
+assert.doesNotMatch(desktopClient, /api\.steampowered\.com/);
 assert.match(service, /stage:\s*"steam"\s*\|\s*"sqlite"/);
 assert.match(service, /stage === "sqlite" \? "database" : "request"/);
 assert.match(service, /httpStatus/);

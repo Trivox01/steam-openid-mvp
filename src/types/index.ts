@@ -126,9 +126,6 @@ export type AsyncState<T> =
   | { status: "error"; data?: never; error: string };
 
 export type {
-  SteamConnectionResult,
-  SteamConnectionStatus,
-  SteamCredentials,
   SteamProfile,
   SteamLibrarySyncResult,
   SteamOwnedGameDto,

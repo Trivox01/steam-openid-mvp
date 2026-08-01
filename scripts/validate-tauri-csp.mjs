@@ -1,0 +1,18 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const config = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+const csp = config.app?.security?.csp;
+assert.equal(typeof csp, "string");
+assert.ok(csp.length > 0);
+assert.doesNotMatch(csp, /(?:^|\s)\*(?:\s|;|$)/);
+assert.doesNotMatch(csp, /'unsafe-eval'/);
+assert.match(csp, /connect-src[^;]*https:\/\/steam-openid-mvp-eo9i\.onrender\.com/);
+assert.doesNotMatch(csp, /connect-src[^;]*api\.steampowered\.com/);
+assert.match(csp, /img-src[^;]*https:\/\/shared\.cloudflare\.steamstatic\.com/);
+assert.match(csp, /img-src[^;]*https:\/\/media\.steampowered\.com/);
+assert.doesNotMatch(csp, /img-src[^;]*https:\/\/api\.steampowered\.com/);
+assert.match(csp, /object-src 'none'/);
+assert.match(csp, /base-uri 'self'/);
+assert.match(csp, /frame-ancestors 'none'/);
+console.log("Tauri CSP validation passed (12 assertions).");

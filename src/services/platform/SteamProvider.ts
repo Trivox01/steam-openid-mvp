@@ -1,27 +1,22 @@
 import type { Achievement, Game, UserProfile } from "../../types";
 import type { PlatformProvider } from "./PlatformProvider";
-import {
-  SteamConnectionService,
-  steamProfileToUserProfile
-} from "./SteamConnectionService";
 import { steamArtworkUrls } from "./steamArtwork";
-import type { SteamDataGateway } from "./SteamBackendDataClient";
+import type { SteamDataGateway, SteamSessionProvider } from "./SteamBackendDataClient";
 
 export class SteamProvider implements PlatformProvider {
   constructor(
-    private connection: SteamConnectionService,
-    private data: SteamDataGateway = connection
+    private data: SteamDataGateway,
+    private sessions: SteamSessionProvider
   ) {}
 
   async authenticate(): Promise<void> {
-    const profile = await this.connection.getSavedProfile();
-    if (!profile) throw new Error("No Steam account is connected.");
+    if (!this.sessions.getActiveSession()) throw new Error("No Steam account is connected.");
   }
 
   async getUserProfile(): Promise<UserProfile> {
-    const profile = await this.connection.getSavedProfile();
-    if (!profile) throw new Error("No Steam account is connected.");
-    return steamProfileToUserProfile(profile);
+    const session = this.sessions.getActiveSession();
+    if (!session) throw new Error("No Steam account is connected.");
+    return { id: "steam-player", displayName: "Steam Player", avatarUrl: "", level: 0 };
   }
 
   async getOwnedGames(): Promise<Game[]> {

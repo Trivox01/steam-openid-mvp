@@ -1,9 +1,6 @@
 mod commands;
 mod database;
 mod models;
-mod secret_store;
-mod steam;
-mod steam_commands;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -25,11 +22,6 @@ fn set_tray_behavior_enabled(enabled: bool, state: tauri::State<'_, DesktopLifec
     state.minimize_to_tray.store(enabled, Ordering::Relaxed);
 }
 
-#[tauri::command]
-fn has_steam_api_key(state: tauri::State<'_, secret_store::SecretStore>) -> Result<bool, String> {
-    state.steam_api_key().map(|value| value.is_some())
-}
-
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -46,7 +38,6 @@ pub fn run() {
         .setup(|app| {
             let state = database::open_database(app.handle()).map_err(std::io::Error::other)?;
             app.manage(state);
-            app.manage(secret_store::SecretStore::default());
             app.manage(DesktopLifecycleState {
                 minimize_to_tray: AtomicBool::new(true),
                 ..Default::default()
@@ -152,13 +143,7 @@ pub fn run() {
             commands::save_profile,
             commands::get_sync_metadata,
             commands::save_sync_metadata,
-            steam_commands::validate_steam_connection,
-            steam_commands::get_saved_steam_profile,
-            steam_commands::disconnect_steam_account,
-            steam_commands::steam_get_owned_games,
-            steam_commands::steam_get_game_achievements,
-            set_tray_behavior_enabled,
-            has_steam_api_key
+            set_tray_behavior_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running Achievement Nexus");
