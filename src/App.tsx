@@ -11,13 +11,14 @@ import { applicationRefresh, services, smartSync } from "./services/compositionR
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauriRuntime } from "./runtime/environment";
-import { check } from "@tauri-apps/plugin-updater";
 import { useTheme } from "./state/ThemeContext";
 import { useTranslation } from "./i18n/TranslationContext";
 import type { SettingsPageHandle } from "./pages/SettingsPage";
 import { activeNavigationPage } from "./components/layout/navigationState";
 import { useAuthorization } from "./features/developer-center/AuthorizationContext";
 import { DeveloperCenterRoute } from "./features/developer-center/DeveloperCenterRoute";
+import { updateCoordinator } from "./features/updates/UpdateCoordinator";
+import { UpdateExperience } from "./features/updates/UpdateExperience";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const GamesPage = lazy(() => import("./pages/GamesPage").then((module) => ({ default: module.GamesPage })));
@@ -49,7 +50,6 @@ export function App() {
   const [navigationSaveFailed, setNavigationSaveFailed] = useState(false);
   const settingsRef = useRef<SettingsPageHandle>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const updateCheckRunning = useRef(false);
   const scrollPositions = useRef(new Map<string, number>());
   const initialize = useCallback(async () => {
     setInitialization("loading");
@@ -95,22 +95,7 @@ export function App() {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let unlisten: (() => void) | undefined;
-    void listen("nexus://check-for-updates", async () => {
-      if (updateCheckRunning.current) return;
-      updateCheckRunning.current = true;
-      try {
-        const update = await check({ timeout: 10_000 });
-        if (!update) {
-          window.alert(t("settings.upToDate"));
-        } else if (window.confirm(t("settings.updateAvailable").replace("{version}", update.version))) {
-          await update.downloadAndInstall();
-        }
-      } catch {
-        window.alert(t("settings.updateInfrastructureMissing"));
-      } finally {
-        updateCheckRunning.current = false;
-      }
-    }).then((dispose) => { unlisten = dispose; });
+    void listen("nexus://check-for-updates", () => { void updateCoordinator.check("tray"); }).then((dispose) => { unlisten = dispose; });
     return () => unlisten?.();
   }, [t]);
 
@@ -191,6 +176,7 @@ export function App() {
   return (
     <div className={`app-shell ${preferences.sidebarCollapsed ? "app-shell--sidebar-collapsed" : ""}`}>
       <GlobalRefreshStatus />
+      <UpdateExperience autoCheck={preferences.autoCheckForUpdates} />
       <Sidebar
         activePage={activeNavigationPage(view, activePage)}
         collapsed={preferences.sidebarCollapsed}

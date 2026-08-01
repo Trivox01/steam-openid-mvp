@@ -1719,6 +1719,17 @@ html[dir="rtl"] .badge-toggle input:checked + .badge-toggle-control::after {
 html[dir="rtl"] .sidebar { inset-inline-start:0;inset-inline-end:auto;border-right:0;border-inline-end:1px solid var(--border); }
 html[dir="rtl"] .main-column { margin-left:0;margin-inline-start:244px; }
 html[dir="rtl"] .nav-item,.settings-section,.setting-toggle { text-align:start; }
+
+.update-backdrop{z-index:calc(var(--z-modal,1000) + 2)}
+.update-dialog{position:relative;width:min(520px,100%)}
+.update-dialog .update-dialog-close{position:absolute;inset-block-start:16px;inset-inline-end:16px;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--border);border-radius:10px;background:var(--panel-solid);color:var(--text-primary)}
+.update-dialog .update-dialog-icon{color:var(--accent);background:var(--accent-soft)}
+.update-dialog ul{margin:14px 0 0;padding-inline-start:20px;color:var(--text-secondary);line-height:1.8}
+.update-progress{height:8px;margin-top:18px;overflow:hidden;border-radius:999px;background:var(--surface-raised)}
+.update-progress span{display:block;height:100%;min-width:8%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),#a78bfa);transition:width .18s ease}
+.about-release dl{display:grid;gap:8px;margin:0 0 14px}.about-release dl div{display:flex;justify-content:space-between;gap:16px}.about-release dt{color:var(--text-secondary)}.about-release dd{margin:0;font-weight:700}.update-inline-status{margin:12px 0 0;color:var(--text-secondary)}
+@media (prefers-reduced-motion:reduce){.update-progress span{transition:none}}
+@media (forced-colors:active){.update-progress{border:1px solid CanvasText}.update-progress span{background:Highlight}}
 html[dir="rtl"] .secret-input input,
 html[dir="rtl"] .steam-connected-card small { direction:ltr;text-align:left; }
 html[dir="rtl"] .brand-mark,

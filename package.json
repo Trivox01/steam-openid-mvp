@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "release:validate": "node scripts/validate-release.mjs",
     "release:validate-security": "node scripts/validate-release-security.mjs",
+    "test:updates": "node scripts/validate-updates.mjs",
     "release:set-version": "node scripts/set-release-version.mjs",
     "typecheck": "tsc -b --pretty",
     "test:intelligence": "node --experimental-strip-types scripts/validate-intelligence.mjs",

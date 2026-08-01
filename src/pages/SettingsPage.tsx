@@ -17,11 +17,13 @@ import {
   Gamepad2,
   Globe2,
   LoaderCircle,
+  Info,
   Monitor,
   PlayCircle,
   RefreshCw,
   RotateCw,
-  Trash2
+  Trash2,
+  Sparkles
 } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useTheme, type Theme } from "../state/ThemeContext";
@@ -31,6 +33,8 @@ import { defaultPreferences, preferencesEqual } from "../services/settingsPrefer
 import type { UserPreferences, UserProfile } from "../types";
 import { ErrorView, LoadingView } from "../components/ui/StateViews";
 import { SteamAccountSettings } from "../components/settings/SteamAccountSettings";
+import { updateCoordinator } from "../features/updates/UpdateCoordinator";
+import { currentReleaseVersion } from "../features/updates/releaseNotes";
 
 type SaveStatus = "idle" | "saving" | "success" | "error";
 
@@ -53,7 +57,9 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
     const [saved, setSaved] = useState<UserPreferences>();
     const [draft, setDraft] = useState<UserPreferences>();
     const [refreshStatus, setRefreshStatus] = useState(applicationRefresh.getSnapshot());
+    const [updateStatus, setUpdateStatus] = useState(updateCoordinator.getSnapshot());
     useEffect(() => applicationRefresh.subscribe(setRefreshStatus), []);
+    useEffect(() => updateCoordinator.subscribe(setUpdateStatus), []);
     const [loadError, setLoadError] = useState("");
     const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
     const [saveError, setSaveError] = useState("");
@@ -294,6 +300,20 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
                 )}
               </div>
             )}
+          </SettingsSection>
+          <SettingsSection icon={Info} title={t("updates.about")} description={t("updates.aboutDescription")}>
+            <div className="about-release">
+              <dl>
+                <div><dt>{t("updates.version")}</dt><dd dir="ltr">{currentReleaseVersion}</dd></div>
+                <div><dt>{t("updates.channel")}</dt><dd>{t("updates.channel.beta")}</dd></div>
+              </dl>
+              <div className="data-actions">
+                <button type="button" aria-busy={updateStatus.status === "checking"} disabled={updateStatus.status === "checking"} onClick={() => void updateCoordinator.check("settings")}><RefreshCw className={updateStatus.status === "checking" ? "spinning" : ""} size={16} />{t(updateStatus.status === "checking" ? "updates.checking" : "updates.check")}</button>
+                <button type="button" onClick={() => { localStorage.removeItem("nexus:last-seen-version"); window.location.reload(); }}><Sparkles size={16} />{t("updates.whatsNew")}</button>
+                <button type="button" data-allow-copy onClick={() => void navigator.clipboard.writeText(`Achievement Nexus ${currentReleaseVersion} (beta)`)}>{t("updates.copyVersion")}</button>
+              </div>
+              {updateStatus.status !== "idle" && <p role="status" className="update-inline-status">{t(`updates.status.${updateStatus.status}`)}</p>}
+            </div>
           </SettingsSection>
         </div>
 

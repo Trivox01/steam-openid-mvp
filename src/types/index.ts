@@ -79,6 +79,7 @@ export interface AppSettings {
   minimizeToTray: boolean;
   notificationsEnabled: boolean;
   autoCheckForUpdates: boolean;
+  updateChannel: "beta";
   hidePlaytime: boolean;
   hideHiddenGames: boolean;
 }

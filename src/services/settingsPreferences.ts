@@ -9,6 +9,7 @@ export const defaultPreferences: UserPreferences = {
   minimizeToTray: true,
   notificationsEnabled: true,
   autoCheckForUpdates: true,
+  updateChannel: "beta",
   hidePlaytime: false,
   hideHiddenGames: true
 };
@@ -36,6 +37,7 @@ export function normalizePreferences(value: unknown): UserPreferences {
       source.autoCheckForUpdates ?? source.automaticUpdates,
       defaultPreferences.autoCheckForUpdates
     ),
+    updateChannel: "beta",
     hidePlaytime: booleanOrDefault(source.hidePlaytime, defaultPreferences.hidePlaytime),
     hideHiddenGames: booleanOrDefault(
       source.hideHiddenGames,
@@ -54,6 +56,7 @@ export function preferencesEqual(left: UserPreferences, right: UserPreferences) 
     left.minimizeToTray === right.minimizeToTray &&
     left.notificationsEnabled === right.notificationsEnabled &&
     left.autoCheckForUpdates === right.autoCheckForUpdates &&
+    left.updateChannel === right.updateChannel &&
     left.hidePlaytime === right.hidePlaytime &&
     left.hideHiddenGames === right.hideHiddenGames
   );
