@@ -1,4 +1,4 @@
-import { Activity, BarChart3, ChevronLeft, Code2, Gamepad2, LayoutDashboard, Medal, Settings, Sparkles } from "lucide-react";
+import { Activity, BarChart3, ChevronLeft, Code2, Gamepad2, LayoutDashboard, Medal, PackageSearch, Settings, Sparkles } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "../../i18n/TranslationContext";
 import type { PageId } from "../../types";
@@ -9,6 +9,7 @@ const navItems = [
   { id: "achievements" as const, icon: Medal },
   { id: "activity" as const, icon: Activity },
   { id: "statistics" as const, icon: BarChart3 }
+  ,{ id: "tools" as const, icon: PackageSearch }
 ];
 
 export function Sidebar({ activePage, collapsed, canAccessDeveloperCenter, onCollapsedChange, onNavigate }: {

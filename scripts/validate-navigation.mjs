@@ -5,6 +5,7 @@ import { activeNavigationPage, isNavigationItemActive, navigationItems } from ".
 assert.equal(activeNavigationPage({ kind:"page", page:"games" }, "dashboard"), "games");
 assert.equal(activeNavigationPage({ kind:"game", gameId:"game-1" }, "dashboard"), "games");
 assert.equal(activeNavigationPage({ kind:"achievement", achievementId:"a-1", gameId:"game-1" }, "dashboard"), "achievements");
+assert.equal(activeNavigationPage({ kind:"tool", slug:"nexus-helper" }, "dashboard"), "tools");
 assert.equal(navigationItems.filter(item => isNavigationItemActive(item, "statistics")).length, 1);
 assert.equal(isNavigationItemActive("games", "statistics"), false);
 
@@ -28,5 +29,5 @@ assert.match(app, /scrollPositions\.current\.set\(navigationViewKey\(current\), 
 assert.match(app, /scrollPositions\.current\.get\(navigationViewKey\(previous\)\)/);
 assert.match(app, /requestAnimationFrame\(\(\) => window\.scrollTo/);
 assert.match(app, /<main ref=\{mainRef\}>/);
-assert.deepEqual(navigationItems, ["dashboard","games","achievements","activity","statistics","developer","settings"]);
+assert.deepEqual(navigationItems, ["dashboard","games","achievements","activity","statistics","tools","developer","settings"]);
 console.log("Navigation polish validation passed.");

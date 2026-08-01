@@ -16,22 +16,23 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
     "roles.manage_permissions", "badges.view", "badges.create", "badges.edit",
     "badges.delete", "badges.view_assignments", "badges.assign", "badges.revoke", "assets.upload",
     "assets.delete", "settings.view", "settings.edit", "audit.view",
-    "developer.tools"
+    "developer.tools", "tools.view", "tools.manage", "tool_badges.manage", "tool_categories.manage"
   ],
   administrator: [
     "admin.access", "users.view", "users.change_status", "users.manage", "roles.view", "roles.assign",
     "roles.manage_permissions", "badges.view", "badges.create", "badges.edit",
     "badges.delete", "badges.view_assignments", "badges.assign", "badges.revoke", "assets.upload",
-    "assets.delete", "settings.view", "settings.edit", "audit.view"
+    "assets.delete", "settings.view", "settings.edit", "audit.view",
+    "tools.view", "tools.manage", "tool_badges.manage", "tool_categories.manage"
   ],
   developer: [
     "admin.access", "users.view", "roles.view", "badges.view", "badges.create",
     "badges.edit", "assets.upload", "settings.view", "audit.view",
-    "developer.tools"
+    "developer.tools", "tools.view", "tools.manage", "tool_badges.manage", "tool_categories.manage"
   ],
   moderator: [
     "admin.access", "users.view", "badges.view", "badges.view_assignments", "badges.assign",
-    "badges.revoke", "audit.view"
+    "badges.revoke", "audit.view", "tools.view"
   ],
-  assistant: ["admin.access", "users.view", "badges.view", "settings.view"]
+  assistant: ["admin.access", "users.view", "badges.view", "settings.view", "tools.view"]
 };

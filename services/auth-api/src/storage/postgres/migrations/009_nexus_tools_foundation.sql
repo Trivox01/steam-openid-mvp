@@ -11,6 +11,11 @@ WHERE role.slug IN ('owner','administrator','developer')
 AND permission.key IN ('tools.view','tools.manage','tool_badges.manage','tool_categories.manage')
 ON CONFLICT DO NOTHING;
 
+INSERT INTO role_permissions(role_id,permission_id)
+SELECT role.id, permission.id FROM roles role CROSS JOIN permissions permission
+WHERE role.slug IN ('moderator','assistant') AND permission.key='tools.view'
+ON CONFLICT DO NOTHING;
+
 CREATE TABLE tool_badges (
  id uuid PRIMARY KEY, name text NOT NULL CHECK(char_length(name) BETWEEN 1 AND 60),
  slug text NOT NULL UNIQUE CHECK(slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),

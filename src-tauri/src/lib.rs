@@ -9,6 +9,8 @@ use tauri::{
     Emitter, Manager, WindowEvent,
 };
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_opener::OpenerExt;
+use std::net::IpAddr;
 
 #[derive(Default)]
 struct DesktopLifecycleState {
@@ -36,6 +38,28 @@ fn invalidate_steam_installation_index(
     state: tauri::State<'_, steam_installation::SteamInstallationProbe>,
 ) {
     state.invalidate();
+}
+
+#[tauri::command]
+fn open_external_tool_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let parsed = validate_external_tool_url(&url)?;
+    app.opener().open_url(parsed.as_str(), None::<&str>).map_err(|_| "external_link_open_failed".to_string())
+}
+
+fn validate_external_tool_url(value: &str) -> Result<url::Url, String> {
+    let parsed = url::Url::parse(value).map_err(|_| "unsafe_external_url".to_string())?;
+    if parsed.scheme() != "https" || !parsed.username().is_empty() || parsed.password().is_some() || parsed.port().is_some() {
+        return Err("unsafe_external_url".into());
+    }
+    let host = parsed.host_str().ok_or_else(|| "unsafe_external_url".to_string())?.to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") || !host.contains('.') {
+        return Err("unsafe_external_url".into());
+    }
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        let blocked = match ip { IpAddr::V4(v) => v.is_private() || v.is_loopback() || v.is_link_local() || v.is_unspecified() || v.is_multicast(), IpAddr::V6(v) => v.is_loopback() || v.is_unspecified() || v.is_unique_local() || v.is_unicast_link_local() || v.is_multicast() };
+        if blocked { return Err("unsafe_external_url".into()); }
+    }
+    Ok(parsed)
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -177,7 +201,15 @@ pub fn run() {
             set_tray_behavior_enabled,
             get_steam_installation_index,
             invalidate_steam_installation_index
+            ,open_external_tool_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running Achievement Nexus");
+}
+
+#[cfg(test)]
+mod external_tool_url_tests {
+    use super::validate_external_tool_url;
+    #[test] fn accepts_public_https() { assert!(validate_external_tool_url("https://example.com/download?q=1").is_ok()); }
+    #[test] fn rejects_unsafe_destinations() { for value in ["javascript:alert(1)","data:text/plain,x","file:///tmp/x","http://example.com","https://localhost/x","https://127.0.0.1/x","https://10.0.0.1/x","https://[::1]/x","https://user:pass@example.com/x"] { assert!(validate_external_tool_url(value).is_err(), "{value}"); } }
 }

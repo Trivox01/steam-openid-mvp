@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { inspectToolUrl } from "../src/features/tools/safeToolUrl.ts";
+import { tools as enTools } from "../src/locales/en/tools.ts";
+import { tools as arTools } from "../src/locales/ar/tools.ts";
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const app = read("../src/App.tsx");
+const sidebar = read("../src/components/layout/Sidebar.tsx");
+const page = read("../src/pages/ToolsPage.tsx");
+const card = read("../src/features/tools/ToolCard.tsx");
+const details = read("../src/pages/ToolDetailsPage.tsx");
+const admin = read("../src/features/developer-center/tools/ToolsManagementPanel.tsx");
+const css = read("../src/styles/index.css");
+const rust = read("../src-tauri/src/lib.rs");
+
+assert.match(sidebar, /id: "tools"/);
+assert.match(app, /ToolDetailsPage/);
+assert.match(card, /loading="lazy"/);
+assert.match(page, /tools\.recommended/);
+assert.match(page, /tools\.new/);
+assert.doesNotMatch(page + details, /rating|review|downloadCount|dangerouslySetInnerHTML/i);
+assert.match(details, /role="dialog"/);
+assert.match(details, /aria-modal="true"/);
+assert.match(details, /invoke\("open_external_tool_url"/);
+assert.match(admin, /type Mode/);
+assert.match(css, /prefers-reduced-motion:reduce/);
+assert.match(css, /forced-colors:active/);
+assert.match(rust, /validate_external_tool_url/);
+assert.deepEqual(Object.keys(enTools).sort(), Object.keys(arTools).sort());
+const publicCopy = Object.entries(enTools).filter(([key]) => key.startsWith("tools.")).map(([, value]) => value).join(" ");
+assert.doesNotMatch(publicCopy, /\b(?:API|Database|Backend|Storage|Endpoint|Status Code|Token|Manifest)\b/i);
+assert.equal(inspectToolUrl("https://example.com/tool").domain, "example.com");
+for (const value of ["javascript:alert(1)", "http://example.com", "https://localhost/x", "https://127.0.0.1/x", "https://10.0.0.1/x", "https://user:pass@example.com/x"]) assert.throws(() => inspectToolUrl(value));
+console.log("Nexus Tools UX and external URL validation passed.");

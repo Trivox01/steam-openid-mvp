@@ -2,7 +2,7 @@ export type Platform = "steam" | "playstation" | "xbox" | "other";
 export type GameId = string;
 export type AchievementId = string;
 export type PlatformId = Platform;
-export type PageId = "dashboard" | "games" | "achievements" | "activity" | "statistics" | "developer" | "settings";
+export type PageId = "dashboard" | "games" | "achievements" | "activity" | "statistics" | "tools" | "developer" | "settings";
 
 export interface UserProfile {
   id: string;
@@ -94,6 +94,7 @@ export interface SyncMetadata {
 export type NavigationView =
   | { kind: "page"; page: PageId }
   | { kind: "game"; gameId: GameId }
+  | { kind: "tool"; slug: string }
   | { kind: "achievement"; achievementId: AchievementId; gameId: GameId };
 
 export type ActivityType = "achievement" | "new_game" | "completed_game" | "progress" | "weekly_goal";

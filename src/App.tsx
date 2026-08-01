@@ -27,6 +27,8 @@ const StatisticsPage = lazy(() => import("./pages/StatisticsPage").then((module)
 const SettingsPage = lazy(() => import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 const GameDetailsPage = lazy(() => import("./pages/GameDetailsPage").then((module) => ({ default: module.GameDetailsPage })));
 const AchievementDetailsView = lazy(() => import("./pages/AchievementDetailsView").then((module) => ({ default: module.AchievementDetailsView })));
+const ToolsPage = lazy(() => import("./pages/ToolsPage").then((module) => ({ default: module.ToolsPage })));
+const ToolDetailsPage = lazy(() => import("./pages/ToolDetailsPage").then((module) => ({ default: module.ToolDetailsPage })));
 
 export function App() {
   const { setTheme } = useTheme();
@@ -155,6 +157,11 @@ export function App() {
     });
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
   }, []);
+  const openTool = useCallback((slug: string) => {
+    mainRef.current?.scrollTo({ top: 0 });
+    setView((current) => { scrollPositions.current.set(navigationViewKey(current), window.scrollY); setHistory((items) => [...items, current]); return { kind: "tool", slug }; });
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  }, []);
   const goBack = useCallback(() => {
     setHistory((items) => {
       const previous = items.at(-1) ?? { kind: "page", page: activePage } as NavigationView;
@@ -206,6 +213,7 @@ export function App() {
               {activePage === "achievements" && <AchievementsPage onOpenAchievement={openAchievement} />}
               {activePage === "activity" && <ActivityPage />}
               {activePage === "statistics" && <StatisticsPage onOpenGame={openGame} onOpenSettings={() => navigatePage("settings")} />}
+              {activePage === "tools" && <ToolsPage onOpen={openTool} />}
               {activePage === "developer" && <DeveloperCenterRoute onOpenSettings={() => navigatePage("settings")} />}
               {activePage === "settings" && (
                 <SettingsPage
@@ -223,6 +231,7 @@ export function App() {
               {view.kind === "game" && <motion.div key={`game-${view.gameId}`} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0}}><GameDetailsPage gameId={view.gameId} onBack={goBack} onOpenAchievement={(id) => openAchievement(id, view.gameId)} /></motion.div>}
             </AnimatePresence>
             {view.kind === "achievement" && <AchievementDetailsView achievementId={view.achievementId} onClose={goBack} onOpenGame={(id) => { setHistory([]); setView({ kind: "game", gameId: id }); }} />}
+            {view.kind === "tool" && <ToolDetailsPage slug={view.slug} onBack={goBack} />}
           </Suspense>
         </main>
       </div>
@@ -257,6 +266,7 @@ export function App() {
 function navigationViewKey(view: NavigationView) {
   if (view.kind === "page") return `page:${view.page}`;
   if (view.kind === "game") return `game:${view.gameId}`;
+  if (view.kind === "tool") return `tool:${view.slug}`;
   return `achievement:${view.gameId}:${view.achievementId}`;
 }
 
