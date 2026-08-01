@@ -2258,3 +2258,12 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 .achievement-dialog-hero{width:48px}.journey-achievement-art.achievement-icon{width:48px}
 @media(max-width:560px){.achievement-icon{--achievement-icon-size:40px!important;--achievement-icon-inner:36px!important}.achievement-dialog-hero{width:40px}}
 @media(forced-colors:active){.achievement-icon{border:1px solid CanvasText;background:Canvas;box-shadow:none}.achievement-icon.is-fallback>img{filter:none}}
+
+/* Achievement Details header: keep artwork inside the modal and clear of close affordance. */
+.achievement-dialog-hero{width:56px;margin:8px auto 12px}
+.achievement-dialog-hero .achievement-icon{--achievement-icon-size:56px!important;--achievement-icon-inner:48px!important;inline-size:56px;block-size:56px;border:1px solid color-mix(in srgb,var(--accent) 24%,var(--border-muted));border-radius:13px;background:color-mix(in srgb,var(--surface-raised) 94%,var(--accent-subtle));box-shadow:inset 0 1px 0 color-mix(in srgb,var(--accent) 10%,transparent),0 4px 12px color-mix(in srgb,var(--text-primary) 7%,transparent)}
+.achievement-dialog-hero .achievement-icon>img{inline-size:48px;block-size:48px;border-radius:11px;object-fit:contain}
+.achievement-dialog-hero span{right:auto;inset-inline-end:-7px}
+.achievement-dialog .dialog-close{right:auto;inset-inline-end:14px}
+.dark .achievement-dialog-hero .achievement-icon{border-color:color-mix(in srgb,var(--accent) 26%,var(--border-muted));background:color-mix(in srgb,var(--surface-raised) 92%,var(--accent-subtle));box-shadow:inset 0 1px 0 color-mix(in srgb,var(--accent) 12%,transparent),0 4px 12px rgba(0,0,0,.16)}
+@media(max-width:560px){.achievement-dialog-hero{width:48px;margin-block-start:6px}.achievement-dialog-hero .achievement-icon{--achievement-icon-size:48px!important;--achievement-icon-inner:42px!important;inline-size:48px;block-size:48px}.achievement-dialog-hero .achievement-icon>img{inline-size:42px;block-size:42px}}

@@ -36,6 +36,12 @@ assert.match(css, /border-radius:11px/);
 assert.match(css, /object-fit:contain/);
 assert.match(css, /forced-colors:active[^}]*\.achievement-icon/);
 assert.match(css, /@media\(max-width:560px\)[^{]*\{\.achievement-icon/);
+assert.match(consumers, /AchievementIcon[^>]*size=\{56\}[^>]*loading="eager"/, "details modal must request its fixed desktop frame");
+assert.match(css, /\.achievement-dialog-hero\{width:56px;margin:8px auto 12px\}/);
+assert.match(css, /\.achievement-dialog-hero \.achievement-icon\{--achievement-icon-size:56px!important;--achievement-icon-inner:48px!important/);
+assert.match(css, /\.achievement-dialog-hero \.achievement-icon>img\{inline-size:48px;block-size:48px[^}]*object-fit:contain/);
+assert.match(css, /@media\(max-width:560px\)[^}]*\.achievement-dialog-hero\{width:48px[^}]*\}\.achievement-dialog-hero \.achievement-icon\{--achievement-icon-size:48px!important;--achievement-icon-inner:42px!important/);
+assert.match(css, /\.achievement-dialog \.dialog-close\{right:auto;inset-inline-end:14px\}/, "close button must stay in its logical corner for RTL and LTR");
 
 assert.equal((consumers.match(/<AchievementIcon/g) ?? []).length, 6, "all current achievement image surfaces must use the shared component");
 assert.doesNotMatch(consumers, /<img\s+src=\{(?:achievement|details|nextAchievement)\.iconUrl/, "achievement consumers must not bypass fallback handling");
