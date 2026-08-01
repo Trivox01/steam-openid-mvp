@@ -60,7 +60,7 @@ export function validateSteamLibrarySync() {
   assert(steamArtworkUrls(10, "../secret").iconUrl === "", "invalid hashes must not enter URLs");
   const artworkWithFallbacks = steamArtworkUrls(10, "abc123");
   assert(artworkWithFallbacks.coverUrl.includes("/10/library_600x900_2x.jpg"), "primary cover must be a vertical Steam library capsule");
-  assert(artworkWithFallbacks.coverFallbackUrls.length === 1, "cover loader must retry only once");
+  assert(artworkWithFallbacks.coverFallbackUrls.length === 3, "cover fallback chain must include portrait, header, and hero crop");
   assert(artworkWithFallbacks.coverFallbackUrls.every((url) => url.startsWith("https://")), "cover fallbacks must use HTTPS");
   assert(artworkWithFallbacks.iconUrl.includes("/10/abc123.jpg"), "icon hash must only build an icon URL");
   assert(artworkWithFallbacks.coverUrl.startsWith("https://shared.steamstatic.com/"), "artwork must use the CSP-approved final Steam CDN origin");

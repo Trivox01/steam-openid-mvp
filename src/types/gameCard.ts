@@ -20,6 +20,7 @@ export type GameCardData = {
   title: string;
   coverUrl?: string;
   backgroundUrl?: string;
+  iconUrl?: string;
   platform: Platform | string;
   playtimeMinutes: number;
   unlockedAchievements: number;

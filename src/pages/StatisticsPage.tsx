@@ -11,6 +11,7 @@ import { useAsyncData } from "../hooks/useAsyncData";
 import { useTranslation } from "../i18n/TranslationContext";
 import { knownAchievementRarity } from "../services/achievementData";
 import { services } from "../services/compositionRoot";
+import { steamArtworkSources } from "../services/platform/steamArtwork";
 import {
   calculateStatisticsInsights,
   groupUnlockActivity,
@@ -139,7 +140,7 @@ export function StatisticsPage({
           {insights.almostCompleted.length
             ? <div className="statistics-v2__game-list">{insights.almostCompleted.map((game) => (
               <button key={game.id} type="button" onClick={() => onOpenGame(game.id)} className="statistics-v2__game-row">
-                <GameArtwork src={game.coverUrl} alt="" variant="cover" />
+                <GameArtwork src={game.coverUrl} sources={game.platform === "steam" ? steamArtworkSources({ appId: game.appId, kind: "cover", storedUrl: game.coverUrl, iconUrl: game.iconUrl }) : undefined} alt="" variant="cover" appId={game.platform === "steam" ? game.appId : undefined} componentName="StatisticsGameRow" />
                 <span><strong dir="auto" title={game.name}>{game.name}</strong><small>{t("statistics.remaining", { count: Math.max(0, game.totalAchievements - game.unlockedAchievements) })}</small></span>
                 <span className="statistics-v2__game-progress"><ProgressBar value={game.completionPercentage} label={t("statistics.completionFor", { name: game.name })} /><small>{number.format(game.unlockedAchievements)}/{number.format(game.totalAchievements)}</small></span>
                 <b>{number.format(game.completionPercentage)}%</b>

@@ -15,7 +15,7 @@ import { ProgressBar } from "../ui/ProgressBar";
 import { Skeleton } from "../ui/Skeleton";
 import { StatusBadge } from "../ui/StatusBadge";
 import { Surface } from "../ui/Surface";
-import { steamArtworkFallbacks } from "../../services/platform/steamArtwork";
+import { steamArtworkSources } from "../../services/platform/steamArtwork";
 
 type GameCardProps = GameCardActions & {
   game: GameCardData;
@@ -68,14 +68,14 @@ export const GameCard = memo(function GameCard({
       <div className="nexus-game-card__media">
         <GameArtwork
           src={game.coverUrl}
-          fallbackSources={game.platform === "steam" && game.platformGameId
-            ? steamArtworkFallbacks(game.platformGameId, "cover")
+          sources={game.platform === "steam" && game.platformGameId
+            ? steamArtworkSources({ appId: game.platformGameId, kind: "cover", storedUrl: game.coverUrl, iconUrl: game.iconUrl })
             : undefined}
           alt={t("gameCard.coverAlt", { title: game.title })}
           variant="cover"
           className="nexus-game-card__artwork"
           appId={game.platform === "steam" ? game.platformGameId : undefined}
-          imageSource={game.platform === "steam" ? "steam-store-cdn" : "stored"}
+          componentName="GameCard"
         />
         <div className="nexus-game-card__media-gradient" aria-hidden="true" />
         <div className="nexus-game-card__badges">

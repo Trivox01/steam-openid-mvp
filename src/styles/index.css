@@ -133,6 +133,7 @@ button { color: inherit; }
 .game-artwork__fallback span { font-size:10px; font-weight:600; line-height:1.35; }
 .game-artwork--cover { aspect-ratio:2/3; }
 .game-artwork--background { aspect-ratio:2/1; }
+.game-artwork--square { aspect-ratio:1; }
 @keyframes artwork-shimmer { from { background-position:100% 0; } to { background-position:-100% 0; } }
 @media (prefers-reduced-motion:reduce) { .game-artwork__skeleton { animation:none; } }
 .app-shell { min-height: 100vh; display: flex; background: radial-gradient(circle at 75% 0%, rgba(124,58,237,.08), transparent 29%), var(--bg); }
@@ -739,7 +740,7 @@ main { width:100%; max-width:1540px; padding:clamp(24px,2.4vw,38px) clamp(20px,2
 .game-v2-hero__background { position:absolute; inset:0; z-index:0; inline-size:100%; block-size:100%; border-radius:inherit; }
 .game-v2-hero__overlay { position:absolute; inset:0; z-index:1; background:linear-gradient(90deg,rgba(7,7,12,.96) 0%,rgba(7,7,12,.82) 48%,rgba(7,7,12,.46) 100%),linear-gradient(0deg,rgba(7,7,12,.66),transparent 60%); pointer-events:none; }
 .game-v2-hero__content { position:relative; z-index:2; display:flex; align-items:center; gap:var(--space-6); min-height:270px; padding:var(--space-6); color:#fff; }
-.game-v2-hero__cover { flex:0 0 auto; inline-size:130px; aspect-ratio:2/3; border-radius:var(--radius-lg); box-shadow:var(--shadow-elevated); }
+.game-v2-hero__cover { flex:0 0 auto; inline-size:130px; aspect-ratio:1; border-radius:var(--radius-lg); box-shadow:var(--shadow-elevated); }
 .game-v2-hero__copy { display:grid; gap:var(--space-4); min-width:0; max-width:680px; flex:1; }
 .game-v2-hero__copy h1 { margin:0; font-size:clamp(28px,4vw,46px); line-height:var(--line-tight); letter-spacing:-.045em; }
 .game-v2-hero__badges,.game-v2-hero__metadata { display:flex; align-items:center; flex-wrap:wrap; gap:var(--space-2); }

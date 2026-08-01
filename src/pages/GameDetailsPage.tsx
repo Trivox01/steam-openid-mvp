@@ -6,7 +6,7 @@ import {
 import { AchievementExperienceCard } from "../components/achievements/AchievementExperienceCard";
 import { EmptyView, ErrorView, LoadingView } from "../components/ui/StateViews";
 import { GameArtwork } from "../components/ui/GameArtwork";
-import { steamArtworkFallbacks } from "../services/platform/steamArtwork";
+import { steamArtworkSources } from "../services/platform/steamArtwork";
 import { ProgressBar } from "../components/ui/ProgressBar";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -126,10 +126,10 @@ export function GameDetailsPage({
       </button>
 
       <Surface className="game-v2-hero" elevation="elevated">
-        <GameArtwork src={game.backgroundUrl} fallbackSources={game.platform === "steam" ? steamArtworkFallbacks(game.appId, "background") : undefined} alt="" variant="background" className="game-v2-hero__background" eager appId={game.platform === "steam" ? game.appId : undefined} imageSource={game.platform === "steam" ? "steam-store-cdn" : "stored"} />
+        <GameArtwork src={game.backgroundUrl} sources={game.platform === "steam" ? steamArtworkSources({ appId: game.appId, kind: "hero", storedUrl: game.backgroundUrl, iconUrl: game.iconUrl }) : undefined} alt="" variant="background" className="game-v2-hero__background" eager appId={game.platform === "steam" ? game.appId : undefined} componentName="GameDetailsHero" />
         <div className="game-v2-hero__overlay" aria-hidden="true" />
         <div className="game-v2-hero__content">
-          <GameArtwork src={game.coverUrl} fallbackSources={game.platform === "steam" ? steamArtworkFallbacks(game.appId, "cover") : undefined} alt={game.name} variant="cover" className="game-v2-hero__cover" eager appId={game.platform === "steam" ? game.appId : undefined} imageSource={game.platform === "steam" ? "steam-store-cdn" : "stored"} />
+          <GameArtwork src={game.iconUrl || game.coverUrl} sources={game.platform === "steam" ? steamArtworkSources({ appId: game.appId, kind: "square", storedUrl: game.coverUrl, iconUrl: game.iconUrl }) : undefined} alt={game.name} variant="square" className="game-v2-hero__cover" eager appId={game.platform === "steam" ? game.appId : undefined} componentName="GameDetailsSquare" />
           <div className="game-v2-hero__copy">
             <div className="game-v2-hero__badges">
               <StatusBadge tone="accent"><span dir="ltr">{game.platform}</span></StatusBadge>

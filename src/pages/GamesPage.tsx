@@ -72,6 +72,7 @@ function toGameCardData(game: Game): GameCardData {
     title: game.name,
     coverUrl: game.coverUrl,
     backgroundUrl: game.backgroundUrl,
+    iconUrl: game.iconUrl,
     platform: game.platform,
     playtimeMinutes: Math.round(game.playtimeHours * 60),
     unlockedAchievements: game.unlockedAchievements,

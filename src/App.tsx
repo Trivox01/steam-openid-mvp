@@ -247,11 +247,23 @@ function GlobalRefreshStatus() {
   useEffect(() => applicationRefresh.subscribe(setState), []);
   if (state.status === "idle") return null;
   const visibleStatus = state.status === "success" && state.results.some((item) => item.status === "skipped") ? "partial" : state.status;
+  const failedSources = state.results
+    .filter((item) => item.status === "failed")
+    .map((item) => t(`settings.refreshSource.${item.id}`))
+    .join(", ");
+  const skippedSources = state.results
+    .filter((item) => item.status === "skipped")
+    .map((item) => t(`settings.refreshSource.${item.id}`))
+    .join(", ");
   return (
     <div className={`application-refresh-toast is-${visibleStatus}`} role="status" aria-live="polite">
       {state.status === "refreshing" ? t("settings.refreshingAll")
         : visibleStatus === "success" ? t("settings.refreshAllSuccess")
-          : t("settings.refreshAllPartial")}
+          : failedSources
+            ? t("settings.refreshAllPartialSources", { sources: failedSources })
+            : skippedSources
+              ? t("settings.refreshAllSkippedSources", { sources: skippedSources })
+              : t("settings.refreshAllPartial")}
     </div>
   );
 }

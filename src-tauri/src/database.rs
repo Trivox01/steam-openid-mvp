@@ -19,7 +19,7 @@ const REQUIRED_GAME_ACHIEVEMENT_COLUMNS: [&str; 3] = [
     "achievements_sync_error",
 ];
 
-fn migrations() -> [Migration; 7] {
+fn migrations() -> [Migration; 8] {
     [
         Migration {
             version: 1,
@@ -55,6 +55,11 @@ fn migrations() -> [Migration; 7] {
             version: 7,
             description: "remove_legacy_steam_credentials",
             action: MigrationAction::Sql(include_str!("../migrations/007_remove_legacy_steam_credentials.sql")),
+        },
+        Migration {
+            version: 8,
+            description: "normalize_steam_artwork_urls",
+            action: MigrationAction::Sql(include_str!("../migrations/008_normalize_steam_artwork_urls.sql")),
         },
     ]
 }
@@ -312,7 +317,7 @@ mod tests {
         let version: i64 = connection.query_row(
             "SELECT MAX(version) FROM _achievement_nexus_migrations", [], |row| row.get(0)
         ).expect("migration version should exist");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         assert!(!super::table_exists(&connection, "steam_profile").expect("schema should load"));
     }
 
@@ -368,6 +373,43 @@ mod tests {
             "SELECT COUNT(*) FROM achievements WHERE source='steam'", [], |row| row.get(0)
         ).expect("synced achievement should be queryable");
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn artwork_migration_normalizes_legacy_hosts_without_losing_game_data() {
+        let mut connection = Connection::open_in_memory().expect("in-memory sqlite should open");
+        connection.execute_batch(
+            "CREATE TABLE _achievement_nexus_migrations(
+               version INTEGER PRIMARY KEY,
+               description TEXT NOT NULL,
+               applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );"
+        ).unwrap();
+        for migration in migrations().iter().take(7) {
+            apply_migration(&connection, &migration.action).unwrap();
+            connection.execute(
+                "INSERT INTO _achievement_nexus_migrations(version,description) VALUES(?1,?2)",
+                params![migration.version, migration.description],
+            ).unwrap();
+        }
+        connection.execute(
+            "INSERT INTO games(id,platform_id,platform_game_id,name,cover_url,background_url,favorite)
+             VALUES('bf6','steam','2807960','Battlefield 6',?1,?2,1)",
+            params![
+                "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/2807960/library_600x900_2x.jpg",
+                "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/2807960/library_hero.jpg"
+            ],
+        ).unwrap();
+        run_migrations(&mut connection, Path::new("artwork.db")).unwrap();
+        let row: (String, String, String, i64) = connection.query_row(
+            "SELECT name,cover_url,background_url,favorite FROM games WHERE id='bf6'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        ).unwrap();
+        assert_eq!(row.0, "Battlefield 6");
+        assert!(row.1.starts_with("https://shared.steamstatic.com/"));
+        assert!(row.2.starts_with("https://shared.steamstatic.com/"));
+        assert_eq!(row.3, 1);
     }
 
     #[test]
