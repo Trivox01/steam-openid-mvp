@@ -21,9 +21,9 @@ export class SteamLibrarySyncService {
     private metadata: SyncMetadataRepository
   ) {}
 
-  sync() {
+  sync(signal?: AbortSignal) {
     if (this.activeSync) return this.activeSync;
-    const operation = this.performSync().finally(() => {
+    const operation = this.performSync(signal).finally(() => {
       if (this.activeSync === operation) this.activeSync = undefined;
     });
     this.activeSync = operation;
@@ -34,15 +34,17 @@ export class SteamLibrarySyncService {
     return this.metadata.getSyncMetadata("steam");
   }
 
-  private async performSync(): Promise<SteamLibrarySyncResult> {
+  private async performSync(signal?: AbortSignal): Promise<SteamLibrarySyncResult> {
     try {
       const [remote, local] = await Promise.all([
-        this.provider.getOwnedGamesWithMetadata(),
+        this.provider.getOwnedGamesWithMetadata(signal),
         this.games.getAllGames()
       ]);
+      signal?.throwIfAborted();
       const syncedAt = new Date().toISOString();
       const merged = mergeSteamLibrary(local, remote, syncedAt);
       if (merged.changedGames.length) await this.games.saveGames(merged.changedGames);
+      signal?.throwIfAborted();
       if (import.meta.env.DEV) {
         console.info("[steam-library] merged_into_sqlite", {
           fetched: remote.fetched,
@@ -64,6 +66,7 @@ export class SteamLibrarySyncService {
         warnings: remote.warnings
       };
     } catch (error) {
+      if (signal?.aborted) throw error;
       const previous = await this.metadata.getSyncMetadata("steam").catch(() => undefined);
       await this.metadata.saveSyncMetadata({
         source: "steam",

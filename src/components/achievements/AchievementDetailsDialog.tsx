@@ -13,7 +13,7 @@ export function AchievementDetailsDialog({ details, onClose, onOpenGame }: { det
     <div className="dialog-backdrop" onMouseDown={onClose}>
       <article className="achievement-dialog" role="dialog" aria-modal="true" aria-labelledby="achievement-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
         <button className="dialog-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        <div className="achievement-dialog-hero"><img src={details.iconUrl} alt="" /><span>{details.unlockedAt ? <Trophy size={18} /> : <LockKeyhole size={18} />}</span></div>
+        <div className="achievement-dialog-hero"><img src={details.iconUrl} alt="" decoding="async" /><span>{details.unlockedAt ? <Trophy size={18} /> : <LockKeyhole size={18} />}</span></div>
         <span className={`rarity-tier ${details.rarityTier}`}>{rarityLabels[details.rarityTier]}</span>
         <h2 id="achievement-dialog-title">{hidden ? "Hidden achievement" : details.title}</h2>
         <p className="dialog-game">{details.gameName} · {details.unlockedAt ? "Unlocked" : "Locked"}</p>

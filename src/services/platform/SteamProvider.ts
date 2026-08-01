@@ -44,8 +44,8 @@ export class SteamProvider implements PlatformProvider {
     });
   }
 
-  getOwnedGamesWithMetadata() {
-    return this.data.getOwnedGames();
+  getOwnedGamesWithMetadata(signal?: AbortSignal) {
+    return this.data.getOwnedGames(signal);
   }
 
   async getGameAchievements(_appId: string): Promise<Achievement[]> {
@@ -70,12 +70,12 @@ export class SteamProvider implements PlatformProvider {
     }));
   }
 
-  getGameAchievementsWithMetadata(appId: string) {
+  getGameAchievementsWithMetadata(appId: string, signal?: AbortSignal) {
     const numeric = Number(appId);
     if (!Number.isSafeInteger(numeric) || numeric <= 0) {
       throw new Error("game_unsupported");
     }
-    return this.data.getGameAchievements(numeric);
+    return this.data.getGameAchievements(numeric, signal);
   }
 
   async syncData(): Promise<void> {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { UserPreferences } from "../../types";
-import { services } from "../../services/compositionRoot";
+import { services, smartSync } from "../../services/compositionRoot";
 import { publishLibraryChange } from "../../services/dataEvents";
 import { useTranslation } from "../../i18n/TranslationContext";
 import { InteractiveNeuralVortexBackground } from "../../components/ui/InteractiveNeuralVortexBackground";
@@ -30,7 +30,7 @@ export function FirstLaunchExperience({ preferences, onPreferencesChange, onComp
   };
   const sync = async () => {
     setState(s => ({...s, syncState:"syncing"}));
-    try { const result = await services.steamLibrarySync.sync(); publishLibraryChange(); setState(s => ({...s, syncState:"success", syncResult:result})); }
+    try { const result = await smartSync.syncLibrary("manual", true) as import("../../types").SteamLibrarySyncResult; publishLibraryChange(); setState(s => ({...s, syncState:"success", syncResult:result})); }
     catch { setState(s => ({...s, syncState:"error"})); }
   };
   const finish = async () => { setFinishing(true); try { await onComplete(state.preferences); } finally { setFinishing(false); } };

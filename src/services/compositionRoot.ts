@@ -36,6 +36,7 @@ import {
   RefreshHandlerError,
   skipped
 } from "./ApplicationRefreshCoordinator";
+import { SmartSyncCoordinator } from "./SmartSyncCoordinator";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -112,6 +113,16 @@ export const services = {
   steamLibrarySync: new SteamLibrarySyncService(steamProvider, games, sync),
   steamAchievementSync: new SteamAchievementSyncService(steamProvider, games, achievements, sync)
 };
+export const smartSync = new SmartSyncCoordinator(
+  steamOpenId,
+  services.steamLibrarySync,
+  services.steamAchievementSync,
+  games,
+  Date.now,
+  async () => {
+    await Promise.all([achievements.clearAchievements(), games.clearGames()]);
+  }
+);
 export const applicationRefresh = new ApplicationRefreshCoordinator();
 applicationRefresh.register({
   id: "local-library",
@@ -145,23 +156,11 @@ applicationRefresh.register({
   }
 });
 applicationRefresh.register({
-  id: "steam-library",
+  id: "smart-sync",
   run: async () => {
-    if (services.steamOpenId) {
-      if (!services.steamOpenId.getActiveSession()) return skipped("session_expired");
-    }
-    await services.steamLibrarySync.sync();
-    publishLibraryChange();
-  }
-});
-applicationRefresh.register({
-  id: "steam-achievements",
-  run: async () => {
-    if (services.steamOpenId) {
-      if (!services.steamOpenId.getActiveSession()) return skipped("session_expired");
-    }
-    await services.steamAchievementSync.sync();
-    publishLibraryChange();
+    if (!services.steamOpenId?.getActiveSession()) return skipped("session_expired");
+    if (typeof navigator !== "undefined" && !navigator.onLine) return skipped("offline");
+    await smartSync.manualRefresh();
   }
 });
 applicationRefresh.register({

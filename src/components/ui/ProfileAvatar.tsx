@@ -25,7 +25,7 @@ export function ProfileAvatar({
   return (
     <span className={`profile-avatar ${className ?? ""}`} aria-label={`${name} avatar`}>
       {!failed && src ? (
-        <img src={src} alt="" onError={() => setFailed(true)} />
+        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
       ) : (
         <span aria-hidden="true">{initials}</span>
       )}

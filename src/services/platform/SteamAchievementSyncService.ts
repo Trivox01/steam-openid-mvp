@@ -1,7 +1,6 @@
 import type {
   Game,
-  SteamAchievementGameSyncResult,
-  SteamAchievementSyncResult
+  SteamAchievementGameSyncResult
 } from "../../types";
 import type { AchievementRepository, GameRepository, SyncMetadataRepository } from "../../repositories/contracts";
 import { SteamIntegrationError } from "../../integrations/steam/SteamIntegrationError";
@@ -32,8 +31,6 @@ export class SteamAchievementSyncError extends Error {
 }
 
 export class SteamAchievementSyncService {
-  private active?: Promise<SteamAchievementSyncResult>;
-
   constructor(
     private provider: SteamProvider,
     private games: GameRepository,
@@ -41,17 +38,12 @@ export class SteamAchievementSyncService {
     private metadata: SyncMetadataRepository
   ) {}
 
-  sync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void } = {}) {
-    if (this.active) return this.active;
-    const operation = this.performSync(options).finally(() => {
-      if (this.active === operation) this.active = undefined;
-    });
-    this.active = operation;
-    return operation;
+  sync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void; signal?: AbortSignal } = {}) {
+    return this.performSync(options);
   }
 
-  syncGame(gameId: string) {
-    return this.sync({ gameIds: [gameId], maxGames: 1 }).catch(() => {
+  syncGame(gameId: string, signal?: AbortSignal) {
+    return this.sync({ gameIds: [gameId], maxGames: 1, signal }).catch(() => {
       throw new SteamAchievementSyncError("local_storage_failed");
     });
   }
@@ -60,7 +52,8 @@ export class SteamAchievementSyncService {
     return this.metadata.getSyncMetadata("steam-achievements");
   }
 
-  private async performSync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void }) {
+  private async performSync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void; signal?: AbortSignal }) {
+    options.signal?.throwIfAborted();
     const [allGames, allAchievements] = await Promise.all([
       this.games.getAllGames(),
       this.achievements.getAchievements()
@@ -77,7 +70,7 @@ export class SteamAchievementSyncService {
     const results = await mapWithConcurrency(eligible, DEFAULT_CONCURRENCY, async (game) => {
       const result = blockedBy
         ? failedGameResult(game, blockedBy)
-        : await this.syncOne(game, allAchievements.filter((item) => item.gameId === game.id));
+        : await this.syncOne(game, allAchievements.filter((item) => item.gameId === game.id), options.signal);
       if (result.errorCode && batchBlockingCodes.has(result.errorCode)) blockedBy = result.errorCode;
       processed += 1;
       options.onProgress?.(processed, eligible.length);
@@ -94,11 +87,12 @@ export class SteamAchievementSyncService {
     return summary;
   }
 
-  private async syncOne(game: Game, existing: import("../../types").Achievement[]): Promise<SteamAchievementGameSyncResult> {
+  private async syncOne(game: Game, existing: import("../../types").Achievement[], signal?: AbortSignal): Promise<SteamAchievementGameSyncResult> {
     const startedAt = performance.now();
     let stage: "steam" | "sqlite" = "steam";
     try {
-      const dto = await this.fetchWithRetry(game.appId);
+      const dto = await this.fetchWithRetry(game.appId, signal);
+      signal?.throwIfAborted();
       logDevelopmentSync(game.appId, game.name, "request", "success", dto.achievements.length, startedAt);
       const merged = mergeSteamAchievements(game.id, existing, dto);
       stage = "sqlite";
@@ -125,6 +119,7 @@ export class SteamAchievementSyncService {
         skipped: merged.skipped, warnings: dto.warnings
       };
     } catch (error) {
+      if (signal?.aborted) throw error;
       const code = stage === "sqlite" ? "local_storage_failed" : safeErrorCode(error);
       const unsupported = unsupportedCodes.has(code);
       await this.games.updateGame({
@@ -143,15 +138,15 @@ export class SteamAchievementSyncService {
     }
   }
 
-  private async fetchWithRetry(appId: string) {
+  private async fetchWithRetry(appId: string, signal?: AbortSignal) {
     try {
-      return await this.provider.getGameAchievementsWithMetadata(appId);
+      return await this.provider.getGameAchievementsWithMetadata(appId, signal);
     } catch (error) {
       const code = error instanceof SteamIntegrationError ? error.code :
         error instanceof Error ? error.message : "unknown";
       if (!isRetryableAchievementError(code)) throw error;
-      await delay(750);
-      return this.provider.getGameAchievementsWithMetadata(appId);
+      await delay(750, signal);
+      return this.provider.getGameAchievementsWithMetadata(appId, signal);
     }
   }
 }
@@ -199,6 +194,9 @@ function failedGameResult(game: Game, errorCode: string): SteamAchievementGameSy
   };
 }
 
-function delay(milliseconds: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+function delay(milliseconds: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, milliseconds);
+    signal?.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
 }

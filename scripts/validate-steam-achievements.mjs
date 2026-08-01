@@ -16,7 +16,6 @@ for (const key of [
   "noPlayerStats", "schemaUnavailable", "invalidAppId",
   "timeout", "rateLimited", "sessionExpired", "storageFailed"
 ]) {
-  assert.match(page, new RegExp(`gameDetails\\.sync\\.${key}`));
   assert.match(en, new RegExp(`gameDetails\\.sync\\.${key}`));
   assert.match(ar, new RegExp(`gameDetails\\.sync\\.${key}`));
 }

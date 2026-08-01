@@ -14,7 +14,6 @@ import { Surface } from "../components/ui/Surface";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { useLibraryRevision } from "../hooks/useLibraryRevision";
 import { useTranslation } from "../i18n/TranslationContext";
-import { publishLibraryChange } from "../services/dataEvents";
 import {
   calculateAchievementSummary,
   filterAndSortAchievements,
@@ -27,8 +26,7 @@ import {
   type AchievementView
 } from "../services/gameDetailsExperience";
 import { isAchievementUnlocked } from "../services/achievementData";
-import { services } from "../services/compositionRoot";
-import { SteamAchievementSyncError } from "../services/platform/SteamAchievementSyncService";
+import { services, smartSync } from "../services/compositionRoot";
 import type { Achievement, AchievementId, Game, GameId } from "../types";
 
 const PAGE_SIZE = 120;
@@ -54,6 +52,7 @@ export function GameDetailsPage({
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [, setSyncRevision] = useState(0);
 
   useEffect(() => setVisibleCount(PAGE_SIZE), [query, filter, sort, view, density, gameId]);
 
@@ -74,6 +73,11 @@ export function GameDetailsPage({
     return { filtered, summary, recent, rareUnlocked, rareOpportunities, insight };
   }, [game, allAchievements, query, filter, sort]);
 
+  useEffect(() => smartSync.subscribe(() => setSyncRevision((value) => value + 1)), []);
+  useEffect(() => {
+    if (game?.platform === "steam") void smartSync.syncGame(game.id, "page-open").catch(() => undefined);
+  }, [game?.id, game?.platform]);
+
   if (gameState.status === "loading" || achievementsState.status === "loading") {
     return <LoadingView size="md" label={t("gameDetails.allAchievements")} delay={120} />;
   }
@@ -85,19 +89,17 @@ export function GameDetailsPage({
 
   const syncAchievements = async () => {
     if (syncing || game.platform !== "steam") return;
+    if (!navigator.onLine) {
+      setSyncMessage(t("gameDetails.smartSync.saved"));
+      return;
+    }
     setSyncing(true);
     setSyncMessage("");
     try {
-      const result = await services.steamAchievementSync.syncGame(game.id);
-      const item = result.games.find((entry) => entry.gameId === game.id) ?? result.games[0];
-      setSyncMessage(syncResultMessage(item?.status, item?.errorCode, t));
-      publishLibraryChange();
-    } catch (error) {
-      setSyncMessage(syncResultMessage(
-        "failed",
-        error instanceof SteamAchievementSyncError ? error.code : "unknown",
-        t
-      ));
+      await smartSync.syncGame(game.id, "manual", true);
+      setSyncMessage(t("gameDetails.sync.success"));
+    } catch {
+      setSyncMessage(navigator.onLine ? t("gameDetails.sync.error") : t("gameDetails.smartSync.saved"));
     } finally {
       setSyncing(false);
     }
@@ -106,6 +108,12 @@ export function GameDetailsPage({
   const { filtered, summary, recent, rareUnlocked, rareOpportunities, insight } = experience;
   const visibleAchievements = filtered.slice(0, visibleCount);
   const syncState = getSyncState(game);
+  const smartStatus = smartSync.getStatus(`achievements:${game.id}`);
+  const smartMessage = smartStatus === "updating" || smartStatus === "queued"
+    ? t("gameDetails.smartSync.updating")
+    : smartStatus === "saved" ? t("gameDetails.smartSync.saved")
+      : smartStatus === "unavailable" ? t("gameDetails.smartSync.unavailable")
+        : smartStatus === "success" ? t("gameDetails.smartSync.updated") : "";
   const completion = summary.completion;
   const recommendedAchievement = insight.nextAchievement
     ? allAchievements.find((item) => item.id === insight.nextAchievement?.achievementId)
@@ -204,8 +212,8 @@ export function GameDetailsPage({
       <SyncPanel
         game={game}
         state={syncState}
-        syncing={syncing}
-        message={syncMessage}
+        syncing={syncing || smartSync.getStatus(`achievements:${game.id}`) === "updating"}
+        message={syncMessage || smartMessage}
         unknownCount={summary.unknownUnlockStates}
         onSync={syncAchievements}
       />
@@ -350,7 +358,7 @@ function SyncPanel({ game, state, syncing, message, unknownCount, onSync }: {
         {message && <small role={state === "failed" ? "alert" : "status"}>{message}</small>}
       </div>
       {game.platform === "steam" && (
-        <button className="primary-button" type="button" onClick={() => void onSync()} disabled={syncing}>
+        <button className="secondary-button" type="button" onClick={() => void onSync()} disabled={syncing}>
           <RefreshCw className={syncing ? "steam-sync-spinning" : ""} />
           {syncing ? t("gameDetails.syncing") : state === "failed" ? t("gameDetails.retry") : t("gameDetails.sync")}
         </button>
@@ -388,36 +396,6 @@ function getSyncState(game: Game): "never" | "success" | "partial" | "unsupporte
   if (game.achievementsSyncStatus === "partial") return "partial";
   if (game.achievementsSyncStatus === "unsupported") return "unsupported";
   return "failed";
-}
-
-function syncResultMessage(status: string | undefined, code: string | undefined, t: (key: string) => string) {
-  const codeMessages: Record<string, string> = {
-    steam_api_unavailable: "gameDetails.sync.apiUnavailable",
-    no_internet: "gameDetails.sync.apiUnavailable",
-    network: "gameDetails.sync.apiUnavailable",
-    invalid_response: "gameDetails.sync.apiUnavailable",
-    api_key_unavailable: "gameDetails.sync.apiKeyMissing",
-    empty_api_key: "gameDetails.sync.apiKeyMissing",
-    invalid_api_key: "gameDetails.sync.apiKeyMissing",
-    no_achievements: "gameDetails.sync.noAchievements",
-    game_unsupported: "gameDetails.sync.noAchievements",
-    game_not_owned: "gameDetails.sync.notOwned",
-    no_player_stats: "gameDetails.sync.noPlayerStats",
-    schema_unavailable: "gameDetails.sync.schemaUnavailable",
-    invalid_app_id: "gameDetails.sync.invalidAppId",
-    backend_not_configured: "gameDetails.sync.backendNotConfigured",
-    timeout: "gameDetails.sync.timeout",
-    rate_limited: "gameDetails.sync.rateLimited",
-    steam_not_connected: "gameDetails.sync.sessionExpired",
-    session_expired: "gameDetails.sync.sessionExpired",
-    local_storage_failed: "gameDetails.sync.storageFailed"
-  };
-  if (code && codeMessages[code]) return t(codeMessages[code]);
-  if (code === "private_library") return t("gameDetails.privateDescription");
-  if (status === "unsupported") return t("gameDetails.noAchievementsDescription");
-  if (status === "partial") return t("gameDetails.partialDescription");
-  if (status === "success") return t("gameDetails.sync.success");
-  return t("gameDetails.sync.error");
 }
 
 function emptyTitle(state: ReturnType<typeof getSyncState>, t: (key: string) => string) {

@@ -161,7 +161,7 @@ export function StatisticsPage({
               <div className="statistics-v2__achievement-list">{insights.topRareUnlocked.map((achievement) => {
                 const game = insights.gameById.get(achievement.gameId);
                 return <div key={achievement.id}>
-                  <img src={achievement.iconUrl} alt="" loading="lazy" />
+                  <img src={achievement.iconUrl} alt="" loading="lazy" decoding="async" />
                   <span><strong dir="auto">{achievement.title}</strong><small dir="auto">{game?.name}</small></span>
                   <b>{number.format(knownAchievementRarity(achievement)!)}%</b>
                 </div>;

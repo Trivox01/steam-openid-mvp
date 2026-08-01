@@ -7,7 +7,7 @@ import { ErrorView, LoadingView } from "./components/ui/StateViews";
 import { FirstLaunchExperience } from "./features/onboarding/FirstLaunchExperience";
 import type { AchievementId, GameId, NavigationView, PageId, UserPreferences, UserProfile } from "./types";
 import { initializeApplication } from "./services/initializationService";
-import { applicationRefresh, services } from "./services/compositionRoot";
+import { applicationRefresh, services, smartSync } from "./services/compositionRoot";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauriRuntime } from "./runtime/environment";
@@ -63,6 +63,11 @@ export function App() {
     }
   }, [setLanguage, setTheme, t]);
   useEffect(() => { void initialize(); }, [initialize]);
+  useEffect(() => {
+    if (initialization !== "ready") return;
+    smartSync.start();
+    return () => smartSync.stop();
+  }, [initialization]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "r")) return;
@@ -241,10 +246,11 @@ function GlobalRefreshStatus() {
   const [state, setState] = useState(applicationRefresh.getSnapshot());
   useEffect(() => applicationRefresh.subscribe(setState), []);
   if (state.status === "idle") return null;
+  const visibleStatus = state.status === "success" && state.results.some((item) => item.status === "skipped") ? "partial" : state.status;
   return (
-    <div className={`application-refresh-toast is-${state.status}`} role="status" aria-live="polite">
+    <div className={`application-refresh-toast is-${visibleStatus}`} role="status" aria-live="polite">
       {state.status === "refreshing" ? t("settings.refreshingAll")
-        : state.status === "success" ? t("settings.refreshAllSuccess")
+        : visibleStatus === "success" ? t("settings.refreshAllSuccess")
           : t("settings.refreshAllPartial")}
     </div>
   );

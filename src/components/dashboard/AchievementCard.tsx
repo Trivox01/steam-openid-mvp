@@ -5,7 +5,7 @@ export function AchievementCard({ achievement, game, onOpen }: { achievement: Ac
   return (
     <button className="achievement-card" onClick={() => onOpen?.(achievement)}>
       <div className="achievement-icon-wrap">
-        <img src={achievement.iconUrl} alt="" />
+        <img src={achievement.iconUrl} alt="" loading="lazy" decoding="async" />
         <span><Gem size={12} /></span>
       </div>
       <div className="achievement-copy">
