@@ -15,7 +15,7 @@ export const gameCard = {
   "gameCard.sync.saved": "Using saved data",
   "gameCard.sync.saved.tooltip": "Showing achievement data saved on this device.",
   "gameCard.sync.needsUpdate": "Needs update",
-  "gameCard.sync.needsUpdate.tooltip": "Achievement data could not be refreshed.",
+  "gameCard.sync.needsUpdate.tooltip": "Game data is out of date and needs to be synced.",
   "gameCard.sync.offline": "Offline",
   "gameCard.sync.offline.tooltip": "No saved achievement data is available while offline.",
   "gameCard.sync.unavailable": "Achievement data unavailable",

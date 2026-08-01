@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   MoreHorizontal,
   Bookmark,
+  RefreshCw,
 } from "lucide-react";
 import { useTranslation } from "../../i18n/TranslationContext";
 import type { GameCardActions, GameCardData } from "../../types/gameCard";
@@ -80,7 +81,7 @@ export const GameCard = memo(function GameCard({
         />
         <div className="nexus-game-card__media-gradient" aria-hidden="true" />
         <div className="nexus-game-card__badges">
-          {game.syncState && <StatusBadge className="nexus-game-card__sync-badge" tone={syncTone(game.syncState)} title={t(`gameCard.sync.${game.syncState}.tooltip`)}>{t(`gameCard.sync.${game.syncState}`)}</StatusBadge>}
+          {game.syncState && <StatusBadge className={`nexus-game-card__sync-badge nexus-game-card__sync-badge--${game.syncState}`} tone={syncTone(game.syncState)} title={t(`gameCard.sync.${game.syncState}.tooltip`)}>{game.syncState==="needsUpdate"&&<RefreshCw size={12} aria-hidden="true"/>}{t(`gameCard.sync.${game.syncState}`)}</StatusBadge>}
           {game.tracked && <StatusBadge className="nexus-game-card__tracked-badge" tone="accent"><Bookmark size={11} />{t("gameCard.tracked")}</StatusBadge>}
           {game.hidden && <StatusBadge tone="neutral"><EyeOff size={12} />{t("gameCard.hidden")}</StatusBadge>}
         </div>

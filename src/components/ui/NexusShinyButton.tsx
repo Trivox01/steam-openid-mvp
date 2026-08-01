@@ -1,6 +1,6 @@
 import type {ButtonHTMLAttributes,ReactNode} from "react";
 
-export type NexusShinyVariant="play"|"install"|"store"|"running"|"neutral"|"danger";
+export type NexusShinyVariant="play"|"install"|"store"|"running"|"neutral"|"warning"|"danger";
 export type NexusShinySize="compact"|"hero";
 type Props=Omit<ButtonHTMLAttributes<HTMLButtonElement>,"children">&{label:string;icon:ReactNode;loading?:boolean;variant:NexusShinyVariant;size:NexusShinySize};
 

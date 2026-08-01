@@ -27,6 +27,8 @@ const synced={...makeGames(1)[0],achievementsSyncStatus:"success",achievementsSy
 assert.equal(deriveGameCardSyncState(synced,"idle",true),"updated");
 assert.equal(deriveGameCardSyncState({...synced,achievementsSyncStatus:"error"},"idle",true),"needsUpdate","failed refresh is never labelled updated");
 assert.equal(deriveGameCardSyncState(synced,"updating",true),"updating");
+assert.equal(deriveGameCardSyncState({...synced,achievementsSyncStatus:"error"},"updating",false),"updating","active update has highest visual priority");
+assert.equal(deriveGameCardSyncState({...synced,achievementsSyncStatus:"error"},"idle",false),"needsUpdate","failed sync outranks offline saved state");
 assert.equal(deriveGameCardSyncState(synced,"success",false),"saved","offline retains cached success");
 assert.equal(deriveGameCardSyncState({...synced,totalAchievements:0,achievementsSyncedAt:undefined},"idle",false),"offline");
 assert.equal(deriveGameCardSyncState({...synced,achievementsSyncStatus:"unsupported",achievementsSyncedAt:undefined,totalAchievements:0},"idle",true),"unavailable");
@@ -46,3 +48,7 @@ assert.match(styles,/prefers-reduced-motion:reduce/);
 assert.match(styles,/-webkit-line-clamp:2/);
 assert.match(styles,/forced-colors:active/);
 assert.match(styles,/inset-inline-start/);
+assert.match(cardSource,/RefreshCw/);
+assert.match(cardSource,/sync-badge--\$\{game\.syncState\}/);
+assert.match(styles,/sync-badge--needsUpdate[^}]*#f4a340/);
+assert.match(fs.readFileSync("src/locales/ar/gameCard.ts","utf8"),/تحتاج إلى تحديث/);

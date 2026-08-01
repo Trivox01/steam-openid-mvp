@@ -5,10 +5,10 @@ export type GameCardSyncState = "updated" | "updating" | "saved" | "needsUpdate"
 
 export function deriveGameCardSyncState(game: Game, runtimeStatus: SmartSyncStatus, online: boolean): GameCardSyncState {
   const hasCachedAchievements = game.totalAchievements > 0 || Boolean(game.achievementsSyncedAt);
-  if (!online) return hasCachedAchievements ? "saved" : "offline";
   if (runtimeStatus === "updating" || runtimeStatus === "queued") return "updating";
-  if (runtimeStatus === "saved") return "saved";
   if (runtimeStatus === "unavailable" || game.achievementsSyncStatus === "error" || game.achievementsSyncStatus === "partial") return "needsUpdate";
+  if (!online) return hasCachedAchievements ? "saved" : "offline";
+  if (runtimeStatus === "saved") return "saved";
   if (game.achievementsSyncStatus === "unsupported") return "unavailable";
   if (game.achievementsSyncStatus === "success" && game.achievementsSyncedAt) return "updated";
   if (hasCachedAchievements) return "saved";
