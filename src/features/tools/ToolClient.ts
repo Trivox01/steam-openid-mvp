@@ -1,5 +1,5 @@
 import type { BackendSessionSource } from "../developer-center/AuthorizationStore";
-import type { NexusTool, ToolBadge, ToolBadgeDraft, ToolCategory, ToolCategoryDraft, ToolDraft, ToolRatingSummary } from "./types";
+import type { NexusTool, ToolBadge, ToolBadgeDraft, ToolCategory, ToolCategoryDraft, ToolDraft, ToolRatingSummary, ToolReviewAdminPage, ToolReviewPage, ToolReviewReason, ToolReviewReportPage, ToolReviewView } from "./types";
 export class ToolClient {
   constructor(private readonly baseUrl: string, private readonly sessions?: BackendSessionSource) {}
   list(params = new URLSearchParams(), signal?: AbortSignal) { return this.request<{ items: NexusTool[]; total: number; page: number; pageSize: number }>(`/api/tools?${params}`, { signal }, false).then(x => ({ ...x, items: x.items.map(tool => this.resolveAssets(tool)) })); }
@@ -19,6 +19,16 @@ export class ToolClient {
   categories() { return this.request<{ items: ToolCategory[] }>("/api/admin/tool-categories?archived=true"); }
   saveCategory(value: ToolCategoryDraft, id?: string) { return this.request<ToolCategory>(id ? `/api/admin/tool-categories/${id}` : "/api/admin/tool-categories", { method: id ? "PATCH" : "POST", body: JSON.stringify(value) }); }
   archiveCategory(id: string, value: boolean) { return this.request<ToolCategory>(`/api/admin/tool-categories/${id}/${value ? "archive" : "reactivate"}`, { method: "POST" }); }
+  reviews(toolId: string, params: URLSearchParams, signal?: AbortSignal) { return this.request<ToolReviewPage>(`/api/tools/${encodeURIComponent(toolId)}/reviews?${params}`, { signal }, false); }
+  myReview(toolId: string) { return this.request<{ review: ToolReviewView | null }>(`/api/tools/${encodeURIComponent(toolId)}/my-review`).then(value => value.review); }
+  saveReview(toolId: string, draft: { title?: string; body: string }) { return this.request<ToolReviewView>(`/api/tools/${encodeURIComponent(toolId)}/my-review`, { method: "PUT", body: JSON.stringify(draft) }); }
+  removeReview(toolId: string) { return this.request<void>(`/api/tools/${encodeURIComponent(toolId)}/my-review`, { method: "DELETE" }); }
+  reportReview(toolId: string, reviewId: string, reason: ToolReviewReason, details?: string) { return this.request<{ report: unknown }>(`/api/tools/${encodeURIComponent(toolId)}/reviews/${encodeURIComponent(reviewId)}/report`, { method: "POST", body: JSON.stringify({ ...(details ? { details } : {}), reason }) }); }
+  adminReviews(params = new URLSearchParams()) { return this.request<ToolReviewAdminPage>(`/api/admin/tool-reviews?${params}`); }
+  moderateReview(id: string, action: "hide" | "restore" | "remove", reason?: string) { return this.request<ToolReviewAdminPage["items"][number]>(`/api/admin/tool-reviews/${id}/${action}`, { method: "POST", ...(action === "restore" ? {} : { body: JSON.stringify(reason ? { reason } : {}) }) }); }
+  adminReports(params = new URLSearchParams()) { return this.request<ToolReviewReportPage>(`/api/admin/tool-review-reports?${params}`); }
+  resolveReport(id: string) { return this.request<{ report: unknown }>(`/api/admin/tool-review-reports/${id}/resolve`, { method: "POST" }); }
+  dismissReport(id: string) { return this.request<{ report: unknown }>(`/api/admin/tool-review-reports/${id}/dismiss`, { method: "POST" }); }
   private resolveAssets(tool: NexusTool) { return { ...tool, ...(tool.iconUrl ? { iconUrl: new URL(tool.iconUrl, this.baseUrl).toString() } : {}), ...(tool.coverUrl ? { coverUrl: new URL(tool.coverUrl, this.baseUrl).toString() } : {}) }; }
   private async request<T>(path: string, init: RequestInit = {}, auth = true) {
     const session = auth ? this.sessions?.getActiveSession() : undefined;

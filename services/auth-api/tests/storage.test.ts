@@ -52,15 +52,22 @@ test("cleanup is bounded and removes retained terminal memory records", async ()
 
 test("PostgreSQL migrations are ordered and contain no secret-bearing columns", async () => {
   const migrations = await loadPostgresMigrations();
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   const sql = migrations.map((item) => item.sql).join("\n").toLowerCase();
   assert.match(sql, /create table tool_definitions/);
   assert.match(sql, /create table tool_badges/);
   assert.match(sql, /create table tool_categories/);
   assert.match(sql, /create table tool_badge_assignments/);
   assert.match(sql, /create table tool_ratings/);
+  assert.match(sql, /create table tool_reviews/);
+  assert.match(sql, /create table tool_review_reports/);
   assert.match(sql, /unique\s*\(\s*tool_id\s*,\s*user_id\s*\)/);
   assert.match(sql, /check\s*\(\s*rating\s*between\s*1\s*and\s*5\s*\)/);
+  assert.match(sql, /char_length\(body\) between 1 and 2500/);
+  assert.match(sql, /status in \('active','hidden','removed'\)/);
+  assert.match(sql, /unique\s*\(\s*review_id\s*,\s*reporter_user_id\s*\)/);
+  assert.match(sql, /tool_reviews_tool_status_created_idx/);
+  assert.match(sql, /tool_review_reports_status_created_idx/);
   assert.match(sql, /references\s+tool_definitions\s*\(\s*id\s*\)/);
   assert.match(sql, /references\s+users\s*\(\s*id\s*\)/);
   assert.match(sql, /tool_ratings_tool_summary_idx/);
@@ -88,6 +95,6 @@ test("authorization schema validation derives its permission count from the regi
     "utf8"
   );
   assert.match(source, /PERMISSION_KEYS\.length/);
-  assert.equal(PERMISSION_KEYS.length, 26);
+  assert.equal(PERMISSION_KEYS.length, 30);
   assert.doesNotMatch(source, /permissions\[0\]\?\.count\)\s*!==\s*18/);
 });

@@ -36,6 +36,7 @@
     "test:arabic-typography": "node --experimental-strip-types scripts/validate-arabic-typography.mjs",
     "test:tools": "node --experimental-strip-types scripts/validate-tools.mjs",
     "test:tool-ratings": "node --experimental-strip-types scripts/validate-tool-ratings.mjs",
+    "test:tool-reviews": "node --experimental-strip-types scripts/validate-tool-reviews.mjs",
     "test:native-ux": "node --experimental-strip-types scripts/validate-native-ux.mjs",
     "test:achievement-icons": "node --experimental-strip-types scripts/validate-achievement-icons.mjs",
     "test:ux-copy": "node --experimental-strip-types scripts/validate-ux-microcopy.mjs",

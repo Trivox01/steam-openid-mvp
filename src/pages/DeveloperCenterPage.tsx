@@ -24,6 +24,14 @@ const ToolsManagementPanel = lazy(async () => {
   const module = await import("../features/developer-center/tools/ToolsManagementPanel");
   return { default: module.ToolsManagementPanel };
 });
+const ReviewModerationPanel = lazy(async () => {
+  const module = await import("../features/developer-center/tools/ReviewModerationPanel");
+  return { default: module.ReviewModerationPanel };
+});
+const ReviewReportsPanel = lazy(async () => {
+  const module = await import("../features/developer-center/tools/ReviewReportsPanel");
+  return { default: module.ReviewReportsPanel };
+});
 const BadgeAssignmentsPanel = lazy(async () => {
   const module = await import(
     "../features/developer-center/assignments/BadgeAssignmentsPanel"
@@ -51,6 +59,8 @@ const sections = [
   ,["tools", Wrench, false]
   ,["toolBadges", BadgeCheck, false]
   ,["toolCategories", FolderTree, false]
+  ,["toolReviews", Flag, false]
+  ,["toolReviewReports", Flag, false]
 ] as const;
 
 export function DeveloperCenterPage({
@@ -59,7 +69,7 @@ export function DeveloperCenterPage({
   snapshot: AuthorizationSnapshot;
 }) {
   const { t } = useTranslation();
-  const [activeSection, setActiveSection] = useState<"overview" | "users" | "badges" | "assignments" | "tools" | "toolBadges" | "toolCategories">("overview");
+  const [activeSection, setActiveSection] = useState<"overview" | "users" | "badges" | "assignments" | "tools" | "toolBadges" | "toolCategories" | "toolReviews" | "toolReviewReports">("overview");
   const highestRole = [...snapshot.roles].sort(
     (left, right) => right.priority - left.priority
   )[0];
@@ -90,6 +100,8 @@ export function DeveloperCenterPage({
             if (id === "tools" && !snapshot.permissions.includes("tools.manage")) return null;
             if (id === "toolBadges" && !snapshot.permissions.includes("tool_badges.manage")) return null;
             if (id === "toolCategories" && !snapshot.permissions.includes("tool_categories.manage")) return null;
+            if (id === "toolReviews" && !snapshot.permissions.includes("tools.moderate_reviews")) return null;
+            if (id === "toolReviewReports" && !snapshot.permissions.includes("tools.moderate_reviews")) return null;
             const disabled = originallyDisabled && id !== "assignments" && id !== "users";
             return (
               <button
@@ -104,7 +116,7 @@ export function DeveloperCenterPage({
                     id === "overview" ||
                     id === "users" ||
                     id === "badges" ||
-                    id === "assignments" || id === "tools" || id === "toolBadges" || id === "toolCategories"
+                    id === "assignments" || id === "tools" || id === "toolBadges" || id === "toolCategories" || id === "toolReviews" || id === "toolReviewReports"
                   ) setActiveSection(id);
                 }}
               >
@@ -138,6 +150,10 @@ export function DeveloperCenterPage({
           <Suspense fallback={<Surface className="badge-state">{t("state.loading")}</Surface>}><ToolsManagementPanel client={services.tools} mode="badges" /></Suspense>
         ) : activeSection === "toolCategories" ? (
           <Suspense fallback={<Surface className="badge-state">{t("state.loading")}</Surface>}><ToolsManagementPanel client={services.tools} mode="categories" /></Suspense>
+        ) : activeSection === "toolReviews" ? (
+          <Suspense fallback={<Surface className="badge-state">{t("state.loading")}</Surface>}><ReviewModerationPanel client={services.tools} canOpenReports={snapshot.permissions.includes("tools.moderate_reviews")} onOpenReports={() => setActiveSection("toolReviewReports")} /></Suspense>
+        ) : activeSection === "toolReviewReports" ? (
+          <Suspense fallback={<Surface className="badge-state">{t("state.loading")}</Surface>}><ReviewReportsPanel client={services.tools} onBack={() => setActiveSection("toolReviews")} /></Suspense>
         ) : <div className="developer-overview">
           <div className="developer-overview-heading">
             <div>

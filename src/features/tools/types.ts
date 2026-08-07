@@ -6,3 +6,13 @@ export interface NexusTool{id:string;name:string;slug:string;shortDescription:st
 export interface ToolDraft{name:string;slug:string;shortDescription:string;fullDescription:string;version:string;developerName:string;externalDownloadUrl:string;downloadTrust:ToolTrustKind;officialWebsiteUrl?:string;iconAssetId?:string;coverAssetId?:string;categoryId?:string;badgeIds:string[];isFeatured:boolean;isActive:boolean;publishedAt?:string}
 export type ToolBadgeDraft=Pick<ToolBadge,"name"|"slug"|"color"|"iconKey"|"displayOrder"|"isActive">;
 export type ToolCategoryDraft=Pick<ToolCategory,"name"|"slug"|"description"|"displayOrder"|"isActive">;
+export type ToolReviewStatus="active"|"hidden"|"removed";
+export type ToolReviewSort="newest"|"highest_rating"|"lowest_rating";
+export type ToolReviewReason="spam"|"harassment"|"unsafe_link"|"misleading"|"inappropriate"|"other";
+export type ToolReviewReportStatus="open"|"resolved"|"dismissed";
+export interface ToolReviewView{id:string;toolId:string;userId:string;title?:string;body:string;status:ToolReviewStatus;createdAt:string;updatedAt:string;moderatedAt?:string;moderatedBy?:string;moderationReason?:string;edited:boolean;displayName:string;avatarUrl?:string;rating:number|null}
+export interface ToolReviewPage{items:ToolReviewView[];total:number;page:number;pageSize:number}
+export interface ToolReviewAdminView{id:string;toolId:string;userId:string;displayName:string;title?:string;body:string;status:ToolReviewStatus;rating:number|null;reportsCount:number;tool:{id:string;name:string;slug:string};createdAt:string;updatedAt:string}
+export interface ToolReviewAdminPage{items:ToolReviewAdminView[];total:number;page:number;pageSize:number}
+export interface ToolReviewReportView{id:string;reviewId:string;reporterUserId:string;reason:ToolReviewReason;details?:string;status:ToolReviewReportStatus;createdAt:string;resolvedAt?:string;resolvedBy?:string;reporterName:string;reporterAvatarUrl?:string;tool:{id:string;name:string;slug:string};review:{id:string;userId:string;authorName:string;title?:string;body:string;status:ToolReviewStatus;createdAt:string;updatedAt:string;moderatedAt?:string;moderatedBy?:string;moderationReason?:string}}
+export interface ToolReviewReportPage{items:ToolReviewReportView[];total:number;page:number;pageSize:number}

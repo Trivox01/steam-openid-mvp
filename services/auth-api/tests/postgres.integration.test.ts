@@ -18,8 +18,11 @@ import { PostgresUserRepository } from "../src/storage/postgres/postgresUserRepo
 import { UserService } from "../src/users/userService.ts";
 import { PostgresToolRepositories, PostgresToolBadgeRepository, PostgresToolCategoryRepository } from "../src/storage/postgres/postgresToolRepositories.ts";
 import { PostgresToolRatingRepository } from "../src/storage/postgres/postgresToolRatingRepository.ts";
+import { PostgresToolReviewRepository } from "../src/storage/postgres/postgresToolReviewRepository.ts";
+import { PostgresToolReviewReportRepository } from "../src/storage/postgres/postgresToolReviewReportRepository.ts";
 import { ToolService } from "../src/tools/toolService.ts";
 import { ToolRatingService } from "../src/tools/toolRatingService.ts";
+import { ToolReviewService, ToolReviewModerationService } from "../src/tools/toolReviewService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -55,7 +58,7 @@ test("PostgreSQL repository integration and concurrency", {
       "SELECT count(*) FROM permissions"
     );
     assert.equal(Number(roleCount.rows[0].count), 5);
-    assert.equal(Number(permissionCount.rows[0].count), 26);
+    assert.equal(Number(permissionCount.rows[0].count), 30);
     const badgeRepository = new PostgresBadgeRepository(pool);
     await badgeRepository.validateSchema();
     const cleanupStorageKey =
@@ -128,6 +131,86 @@ test("PostgreSQL repository integration and concurrency", {
     assert.deepEqual(ratingAudit.rows.map((row) => row.action).sort(), ["tool.rating_created", "tool.rating_created", "tool.rating_denied", "tool.rating_denied", "tool.rating_removed", "tool.rating_updated"].sort());
     for (const row of ratingAudit.rows) assert.doesNotMatch(JSON.stringify(row.metadata_json), /steam|account|token|secret|session/i);
     assert.equal((await pool.query<{ count: string }>("SELECT count(*) FROM tool_ratings WHERE user_id=$1", [secondUser.id])).rows[0].count, "0");
+    const reviewRepository = new PostgresToolReviewRepository(pool);
+    await reviewRepository.validateSchema();
+    const reportRepository = new PostgresToolReviewReportRepository(pool);
+    await reportRepository.validateSchema();
+    const reviews = new ToolReviewService(reviewRepository, reportRepository);
+    const moderation = new ToolReviewModerationService(reviewRepository, reportRepository);
+    const reviewTool = await tools.create({ ...toolDraft, slug: "review-tool", name: "Review Tool" }, user.id);
+    const createdReview = await reviews.save(reviewTool.id, user.id, { title: "Great", body: "Works well" });
+    assert.equal(createdReview.created, true);
+    assert.equal((await reviews.save(reviewTool.id, user.id, { title: "Great", body: "Works well" })).created, false);
+    await reviews.save(reviewTool.id, user.id, { body: "Updated body" });
+    let reviewView = await reviews.list(reviewTool.id, { page: 1, pageSize: 20, sort: "newest" });
+    assert.equal(reviewView.total, 1);
+    assert.equal(reviewView.items[0].body, "Updated body");
+    assert.equal(reviewView.items[0].edited, true);
+    assert.equal(reviewView.items[0].rating, null);
+    await ratings.save(reviewTool.id, user.id, { rating: 4 });
+    reviewView = await reviews.list(reviewTool.id, { page: 1, pageSize: 20, sort: "newest" });
+    assert.equal(reviewView.items[0].rating, 4);
+    assert.equal(reviewView.items[0].title, undefined);
+    const concurrentReviews = await Promise.allSettled([
+      reviewRepository.save(reviewTool.id, secondUser.id, { body: "Concurrent A" }),
+      reviewRepository.save(reviewTool.id, secondUser.id, { body: "Concurrent B" }),
+      reviewRepository.save(reviewTool.id, secondUser.id, { body: "Concurrent C" })
+    ]);
+    assert.equal(concurrentReviews.every((item) => item.status === "fulfilled"), true);
+    assert.equal((await reviews.list(reviewTool.id, { page: 1, pageSize: 20, sort: "newest" })).total, 2);
+    assert.equal((await reviews.list(reviewTool.id, { page: 1, pageSize: 20, sort: "highest_rating" })).items[0].rating, 4);
+    const report = await reviews.report(createdReview.review.id, secondUser.id, { reason: "spam" });
+    assert.equal(report.report.status, "open");
+    await assert.rejects(() => reviews.report(createdReview.review.id, secondUser.id, { reason: "spam" }), /REVIEW_ALREADY_REPORTED/);
+    await assert.rejects(() => reviews.report(createdReview.review.id, user.id, { reason: "spam" }), /REVIEW_SELF_REPORT_DENIED/);
+    assert.equal((await moderation.listReports({ status: "open", page: 1, pageSize: 20 })).total, 1);
+    const openReports = await moderation.listReports({ page: 1, pageSize: 20 });
+    assert.equal(openReports.items[0].review.body, "Updated body");
+    assert.equal(openReports.items[0].tool.slug, "review-tool");
+    assert.equal(openReports.items[0].review.authorName, "Nexus User");
+    await moderation.hideReview(createdReview.review.id, user.id, { reason: "off topic" });
+    assert.equal((await reviewRepository.getById(createdReview.review.id))?.status, "hidden");
+    assert.equal((await reviewRepository.getById(createdReview.review.id))?.moderationReason, "off topic");
+    await moderation.restoreReview(createdReview.review.id, user.id);
+    assert.equal((await reviewRepository.getById(createdReview.review.id))?.status, "active");
+    await moderation.resolveReport(report.report.id, user.id);
+    assert.equal((await moderation.listReports({ status: "resolved", page: 1, pageSize: 20 })).total, 1);
+    await moderation.dismissReport(report.report.id, user.id);
+    assert.equal((await moderation.listReports({ status: "resolved", page: 1, pageSize: 20 })).total, 1);
+    assert.equal((await moderation.listReports({ status: "dismissed", page: 1, pageSize: 20 })).total, 0);
+    await moderation.removeReview(createdReview.review.id, user.id, {});
+    assert.equal((await reviewRepository.getById(createdReview.review.id))?.status, "removed");
+    await assert.rejects(() => reviews.save(reviewTool.id, user.id, { body: "nope" }), /REVIEW_NOT_EDITABLE/);
+    assert.equal((await reviews.list(reviewTool.id, { page: 1, pageSize: 20, sort: "newest" })).total, 1);
+    const reviewAudit = await pool.query<{ action: string; metadata_json: Record<string, unknown> }>(
+      "SELECT action, metadata_json FROM audit_events WHERE target_type='tool' AND target_id=$1 AND actor_user_id=$2 AND action LIKE 'tool.review_%'",
+      [reviewTool.id, user.id]
+    );
+    assert.deepEqual(reviewAudit.rows.map((row) => row.action).sort(), ["tool.review_created", "tool.review_denied", "tool.review_hidden", "tool.review_moderated_removed", "tool.review_restored", "tool.review_updated", "tool.review_updated"].sort());
+    for (const row of reviewAudit.rows) assert.doesNotMatch(JSON.stringify(row.metadata_json), /steam|account|token|secret|session|off topic|body|title/i);
+    const reportAudit = await pool.query<{ action: string; metadata_json: Record<string, unknown> }>(
+      "SELECT action, metadata_json FROM audit_events WHERE target_type='tool_review_report' ORDER BY id"
+    );
+    assert.deepEqual(reportAudit.rows.map((row) => row.action).sort(), ["tool.review_reported", "tool.review_report_resolved"].sort());
+    assert.deepEqual(reportAudit.rows[0].metadata_json, { reportId: report.report.id, reason: "spam" });
+    for (const row of reportAudit.rows) assert.doesNotMatch(JSON.stringify(row.metadata_json), /steam|account|token|secret|session/i);
+    await assert.rejects(() => reviews.save("00000000-0000-4000-8000-000000000000", user.id, { body: "x" }), /TOOL_NOT_FOUND/);
+    const adminReported = await moderation.listReviews({ page: 1, pageSize: 20, reportedOnly: true });
+    assert.equal(adminReported.total, 1);
+    assert.equal(adminReported.items[0].reportsCount, 1);
+    assert.equal(adminReported.items[0].status, "removed");
+    assert.equal(adminReported.items[0].tool.slug, "review-tool");
+    assert.equal(adminReported.items[0].rating, 4);
+    assert.equal(adminReported.items[0].displayName, "Nexus User");
+    const adminActive = await moderation.listReviews({ page: 1, pageSize: 20, status: "active" });
+    assert.equal(adminActive.total, 1);
+    assert.equal(adminActive.items[0].reportsCount, 0);
+    const adminRemoved = await moderation.listReviews({ page: 1, pageSize: 20, status: "removed" });
+    assert.equal(adminRemoved.total, 1);
+    assert.equal(adminRemoved.items[0].reportsCount, 1);
+    await tools.archive(reviewTool.id, user.id);
+    await assert.rejects(() => reviews.save(reviewTool.id, user.id, { body: "y" }), /TOOL_ARCHIVED/);
+    assert.equal((await reviews.list(reviewTool.id, { page: 1, pageSize: 20, sort: "newest" })).total, 1);
     const badgeDraft = {
       slug: "staging-founder", displayName: "Staging Founder",
       description: "Migration validation", category: "special" as const,

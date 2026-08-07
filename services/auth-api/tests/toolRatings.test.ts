@@ -20,6 +20,9 @@ import { InMemoryToolRepository } from "../src/tools/toolRepository.ts";
 import { ToolService } from "../src/tools/toolService.ts";
 import { InMemoryToolRatingRepository } from "../src/tools/toolRatingRepository.ts";
 import { ToolRatingService } from "../src/tools/toolRatingService.ts";
+import { InMemoryToolReviewRepository } from "../src/tools/toolReviewRepository.ts";
+import { InMemoryToolReviewReportRepository } from "../src/tools/toolReviewReportRepository.ts";
+import { ToolReviewService, ToolReviewModerationService } from "../src/tools/toolReviewService.ts";
 import { ToolError } from "../src/tools/contracts.ts";
 
 function setup() {
@@ -222,6 +225,11 @@ async function startRatingHarness(limiter = new PollingRateLimiter({ minimumInte
   const repository = new InMemoryToolRepository(badges, categories);
   const tools = new ToolService(repository, badges, categories);
   const ratings = new ToolRatingService(new InMemoryToolRatingRepository(repository));
+  const reviewUsers = { displayName: async () => undefined, avatarUrl: async () => undefined };
+  const reviewRepository = new InMemoryToolReviewRepository(repository, reviewUsers);
+  const reportRepository = new InMemoryToolReviewReportRepository(repository, reviewRepository, reviewUsers);
+  const toolReviews = new ToolReviewService(reviewRepository, reportRepository);
+  const toolReviewModeration = new ToolReviewModerationService(reviewRepository, reportRepository);
   const tool = await tools.create({ ...draft, slug: "rating-route-tool", name: "Rating Route Tool" }, owner.id);
   const config: AuthApiConfig = {
     nodeEnv: "test", port: 8787,
@@ -244,7 +252,11 @@ async function startRatingHarness(limiter = new PollingRateLimiter({ minimumInte
     tools,
     toolAssets: { icon: new MemoryBadgeAssetStorage(), cover: new MemoryBadgeAssetStorage(), routed: new MemoryBadgeAssetStorage() },
     toolRatings: ratings,
-    toolRatingRateLimiter: limiter
+    toolRatingRateLimiter: limiter,
+    toolReviews,
+    toolReviewModeration,
+    toolReviewRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
+    toolReportRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 })
   }));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();

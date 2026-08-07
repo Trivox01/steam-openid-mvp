@@ -46,6 +46,7 @@ import { handleTools, isToolPath } from "./routes/tools.ts";
 import type { ToolService } from "./tools/toolService.ts";
 import type { ToolAssetStorages } from "./tools/toolAssetStorage.ts";
 import type { ToolRatingService } from "./tools/toolRatingService.ts";
+import type { ToolReviewModerationService, ToolReviewService } from "./tools/toolReviewService.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
@@ -58,6 +59,10 @@ type RouterDependencies = SteamAuthRouteDependencies & {
   toolAssets?: ToolAssetStorages;
   toolRatings?: ToolRatingService;
   toolRatingRateLimiter?: PollingRateLimiter;
+  toolReviews?: ToolReviewService;
+  toolReviewModeration?: ToolReviewModerationService;
+  toolReviewRateLimiter?: PollingRateLimiter;
+  toolReportRateLimiter?: PollingRateLimiter;
 };
 
 export function createRouter(
@@ -119,7 +124,7 @@ export function createRouter(
       Boolean(steamAuthDependencies?.steamData) &&
       Boolean(steamAuthDependencies?.steamDataRateLimiter) &&
       Boolean(steamAuthDependencies?.sessions);
-    const isToolsRoute = isToolPath(url.pathname) && Boolean(steamAuthDependencies?.tools) && Boolean(steamAuthDependencies?.toolAssets) && Boolean(steamAuthDependencies?.toolRatings) && Boolean(steamAuthDependencies?.toolRatingRateLimiter) && Boolean(steamAuthDependencies?.badges) &&
+    const isToolsRoute = isToolPath(url.pathname) && Boolean(steamAuthDependencies?.tools) && Boolean(steamAuthDependencies?.toolAssets) && Boolean(steamAuthDependencies?.toolRatings) && Boolean(steamAuthDependencies?.toolRatingRateLimiter) && Boolean(steamAuthDependencies?.toolReviews) && Boolean(steamAuthDependencies?.toolReviewModeration) && Boolean(steamAuthDependencies?.toolReviewRateLimiter) && Boolean(steamAuthDependencies?.toolReportRateLimiter) && Boolean(steamAuthDependencies?.badges) &&
       Boolean(steamAuthDependencies?.authorization) && Boolean(steamAuthDependencies?.sessions);
     if (
       isSteamAuthRoute ||
@@ -177,6 +182,7 @@ export function createRouter(
         assets: steamAuthDependencies!.badges!.repository,
         toolAssets: steamAuthDependencies!.toolAssets!
         ,ratings:steamAuthDependencies!.toolRatings!,ratingRateLimiter:steamAuthDependencies!.toolRatingRateLimiter!
+        ,reviews:steamAuthDependencies!.toolReviews!,moderation:steamAuthDependencies!.toolReviewModeration!,reviewRateLimiter:steamAuthDependencies!.toolReviewRateLimiter!,reportRateLimiter:steamAuthDependencies!.toolReportRateLimiter!
       })
     ) return;
     if (

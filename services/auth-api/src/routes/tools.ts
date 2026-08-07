@@ -8,10 +8,12 @@ import type { BadgeRepository } from "../badges/badgeRepository.ts";
 import { BadgeAssetNotFoundError, validateBadgeAsset, type BadgeAssetStorage } from "../badges/badgeAssetStorage.ts";
 import { persistBadgeAsset } from "../badges/badgeAssetLifecycle.ts";
 import type { ToolRatingService } from "../tools/toolRatingService.ts";
+import { parseReviewQuery, parseReportQuery, parseAdminReviewQuery } from "../tools/toolReviewService.ts";
+import type { ToolReviewModerationService, ToolReviewService } from "../tools/toolReviewService.ts";
 import { PollingRateLimitError, type PollingRateLimiter } from "../security/pollingRateLimiter.ts";
 
-type Deps = { tools: ToolService; ratings:ToolRatingService; ratingRateLimiter:PollingRateLimiter; authorization: AuthorizationService; sessions: SessionTokenService; assets: BadgeRepository; toolAssets: { icon: BadgeAssetStorage; cover: BadgeAssetStorage; routed: BadgeAssetStorage } };
-export function isToolPath(path: string) { return path === "/api/tools" || /^\/api\/tools\/[a-z0-9-]+$/.test(path) || /^\/api\/tools\/[0-9a-f-]+\/(rating-summary|my-rating)$/i.test(path) || /^\/api\/tool-assets\/[0-9a-f-]+\/content$/i.test(path) || path.startsWith("/api/admin/tools") || path.startsWith("/api/admin/tool-assets") || path.startsWith("/api/admin/tool-badges") || path.startsWith("/api/admin/tool-categories"); }
+type Deps = { tools: ToolService; ratings:ToolRatingService; ratingRateLimiter:PollingRateLimiter; authorization: AuthorizationService; sessions: SessionTokenService; assets: BadgeRepository; toolAssets: { icon: BadgeAssetStorage; cover: BadgeAssetStorage; routed: BadgeAssetStorage }; reviews: ToolReviewService; moderation: ToolReviewModerationService; reviewRateLimiter: PollingRateLimiter; reportRateLimiter: PollingRateLimiter };
+export function isToolPath(path: string) { return path === "/api/tools" || /^\/api\/tools\/[a-z0-9-]+$/.test(path) || /^\/api\/tools\/[0-9a-f-]+\/(rating-summary|my-rating)$/i.test(path) || /^\/api\/tools\/[0-9a-f-]+\/(reviews|my-review)$/i.test(path) || /^\/api\/tools\/[0-9a-f-]+\/reviews\/[0-9a-f-]+\/report$/i.test(path) || /^\/api\/tool-assets\/[0-9a-f-]+\/content$/i.test(path) || path.startsWith("/api/admin/tools") || path.startsWith("/api/admin/tool-assets") || path.startsWith("/api/admin/tool-badges") || path.startsWith("/api/admin/tool-categories") || path.startsWith("/api/admin/tool-reviews") || path.startsWith("/api/admin/tool-review-reports"); }
 
 export async function handleTools(req: IncomingMessage, res: ServerResponse, url: URL, deps: Deps) {
   if (!isToolPath(url.pathname)) return false;
@@ -28,6 +30,8 @@ export async function handleTools(req: IncomingMessage, res: ServerResponse, url
       try { const bytes = await deps.toolAssets.routed.read(asset.storageKey); res.writeHead(200, { "content-type": asset.contentType, "content-length": bytes.length, "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff" }); res.end(bytes); return true; }
       catch (error) { if (error instanceof BadgeAssetNotFoundError) return empty(res, 404); throw error; }
     }
+    const reviewList = url.pathname.match(/^\/api\/tools\/([0-9a-f-]+)\/reviews$/i);
+    if (reviewList && req.method === "GET") return json(res, 200, await deps.reviews.list(reviewList[1], parseReviewQuery(url.searchParams)));
     const user = await deps.sessions.authenticateBearer(typeof req.headers.authorization === "string" ? req.headers.authorization : undefined); actor = user.id;
     if(rating?.[2]==="my-rating"){
       await deps.authorization.requirePermission(actor,"tools.rate");
@@ -37,6 +41,24 @@ export async function handleTools(req: IncomingMessage, res: ServerResponse, url
         if(req.method==="PUT")return json(res,200,await deps.ratings.save(rating[1],actor,await body(req)));
         await deps.ratings.remove(rating[1],actor);return empty(res,204);
       }
+    }
+    const myReview = url.pathname.match(/^\/api\/tools\/([0-9a-f-]+)\/my-review$/i);
+    if(myReview){
+      await deps.authorization.requirePermission(actor,"tools.view_reviews");
+      if(req.method==="GET")return json(res,200,{review:(await deps.reviews.mine(myReview[1],actor))??null});
+      if(req.method==="PUT"||req.method==="DELETE"){
+        await deps.authorization.requirePermission(actor,"tools.write_review");
+        try{deps.reviewRateLimiter.assertAllowed(`tool-review:${actor}`);}catch(error){await deps.reviews.repository.audit("tool.review_denied",actor,myReview[1]).catch(()=>{});throw error;}
+        if(req.method==="PUT")return json(res,200,await deps.reviews.save(myReview[1],actor,await body(req)));
+        await deps.reviews.remove(myReview[1],actor);return empty(res,204);
+      }
+    }
+    const reviewReport = url.pathname.match(/^\/api\/tools\/([0-9a-f-]+)\/reviews\/([0-9a-f-]+)\/report$/i);
+    if(reviewReport&&req.method==="POST"){
+      await deps.authorization.requirePermission(actor,"tools.report_review");
+      try{deps.reportRateLimiter.assertAllowed(`tool-report:${actor}`);}catch(error){await deps.reviews.reports.audit("tool.review_denied",actor).catch(()=>{});throw error;}
+      const {report}=await deps.reviews.report(reviewReport[2],actor,await body(req));
+      return json(res,201,{report});
     }
     const upload = url.pathname.match(/^\/api\/admin\/tool-assets\/(icon|cover)$/);
     if (upload && req.method === "POST") { await deps.authorization.requirePermission(actor, "tools.manage"); const bytes = await binary(req, 2 * 1024 * 1024); const declared = typeof req.headers["content-type"] === "string" ? req.headers["content-type"].split(";")[0] : undefined; const asset = validateBadgeAsset(bytes, declared); return json(res, 201, await persistBadgeAsset(deps.assets, deps.toolAssets[upload[1] as "icon" | "cover"], asset, actor)); }
@@ -53,12 +75,18 @@ export async function handleTools(req: IncomingMessage, res: ServerResponse, url
     if (url.pathname === "/api/admin/tool-categories" && req.method === "POST") { await deps.authorization.requirePermission(actor, "tool_categories.manage"); return json(res, 201, await deps.tools.categories.create(parseToolCategory(await body(req)), actor)); }
     const category = url.pathname.match(/^\/api\/admin\/tool-categories\/([0-9a-f-]+)(?:\/(archive|reactivate))?$/i);
     if (category) { await deps.authorization.requirePermission(actor, "tool_categories.manage"); if (req.method === "PATCH" && !category[2]) return json(res, 200, await deps.tools.categories.update(category[1], parseToolCategory(await body(req)), actor)); if (req.method === "POST" && category[2]) return json(res, 200, await deps.tools.categories.setArchived(category[1], category[2] === "archive", actor)); }
+    if (url.pathname === "/api/admin/tool-review-reports" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tools.moderate_reviews"); return json(res, 200, await deps.moderation.listReports(parseReportQuery(url.searchParams))); }
+    if (url.pathname === "/api/admin/tool-reviews" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tools.moderate_reviews"); return json(res, 200, await deps.moderation.listReviews(parseAdminReviewQuery(url.searchParams))); }
+    const adminReport = url.pathname.match(/^\/api\/admin\/tool-review-reports\/([0-9a-f-]+)\/(resolve|dismiss)$/i);
+    if (adminReport && req.method === "POST") { await deps.authorization.requirePermission(actor, "tools.moderate_reviews"); return json(res, 200, adminReport[2] === "resolve" ? await deps.moderation.resolveReport(adminReport[1], actor) : await deps.moderation.dismissReport(adminReport[1], actor)); }
+    const adminReview = url.pathname.match(/^\/api\/admin\/tool-reviews\/([0-9a-f-]+)\/(hide|restore|remove)$/i);
+    if (adminReview && req.method === "POST") { await deps.authorization.requirePermission(actor, "tools.moderate_reviews"); if (adminReview[2] === "hide") return json(res, 200, await deps.moderation.hideReview(adminReview[1], actor, await body(req))); if (adminReview[2] === "restore") return json(res, 200, await deps.moderation.restoreReview(adminReview[1], actor)); return json(res, 200, await deps.moderation.removeReview(adminReview[1], actor, await body(req))); }
     return json(res, 405, { error: "METHOD_NOT_ALLOWED" });
   } catch (error) {
     if (error instanceof AuthorizationError && actor) await deps.authorization.repository.writeAuditEvent({ actorUserId: actor, action: "tool.action_denied", targetType: "tool", metadata: { path: url.pathname, method: req.method ?? "UNKNOWN" } }).catch(() => {});
     const raw = error instanceof ToolError || error instanceof AuthorizationError ? error.code : error instanceof PollingRateLimitError ? "RATING_RATE_LIMITED" : error instanceof Error && error.message.includes("slug") ? "TOOL_SLUG_CONFLICT" : error instanceof Error && error.name === "BadgeError" ? error.message : "TOOL_OPERATION_FAILED";
-    const ratingPath=/\/api\/tools\/[0-9a-f-]+\/(rating-summary|my-rating)$/i.test(url.pathname);const code=ratingPath&&raw==="AUTHENTICATION_REQUIRED"?"UNAUTHENTICATED":ratingPath&&raw==="PERMISSION_DENIED"?"FORBIDDEN":raw;
-    const status = code === "UNAUTHENTICATED"||code === "AUTHENTICATION_REQUIRED" ? 401 : code === "FORBIDDEN"||code === "PERMISSION_DENIED" ? 403 : code === "RATING_RATE_LIMITED"?429:code.endsWith("NOT_FOUND") ? 404 : code.includes("CONFLICT") || code === "TOOL_METADATA_IN_USE" ? 409 : code === "TOOL_OPERATION_FAILED" ? 500 : 400;
+    const protectedPath=/\/api\/tools\/[0-9a-f-]+\/(rating-summary|my-rating|reviews|my-review)(\/|$)/i.test(url.pathname)||/\/report$/i.test(url.pathname)||url.pathname.startsWith("/api/admin/tool-reviews")||url.pathname.startsWith("/api/admin/tool-review-reports");const code=protectedPath&&raw==="AUTHENTICATION_REQUIRED"?"UNAUTHENTICATED":protectedPath&&raw==="PERMISSION_DENIED"?"FORBIDDEN":raw;
+    const status = code === "UNAUTHENTICATED"||code === "AUTHENTICATION_REQUIRED" ? 401 : code === "FORBIDDEN"||code === "PERMISSION_DENIED"||code === "REVIEW_SELF_REPORT_DENIED" ? 403 : code === "RATING_RATE_LIMITED"?429:code.endsWith("NOT_FOUND") ? 404 : code.includes("CONFLICT") || code === "TOOL_METADATA_IN_USE" || code === "REVIEW_ALREADY_REPORTED" ? 409 : code === "TOOL_OPERATION_FAILED" ? 500 : 400;
     if(error instanceof PollingRateLimitError)res.setHeader("retry-after",String(Math.max(1,Math.ceil(error.retryAfterMs/1000))));return json(res, status, { error: code });
   }
 }

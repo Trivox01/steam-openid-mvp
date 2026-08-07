@@ -4,8 +4,11 @@ import { ToolImage } from "../features/tools/ToolImage";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../runtime/environment";
 import { inspectToolUrl } from "../features/tools/safeToolUrl";
-import type { NexusTool, ToolRatingSummary } from "../features/tools/types";
+import type { NexusTool, ToolRatingSummary, ToolReviewReason, ToolReviewSort, ToolReviewView } from "../features/tools/types";
 import { RatingSummaryView, StarPicker } from "../features/tools/ToolRating";
+import { ReviewForm } from "../features/tools/ReviewForm";
+import { ReviewList } from "../features/tools/ReviewList";
+import { ReportReviewModal } from "../features/tools/ReportReviewModal";
 import { services } from "../services/compositionRoot";
 import { useTranslation } from "../i18n/TranslationContext";
 import { ErrorView, LoadingView } from "../components/ui/StateViews";
@@ -21,6 +24,19 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   const [mine, setMine] = useState<number | null>(null);
   const [ratingBusy, setRatingBusy] = useState(false);
   const [ratingNotice, setRatingNotice] = useState<"updated" | "removed" | "removed-failed" | "failed" | "too" | "sign">();
+  const [myReview, setMyReview] = useState<ToolReviewView | null>();
+  const [reviews, setReviews] = useState<ToolReviewView[]>([]);
+  const [reviewsTotal, setReviewsTotal] = useState(0);
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const [reviewsSort, setReviewsSort] = useState<ToolReviewSort>("newest");
+  const [reviewsError, setReviewsError] = useState(false);
+  const [reviewFormOpen, setReviewFormOpen] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewNotice, setReviewNotice] = useState<"" | "saved" | "removed" | "removed-failed" | "saved-failed" | "sign">("",);
+  const [reportTarget, setReportTarget] = useState<ToolReviewView>();
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState(false);
+  const [reportDone, setReportDone] = useState(false);
   const signedIn = Boolean(services.steamOpenId?.getActiveSession());
   useEffect(() => {
     const controller = new AbortController();
@@ -34,10 +50,80 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
       void services.tools.ratingSummary(tool.id, controller.signal).then(setSummary).catch(() => undefined);
       if (services.steamOpenId?.getActiveSession()) {
         services.tools.myRating(tool.id).then((value) => { if (!controller.signal.aborted) setMine(value); }).catch(() => undefined);
+        services.tools.myReview(tool.id).then((value) => { if (!controller.signal.aborted) setMyReview(value); }).catch(() => setMyReview(null));
+      } else {
+        setMyReview(null);
       }
     }
     return () => controller.abort();
   }, [tool, signedIn, slug]);
+  useEffect(() => {
+    if (!tool || !services.tools) return;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ page: String(reviewsPage), pageSize: "10", sort: reviewsSort });
+    services.tools.reviews(tool.id, params, controller.signal).then((page) => {
+      if (controller.signal.aborted) return;
+      setReviews(page.items);
+      setReviewsTotal(page.total);
+      setReviewsError(false);
+    }).catch(() => { if (!controller.signal.aborted) setReviewsError(true); });
+    return () => controller.abort();
+  }, [tool, reviewsPage, reviewsSort, signedIn]);
+  const refreshReviewData = async () => {
+    if (!services.tools || !tool) return;
+    try {
+      const page = await services.tools.reviews(tool.id, new URLSearchParams({ page: String(reviewsPage), pageSize: "10", sort: reviewsSort }));
+      setReviews(page.items);
+      setReviewsTotal(page.total);
+    } catch { /* keep current list */ }
+    if (services.steamOpenId?.getActiveSession()) {
+      try { setMyReview(await services.tools.myReview(tool.id)); } catch { /* keep current my review */ }
+    }
+  };
+  const saveReview = async (title: string, body: string) => {
+    if (!services.tools || !tool || reviewBusy) return;
+    setReviewBusy(true);
+    setReviewNotice("");
+    try {
+      await services.tools.saveReview(tool.id, { title: title || undefined, body });
+      setReviewFormOpen(false);
+      setReviewNotice("saved");
+      await refreshReviewData();
+    } catch (reason) {
+      if (String((reason as Error)?.message).includes("AUTHENTICATION_REQUIRED")) setReviewNotice("sign");
+      else setReviewNotice("saved-failed");
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+  const removeMine = async () => {
+    if (!services.tools || !tool) return;
+    if (!window.confirm(t("review.deleteConfirm"))) return;
+    setReviewNotice("");
+    try {
+      await services.tools.removeReview(tool.id);
+      setMyReview(null);
+      setReviewNotice("removed");
+      await refreshReviewData();
+    } catch {
+      setReviewNotice("removed-failed");
+    }
+  };
+  const submitReport = async (reason: ToolReviewReason, details: string) => {
+    if (!services.tools || !tool || !reportTarget || reportBusy) return;
+    setReportBusy(true);
+    setReportError(false);
+    try {
+      await services.tools.reportReview(tool.id, reportTarget.id, reason, details || undefined);
+      setReportTarget(undefined);
+      setReportDone(true);
+      window.setTimeout(() => setReportDone(false), 4000);
+    } catch {
+      setReportError(true);
+    } finally {
+      setReportBusy(false);
+    }
+  };
   const refreshSummary = async () => {
     if (!services.tools || !tool) return;
     try { setSummary(await services.tools.ratingSummary(tool.id)); } catch { /* keep previous summary */ }
@@ -125,13 +211,65 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
         </div>
       </div>
     </section>
+    <section className="tool-details__reviews" aria-labelledby="reviews-title">
+      <h2 id="reviews-title" className="nexus-display-title">{t("review.title")} <small>({reviewsTotal})</small></h2>
+      <div className="tool-review-yours">
+        {signedIn ? (
+          myReview ? (
+            <div className="tool-review-mine">
+              <div>
+                <strong>{t("review.yourReview")}</strong>
+                {myReview.title && <p dir="auto">{myReview.title}</p>}
+                <p dir="auto" className="tool-review-mine__body">{myReview.body}</p>
+              </div>
+              <div className="tool-review-mine__actions">
+                <button type="button" className="secondary-button" onClick={() => setReviewFormOpen(true)}>{t("review.edit")}</button>
+                <button type="button" onClick={() => void removeMine()}><Trash2 aria-hidden="true" />{t("review.delete")}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="tool-review-write">
+              <p>{t("review.writePrompt")}</p>
+              <button type="button" className="primary-button" onClick={() => setReviewFormOpen(true)}>{t("review.write")}</button>
+            </div>
+          )
+        ) : (
+          <p className="tool-rating-sign">{t("review.signInRequired")}</p>
+        )}
+        {reviewNotice === "saved" && <p className="tool-rating-feedback is-success" role="status">{t("review.saved")}</p>}
+        {reviewNotice === "removed" && <p className="tool-rating-feedback is-success" role="status">{t("review.removed")}</p>}
+        {reviewNotice === "removed-failed" && <p className="tool-rating-feedback is-error" role="alert">{t("review.saveFailed")}</p>}
+        {reviewNotice === "saved-failed" && <p className="tool-rating-feedback is-error" role="alert">{t("review.saveFailed")}</p>}
+        {reviewNotice === "sign" && <p className="tool-rating-feedback is-error" role="alert">{t("review.signInRequired")}</p>}
+      </div>
+      <div className="tool-reviews-toolbar">
+        <span>{t("review.sortLabel")}</span>
+        <select aria-label={t("review.sortLabel")} value={reviewsSort} onChange={(event) => { setReviewsSort(event.target.value as ToolReviewSort); setReviewsPage(1); }}>
+          <option value="newest">{t("review.sortNewest")}</option>
+          <option value="highest_rating">{t("review.sortHighest")}</option>
+          <option value="lowest_rating">{t("review.sortLowest")}</option>
+        </select>
+      </div>
+      {reviewsError && <p className="review-load-error" role="alert">{t("review.loadFailed")}</p>}
+      <ReviewList items={reviews} ownReviewId={myReview?.id} canReport={signedIn} language={language} onReport={setReportTarget} />
+      {reviewsTotal > 10 && (
+        <nav className="review-pagination" aria-label={t("review.pagination")}>
+          <button type="button" disabled={reviewsPage <= 1} onClick={() => setReviewsPage(reviewsPage - 1)}>{t("review.previous")}</button>
+          <span>{t("review.pageOf", { page: reviewsPage, total: Math.max(1, Math.ceil(reviewsTotal / 10)) })}</span>
+          <button type="button" disabled={reviewsPage >= Math.ceil(reviewsTotal / 10)} onClick={() => setReviewsPage(reviewsPage + 1)}>{t("review.next")}</button>
+        </nav>
+      )}
+    </section>
     <section className="tool-details__description">
       <p>{tool.fullDescription}</p><dl><div><dt>{t("tools.domain")}</dt><dd dir="ltr">{tool.downloadDomain}</dd></div><div><dt>{t("tools.updated", { date: "" }).trim()}</dt><dd>{new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(new Date(tool.updatedAt))}</dd></div></dl>
       {tool.officialWebsiteUrl && <button type="button" className="secondary-button" onClick={() => requestOpen(tool.officialWebsiteUrl!)}><ExternalLink />{t("tools.website")}</button>}
       {openError && !target && <p role="alert">{t("tools.openError")}</p>}
     </section>
-    {target && <ExternalLinkDialog domain={target.domain} busy={opening} error={openError} onCancel={() => setTarget(undefined)} onContinue={() => void open()} />}
-  </article>;
+      {target && <ExternalLinkDialog domain={target.domain} busy={opening} error={openError} onCancel={() => setTarget(undefined)} onContinue={() => void open()} />}
+      {reviewFormOpen && <ReviewForm value={myReview ?? undefined} busy={reviewBusy} onCancel={() => setReviewFormOpen(false)} onSave={saveReview} />}
+      {reportTarget && <ReportReviewModal review={reportTarget} busy={reportBusy} error={reportError} onCancel={() => setReportTarget(undefined)} onSubmit={(reason, details) => void submitReport(reason, details)} />}
+      {reportDone && <p className="tool-rating-feedback is-success review-report-done" role="status">{t("review.reported")}</p>}
+    </article>;
 }
 
 function ExternalLinkDialog({ domain, busy, error, onCancel, onContinue }: { domain: string; busy: boolean; error: boolean; onCancel: () => void; onContinue: () => void }) {
