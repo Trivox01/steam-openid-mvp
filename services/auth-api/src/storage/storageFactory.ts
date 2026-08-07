@@ -33,6 +33,10 @@ import { InMemoryToolReviewRepository, type ToolReviewRepository } from "../tool
 import { PostgresToolReviewRepository } from "./postgres/postgresToolReviewRepository.ts";
 import { InMemoryToolReviewReportRepository, type ToolReviewReportRepository } from "../tools/toolReviewReportRepository.ts";
 import { PostgresToolReviewReportRepository } from "./postgres/postgresToolReviewReportRepository.ts";
+import { InMemoryToolReviewHelpfulRepository, type ToolReviewHelpfulRepository } from "../tools/toolReviewHelpfulRepository.ts";
+import { PostgresToolReviewHelpfulRepository } from "./postgres/postgresToolReviewHelpfulRepository.ts";
+import { InMemoryToolReviewDeveloperReplyRepository, type ToolReviewDeveloperReplyRepository } from "../tools/toolReviewDeveloperReplyRepository.ts";
+import { PostgresToolReviewDeveloperReplyRepository } from "./postgres/postgresToolReviewDeveloperReplyRepository.ts";
 
 export interface InitializedStorage {
   repository: AuthTransactionRepository;
@@ -46,6 +50,8 @@ export interface InitializedStorage {
   toolRatingRepository: ToolRatingRepository;
   toolReviewRepository: ToolReviewRepository;
   toolReviewReportRepository: ToolReviewReportRepository;
+  toolReviewHelpfulRepository: ToolReviewHelpfulRepository;
+  toolReviewReplyRepository: ToolReviewDeveloperReplyRepository;
   close(): Promise<void>;
 }
 
@@ -79,7 +85,11 @@ export async function initializeStorage(
     };
     const toolReviewRepository = new InMemoryToolReviewRepository(toolRepository, reviewUsers, toolRatingRepository);
     const toolReviewReportRepository = new InMemoryToolReviewReportRepository(toolRepository, toolReviewRepository, reviewUsers);
+    const toolReviewHelpfulRepository = new InMemoryToolReviewHelpfulRepository();
+    const toolReviewReplyRepository = new InMemoryToolReviewDeveloperReplyRepository();
     toolReviewRepository.attachReportSource(toolReviewReportRepository);
+    toolReviewRepository.attachHelpfulSource(toolReviewHelpfulRepository);
+    toolReviewRepository.attachReplySource(toolReviewReplyRepository);
     return {
       repository,
       authorizationRepository,
@@ -92,6 +102,8 @@ export async function initializeStorage(
       toolRatingRepository,
       toolReviewRepository,
       toolReviewReportRepository,
+      toolReviewHelpfulRepository,
+      toolReviewReplyRepository,
       async close() {}
     };
   }
@@ -127,6 +139,10 @@ export async function initializeStorage(
     await toolReviewRepository.validateSchema();
     const toolReviewReportRepository = new PostgresToolReviewReportRepository(pool);
     await toolReviewReportRepository.validateSchema();
+    const toolReviewHelpfulRepository = new PostgresToolReviewHelpfulRepository(pool);
+    await toolReviewHelpfulRepository.validateSchema();
+    const toolReviewReplyRepository = new PostgresToolReviewDeveloperReplyRepository(pool);
+    await toolReviewReplyRepository.validateSchema();
     return {
       repository,
       authorizationRepository,
@@ -139,6 +155,8 @@ export async function initializeStorage(
       toolRatingRepository,
       toolReviewRepository,
       toolReviewReportRepository,
+      toolReviewHelpfulRepository,
+      toolReviewReplyRepository,
       async close() {
         await pool.end();
       }

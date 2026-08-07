@@ -30,7 +30,7 @@ export class AuthorizationService {
     const allowed = new Set(overrides.filter((item) => item.effect === "allow").map((item) => item.permission));
 
     // Resolution order is deliberately deny -> allow -> role -> default deny.
-    const authenticatedDefaults: PermissionKey[] = ["tools.rate", "tools.view_ratings", "tools.view_reviews", "tools.write_review", "tools.report_review"];
+    const authenticatedDefaults: PermissionKey[] = ["tools.rate", "tools.view_ratings", "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.vote_review_helpful"];
     return [...new Set([...authenticatedDefaults, ...rolePermissions, ...allowed])]
       .filter((permission) => !denied.has(permission))
       .sort();

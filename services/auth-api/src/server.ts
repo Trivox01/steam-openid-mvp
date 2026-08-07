@@ -20,7 +20,7 @@ import { SteamDataClient } from "./steam/steamDataClient.ts";
 import { ToolService } from "./tools/toolService.ts";
 import { createToolAssetStorages } from "./tools/toolAssetStorage.ts";
 import { ToolRatingService } from "./tools/toolRatingService.ts";
-import { ToolReviewService, ToolReviewModerationService } from "./tools/toolReviewService.ts";
+import { ToolReviewService, ToolReviewModerationService, ToolReviewInteractionService } from "./tools/toolReviewService.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -87,6 +87,7 @@ async function main() {
   const toolRatings = new ToolRatingService(storage.toolRatingRepository);
   const toolReviews = new ToolReviewService(storage.toolReviewRepository, storage.toolReviewReportRepository);
   const toolReviewModeration = new ToolReviewModerationService(storage.toolReviewRepository, storage.toolReviewReportRepository);
+  const toolReviewInteractions = new ToolReviewInteractionService(storage.toolReviewRepository, storage.toolReviewHelpfulRepository, storage.toolReviewReplyRepository);
   const bootstrapResult = await authorization.bootstrapOwner(
     config.bootstrapOwnerSteamId64
   );
@@ -129,8 +130,11 @@ async function main() {
       toolRatingRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 750, windowMs: 60_000, maxRequests: 12 }),
       toolReviews,
       toolReviewModeration,
+      toolReviewInteractions,
       toolReviewRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 750, windowMs: 60_000, maxRequests: 12 }),
       toolReportRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 750, windowMs: 60_000, maxRequests: 8 }),
+      toolHelpfulRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 400, windowMs: 60_000, maxRequests: 20 }),
+      toolReplyRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 1_500, windowMs: 60_000, maxRequests: 6 }),
       toolAssets
     })
   );

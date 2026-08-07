@@ -10,6 +10,14 @@ import type {
   ToolReviewRepository
 } from "./toolReviewRepository.ts";
 import type { ToolReviewReportRepository } from "./toolReviewReportRepository.ts";
+import type { ToolReviewHelpfulRepository } from "./toolReviewHelpfulRepository.ts";
+import {
+  parseReplyDraft,
+  toReplyView,
+  toEntry,
+  type ToolReviewDeveloperReplyRepository,
+  type ToolReviewDeveloperReplyView
+} from "./toolReviewDeveloperReplyRepository.ts";
 
 const MAX_PAGE_SIZE = 50;
 
@@ -22,8 +30,8 @@ export class ToolReviewService {
     this.reports = reports;
   }
 
-  list(toolId: string, query: ToolReviewListQuery) {
-    return this.repository.listActive(toolId, query);
+  list(toolId: string, query: ToolReviewListQuery, viewerId?: string) {
+    return this.repository.listActive(toolId, query, viewerId);
   }
 
   async mine(toolId: string, userId: string) {
@@ -139,6 +147,120 @@ export class ToolReviewModerationService {
       await this.reports.audit("tool.review_report_dismissed", actor, { reportId: report.id }).catch(() => {});
     }
     return report;
+  }
+}
+
+export class ToolReviewInteractionService {
+  readonly reviews: ToolReviewRepository;
+  readonly helpful: ToolReviewHelpfulRepository;
+  readonly replies: ToolReviewDeveloperReplyRepository;
+
+  constructor(
+    reviews: ToolReviewRepository,
+    helpful: ToolReviewHelpfulRepository,
+    replies: ToolReviewDeveloperReplyRepository
+  ) {
+    this.reviews = reviews;
+    this.helpful = helpful;
+    this.replies = replies;
+  }
+
+  async addHelpful(reviewId: string, userId: string) {
+    try {
+      const review = await this.reviews.getById(reviewId);
+      if (!review) throw new ToolError("REVIEW_NOT_FOUND");
+      if (review.userId === userId) throw new ToolError("CANNOT_VOTE_OWN_REVIEW");
+      if (review.userId === userId) throw new ToolError("CANNOT_VOTE_OWN_REVIEW");
+      if (review.status !== "active") throw new ToolError("REVIEW_NOT_AVAILABLE");
+      const already = await this.helpful.has(reviewId, userId);
+      if (!already) {
+        await this.helpful.add(reviewId, userId);
+        await this.helpful.audit("tool.review_helpful_added", userId, {
+          reviewId,
+          toolId: review.toolId
+        }).catch(() => {});
+      }
+      const count = (await this.helpful.counts([reviewId])).get(reviewId) ?? 0;
+      return { helpfulCount: count, currentUserHelpful: true };
+    } catch (error) {
+      if (error instanceof ToolError) {
+        await this.helpful.audit("tool.review_helpful_denied", userId, { reviewId }).catch(() => {});
+        throw error;
+      }
+      await this.helpful.audit("tool.review_helpful_denied", userId, { reviewId }).catch(() => {});
+      throw error;
+    }
+  }
+
+  async removeHelpful(reviewId: string, userId: string) {
+    try {
+      const review = await this.reviews.getById(reviewId);
+      if (!review) throw new ToolError("REVIEW_NOT_FOUND");
+      await this.helpful.remove(reviewId, userId);
+      const count = (await this.helpful.counts([reviewId])).get(reviewId) ?? 0;
+      await this.helpful.audit("tool.review_helpful_removed", userId, {
+        reviewId,
+        toolId: review.toolId
+      }).catch(() => {});
+      return { helpfulCount: count, currentUserHelpful: false };
+    } catch (error) {
+      if (error instanceof ToolError) {
+        await this.helpful.audit("tool.review_helpful_denied", userId, { reviewId }).catch(() => {});
+        throw error;
+      }
+      await this.helpful.audit("tool.review_helpful_denied", userId, { reviewId }).catch(() => {});
+      throw error;
+    }
+  }
+
+  async saveReply(reviewId: string, actorId: string, value: unknown): Promise<ToolReviewDeveloperReplyView> {
+    try {
+      const review = await this.reviews.getById(reviewId);
+      if (!review) throw new ToolError("REVIEW_NOT_FOUND");
+      if (review.status !== "active") throw new ToolError("REVIEW_NOT_AVAILABLE");
+      const draft = parseReplyDraft(value);
+      const previous = await this.replies.getByReview(reviewId);
+      const reply = await this.replies.upsert(reviewId, actorId, draft.body);
+      await this.replies.audit(
+        previous ? "tool.review_developer_reply_updated" : "tool.review_developer_reply_created",
+        actorId,
+        {
+          reviewId,
+          toolId: review.toolId,
+          ...(previous ? { previous: previous.status, current: reply.status } : {})
+        }
+      ).catch(() => {});
+      return toReplyView(reply);
+    } catch (error) {
+      if (error instanceof ToolError) {
+        await this.replies.audit("tool.review_developer_reply_denied", actorId, { reviewId }).catch(() => {});
+        throw error;
+      }
+      await this.replies.audit("tool.review_developer_reply_denied", actorId, { reviewId }).catch(() => {});
+      throw error;
+    }
+  }
+
+  async removeReply(reviewId: string, actorId: string) {
+    try {
+      const review = await this.reviews.getById(reviewId);
+      if (!review) throw new ToolError("REVIEW_NOT_FOUND");
+      const existing = await this.replies.getByReview(reviewId);
+      if (!existing || existing.status === "removed") throw new ToolError("REPLY_NOT_FOUND");
+      const reply = await this.replies.remove(reviewId, actorId);
+      await this.replies.audit("tool.review_developer_reply_removed", actorId, {
+        reviewId,
+        toolId: review.toolId
+      }).catch(() => {});
+      return toEntry(reply);
+    } catch (error) {
+      if (error instanceof ToolError) {
+        await this.replies.audit("tool.review_developer_reply_denied", actorId, { reviewId }).catch(() => {});
+        throw error;
+      }
+      await this.replies.audit("tool.review_developer_reply_denied", actorId, { reviewId }).catch(() => {});
+      throw error;
+    }
   }
 }
 

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Eye, Flag, RotateCcw, Trash } from "lucide-react";
+import { Eye, Flag, MessageSquareText, RotateCcw, Trash } from "lucide-react";
 import { Surface } from "../../../components/ui/Surface";
 import { useTranslation } from "../../../i18n/TranslationContext";
 import type { ToolClient } from "../../tools/ToolClient";
 import type { ToolReviewStatus, ToolReviewAdminView } from "../../tools/types";
+import { ReplyReviewModal } from "./ReplyReviewModal";
 type Filter = "all" | ToolReviewStatus | "reported";
 
-export function ReviewModerationPanel({ client, onOpenReports, canOpenReports }: { client?: ToolClient; onOpenReports: () => void; canOpenReports: boolean }) {
+export function ReviewModerationPanel({ client, onOpenReports, canOpenReports, canReply }: { client?: ToolClient; onOpenReports: () => void; canOpenReports: boolean; canReply: boolean }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>("all");
   const [items, setItems] = useState<ToolReviewAdminView[]>([]);
@@ -14,6 +15,7 @@ export function ReviewModerationPanel({ client, onOpenReports, canOpenReports }:
   const [page, setPage] = useState(1);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<ToolReviewAdminView>();
   const pageSize = 25;
   const load = useCallback(async () => {
     if (!client) return;
@@ -75,6 +77,7 @@ export function ReviewModerationPanel({ client, onOpenReports, canOpenReports }:
                 {item.status === "active" && <button type="button" disabled={Boolean(busyId)} onClick={() => void moderate(item.id, "hide")} aria-label={t("developer.toolReviews.hide")}><Eye /></button>}
                 {item.status === "hidden" && <button type="button" disabled={Boolean(busyId)} onClick={() => void moderate(item.id, "restore")} aria-label={t("developer.toolReviews.restore")}><RotateCcw /></button>}
                 {item.status === "hidden" && <button type="button" disabled={Boolean(busyId)} onClick={() => void moderate(item.id, "remove")} aria-label={t("developer.toolReviews.remove")}><Trash /></button>}
+                {canReply && item.status === "active" && <button type="button" className={item.developerReply ? "reply-exists" : ""} disabled={Boolean(busyId)} onClick={() => setReplyTarget(item)} aria-label={item.developerReply ? t("review.replyEdit") : t("review.reply")}><MessageSquareText /></button>}
               </span>
             </div>
           ))}
@@ -85,6 +88,7 @@ export function ReviewModerationPanel({ client, onOpenReports, canOpenReports }:
         <span>{t("review.pageOf", { page, total: Math.max(1, Math.ceil(total / pageSize)) })}</span>
         <button type="button" disabled={page >= Math.ceil(total / pageSize)} onClick={() => setPage(page + 1)}>{t("review.next")}</button>
       </nav>
+      {replyTarget && <ReplyReviewModal client={client} review={replyTarget} onClose={() => setReplyTarget(undefined)} onSaved={() => void load()} />}
     </section>
   );
 }

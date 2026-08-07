@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ToolError } from "./contracts.ts";
 import type { ToolRepository } from "./toolRepository.ts";
 import type { ToolRatingRepository } from "./toolRatingRepository.ts";
+import type { ToolReviewDeveloperReplyListEntry } from "./toolReviewDeveloperReplyRepository.ts";
 
 export const REVIEW_LIMITS = {
   title: 100,
@@ -37,6 +38,15 @@ export interface ToolReviewView extends ToolReviewRecord {
   displayName: string;
   avatarUrl?: string;
   rating: number | null;
+  helpfulCount: number;
+  currentUserHelpful?: boolean;
+  developerReply?: {
+    id: string;
+    body: string;
+    createdAt: string;
+    updatedAt: string;
+    edited: boolean;
+  };
 }
 
 export interface ToolReviewDraft {
@@ -77,6 +87,7 @@ export interface ToolReviewAdminView {
   tool: { id: string; name: string; slug: string };
   createdAt: string;
   updatedAt: string;
+  developerReply?: ToolReviewDeveloperReplyListEntry;
 }
 
 export interface ToolReviewAdminPage {
@@ -106,7 +117,7 @@ export interface ToolReviewRepository {
   remove(toolId: string, userId: string): Promise<ToolReviewRecord>;
   getMine(toolId: string, userId: string): Promise<ToolReviewRecord | undefined>;
   getById(reviewId: string): Promise<ToolReviewRecord | undefined>;
-  listActive(toolId: string, query: ToolReviewListQuery): Promise<ToolReviewPage>;
+  listActive(toolId: string, query: ToolReviewListQuery, viewerId?: string): Promise<ToolReviewPage>;
   listAdmin(query: ToolReviewAdminQuery): Promise<{ items: Omit<ToolReviewAdminView, "reportsCount">[]; total: number; page: number; pageSize: number }>;
   setStatus(reviewId: string, status: ToolReviewStatus, moderatorId: string, reason?: string): Promise<ToolReviewRecord>;
   audit(action: ToolReviewAuditAction, actor: string, toolId: string, metadata?: Record<string, string>): Promise<void>;
@@ -114,6 +125,15 @@ export interface ToolReviewRepository {
 
 export interface ReviewReportSource {
   hasReports(reviewId: string): boolean;
+}
+
+export interface ReviewHelpfulSource {
+  counts(reviewIds: string[]): Promise<Map<string, number>>;
+  flags(reviewIds: string[], userId: string): Promise<Set<string>>;
+}
+
+export interface ReviewReplySource {
+  listForReviews(reviewIds: string[]): Promise<Map<string, ToolReviewDeveloperReplyListEntry>>;
 }
 
 const noopUser: ReviewUserLookup = {
@@ -128,6 +148,8 @@ export class InMemoryToolReviewRepository implements ToolReviewRepository {
   private readonly users: ReviewUserLookup;
   private readonly ratings?: ToolRatingRepository;
   private reportsSource?: ReviewReportSource;
+  private helpfulSource?: ReviewHelpfulSource;
+  private replySource?: ReviewReplySource;
 
   constructor(tools: ToolRepository, users?: ReviewUserLookup, ratings?: ToolRatingRepository) {
     this.tools = tools;
@@ -137,6 +159,14 @@ export class InMemoryToolReviewRepository implements ToolReviewRepository {
 
   attachReportSource(source: ReviewReportSource) {
     this.reportsSource = source;
+  }
+
+  attachHelpfulSource(source: ReviewHelpfulSource) {
+    this.helpfulSource = source;
+  }
+
+  attachReplySource(source: ReviewReplySource) {
+    this.replySource = source;
   }
 
   async validateSchema() {}
@@ -190,7 +220,7 @@ export class InMemoryToolReviewRepository implements ToolReviewRepository {
     return [...this.reviews.values()].find((review) => review.id === reviewId);
   }
 
-  async listActive(toolId: string, query: ToolReviewListQuery) {
+  async listActive(toolId: string, query: ToolReviewListQuery, viewerId?: string) {
     if (!await this.tools.get(toolId)) throw new ToolError("TOOL_NOT_FOUND");
     let items = [...this.reviews.values()].filter((review) => review.toolId === toolId && review.status === "active");
     if (query.sort === "highest_rating" || query.sort === "lowest_rating") {
@@ -218,6 +248,22 @@ export class InMemoryToolReviewRepository implements ToolReviewRepository {
     const start = (query.page - 1) * query.pageSize;
     const page = items.slice(start, start + query.pageSize);
     const views = await Promise.all(page.map((review) => this.toView(review)));
+    const reviewIds = page.map((review) => review.id);
+    if (this.helpfulSource && reviewIds.length) {
+      const counts = await this.helpfulSource.counts(reviewIds);
+      const flagged = viewerId ? await this.helpfulSource.flags(reviewIds, viewerId) : undefined;
+      for (const view of views) {
+        view.helpfulCount = counts.get(view.id) ?? 0;
+        if (flagged) view.currentUserHelpful = flagged.has(view.id);
+      }
+    }
+    if (this.replySource && reviewIds.length) {
+      const replies = await this.replySource.listForReviews(reviewIds);
+      for (const view of views) {
+        const reply = replies.get(view.id);
+        if (reply) view.developerReply = reply;
+      }
+    }
     return { items: views, total, page: query.page, pageSize: query.pageSize };
   }
 
@@ -264,6 +310,13 @@ export class InMemoryToolReviewRepository implements ToolReviewRepository {
         updatedAt: review.updatedAt
       });
     }
+    if (this.replySource && items.length) {
+      const replies = await this.replySource.listForReviews(items.map((item) => item.id));
+      for (const item of items) {
+        const reply = replies.get(item.id);
+        if (reply) item.developerReply = reply;
+      }
+    }
     return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
@@ -279,7 +332,8 @@ export class InMemoryToolReviewRepository implements ToolReviewRepository {
       edited: Date.parse(review.updatedAt) > Date.parse(review.createdAt),
       displayName: displayName ?? "Nexus User",
       ...(avatarUrl ? { avatarUrl } : {}),
-      rating: (await this.ratings?.getMine(review.toolId, review.userId).catch(() => undefined))?.rating ?? null
+      rating: (await this.ratings?.getMine(review.toolId, review.userId).catch(() => undefined))?.rating ?? null,
+      helpfulCount: 0
     };
   }
 

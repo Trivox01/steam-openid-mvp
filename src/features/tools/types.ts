@@ -10,9 +10,11 @@ export type ToolReviewStatus="active"|"hidden"|"removed";
 export type ToolReviewSort="newest"|"highest_rating"|"lowest_rating";
 export type ToolReviewReason="spam"|"harassment"|"unsafe_link"|"misleading"|"inappropriate"|"other";
 export type ToolReviewReportStatus="open"|"resolved"|"dismissed";
-export interface ToolReviewView{id:string;toolId:string;userId:string;title?:string;body:string;status:ToolReviewStatus;createdAt:string;updatedAt:string;moderatedAt?:string;moderatedBy?:string;moderationReason?:string;edited:boolean;displayName:string;avatarUrl?:string;rating:number|null}
+export interface ToolReviewDeveloperReply{body:string;createdAt:string;updatedAt:string;edited:boolean}
+export interface ToolReviewView{id:string;toolId:string;userId:string;title?:string;body:string;status:ToolReviewStatus;createdAt:string;updatedAt:string;moderatedAt?:string;moderatedBy?:string;moderationReason?:string;edited:boolean;displayName:string;avatarUrl?:string;rating:number|null;helpfulCount:number;currentUserHelpful?:boolean;developerReply?:ToolReviewDeveloperReply}
 export interface ToolReviewPage{items:ToolReviewView[];total:number;page:number;pageSize:number}
-export interface ToolReviewAdminView{id:string;toolId:string;userId:string;displayName:string;title?:string;body:string;status:ToolReviewStatus;rating:number|null;reportsCount:number;tool:{id:string;name:string;slug:string};createdAt:string;updatedAt:string}
+export interface ToolReviewAdminView{id:string;toolId:string;userId:string;displayName:string;title?:string;body:string;status:ToolReviewStatus;rating:number|null;reportsCount:number;tool:{id:string;name:string;slug:string};createdAt:string;updatedAt:string;developerReply?:ToolReviewDeveloperReply}
+export interface ReviewHelpfulState{helpfulCount:number;currentUserHelpful:boolean}
 export interface ToolReviewAdminPage{items:ToolReviewAdminView[];total:number;page:number;pageSize:number}
 export interface ToolReviewReportView{id:string;reviewId:string;reporterUserId:string;reason:ToolReviewReason;details?:string;status:ToolReviewReportStatus;createdAt:string;resolvedAt?:string;resolvedBy?:string;reporterName:string;reporterAvatarUrl?:string;tool:{id:string;name:string;slug:string};review:{id:string;userId:string;authorName:string;title?:string;body:string;status:ToolReviewStatus;createdAt:string;updatedAt:string;moderatedAt?:string;moderatedBy?:string;moderationReason?:string}}
 export interface ToolReviewReportPage{items:ToolReviewReportView[];total:number;page:number;pageSize:number}

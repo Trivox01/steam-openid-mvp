@@ -22,7 +22,9 @@ import { InMemoryToolRatingRepository } from "../src/tools/toolRatingRepository.
 import { ToolRatingService } from "../src/tools/toolRatingService.ts";
 import { InMemoryToolReviewRepository } from "../src/tools/toolReviewRepository.ts";
 import { InMemoryToolReviewReportRepository } from "../src/tools/toolReviewReportRepository.ts";
-import { ToolReviewService, ToolReviewModerationService } from "../src/tools/toolReviewService.ts";
+import { InMemoryToolReviewHelpfulRepository } from "../src/tools/toolReviewHelpfulRepository.ts";
+import { InMemoryToolReviewDeveloperReplyRepository } from "../src/tools/toolReviewDeveloperReplyRepository.ts";
+import { ToolReviewService, ToolReviewModerationService, ToolReviewInteractionService } from "../src/tools/toolReviewService.ts";
 import { ToolError } from "../src/tools/contracts.ts";
 
 function setup(authorization?: InMemoryAuthorizationRepository) {
@@ -40,12 +42,18 @@ function setup(authorization?: InMemoryAuthorizationRepository) {
   };
   const reviewRepository = new InMemoryToolReviewRepository(repository, reviewUsers, ratingRepository);
   const reportRepository = new InMemoryToolReviewReportRepository(repository, reviewRepository, reviewUsers);
+  const helpfulRepository = new InMemoryToolReviewHelpfulRepository();
+  const replyRepository = new InMemoryToolReviewDeveloperReplyRepository();
   reviewRepository.attachReportSource(reportRepository);
+  reviewRepository.attachHelpfulSource(helpfulRepository);
+  reviewRepository.attachReplySource(replyRepository);
   const reviews = new ToolReviewService(reviewRepository, reportRepository);
   const moderation = new ToolReviewModerationService(reviewRepository, reportRepository);
+  const interactions = new ToolReviewInteractionService(reviewRepository, helpfulRepository, replyRepository);
   return {
     badges, categories, repository, service, ratings, ratingRepository,
-    reviewRepository, reportRepository, reviews, moderation, authorizationRepository
+    reviewRepository, reportRepository, helpfulRepository, replyRepository,
+    reviews, moderation, interactions, authorizationRepository
   };
 }
 
@@ -171,6 +179,94 @@ test("reporting enforces reasons, duplicates, self-report and moderation lifecyc
 test("reporting a missing or hidden review fails with REVIEW_NOT_FOUND", async () => {
   const x = setup();
   await assert.rejects(() => x.reviews.report("00000000-0000-4000-8000-000000000000", "reporter", { reason: "spam" }), (error: unknown) => error instanceof ToolError && error.code === "REVIEW_NOT_FOUND");
+});
+
+test("helpful votes are idempotent toggles and surface counts on the list", async () => {
+  const x = setup(); const tool = await x.service.create(draft, "actor");
+  const author = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000041", "2026-08-02T00:00:00.000Z");
+  const voter = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000042", "2026-08-02T00:00:00.000Z");
+  const other = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000043", "2026-08-02T00:00:00.000Z");
+  const review = await x.reviews.save(tool.id, author.id, { body: "Nice tool" });
+  assert.deepEqual(await x.interactions.addHelpful(review.review.id, voter.id), { helpfulCount: 1, currentUserHelpful: true });
+  assert.equal((await x.interactions.addHelpful(review.review.id, voter.id)).helpfulCount, 1);
+  await x.interactions.addHelpful(review.review.id, other.id);
+  assert.equal((await x.interactions.addHelpful(review.review.id, voter.id)).helpfulCount, 2);
+  assert.deepEqual(await x.interactions.removeHelpful(review.review.id, voter.id), { helpfulCount: 1, currentUserHelpful: false });
+  const page = await x.reviews.list(tool.id, { page: 1, pageSize: 20, sort: "newest" }, voter.id);
+  assert.equal(page.items[0].helpfulCount, 1);
+  assert.equal(page.items[0].currentUserHelpful, false);
+  const pageOther = await x.reviews.list(tool.id, { page: 1, pageSize: 20, sort: "newest" }, other.id);
+  assert.equal(pageOther.items[0].currentUserHelpful, true);
+  const pageAnonymous = await x.reviews.list(tool.id, { page: 1, pageSize: 20, sort: "newest" });
+  assert.equal(pageAnonymous.items[0].currentUserHelpful, undefined);
+  assert.equal(pageAnonymous.items[0].helpfulCount, 1);
+});
+
+test("helpful votes reject self-votes, missing and unavailable reviews", async () => {
+  const x = setup(); const tool = await x.service.create(draft, "actor");
+  const author = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000051", "2026-08-02T00:00:00.000Z");
+  const voter = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000052", "2026-08-02T00:00:00.000Z");
+  const review = await x.reviews.save(tool.id, author.id, { body: "Hey" });
+  await assert.rejects(() => x.interactions.addHelpful(review.review.id, author.id), (error: unknown) => error instanceof ToolError && error.code === "CANNOT_VOTE_OWN_REVIEW");
+  await x.interactions.addHelpful(review.review.id, voter.id);
+  await x.moderation.hideReview(review.review.id, "moderator", {});
+  await assert.rejects(() => x.interactions.addHelpful(review.review.id, voter.id), (error: unknown) => error instanceof ToolError && error.code === "REVIEW_NOT_AVAILABLE");
+  assert.equal((await x.interactions.removeHelpful(review.review.id, voter.id)).helpfulCount, 0);
+  await assert.rejects(() => x.interactions.addHelpful("00000000-0000-4000-8000-000000000000", voter.id), (error: unknown) => error instanceof ToolError && error.code === "REVIEW_NOT_FOUND");
+});
+
+test("developer replies are created, updated, listed and removed as a single row", async () => {
+  const x = setup(); const tool = await x.service.create(draft, "actor");
+  const author = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000061", "2026-08-02T00:00:00.000Z");
+  const review = await x.reviews.save(tool.id, author.id, { body: "Hmm" });
+  const reply = await x.interactions.saveReply(review.review.id, "developer", { body: "Thanks for the feedback!" });
+  assert.equal(reply.body, "Thanks for the feedback!");
+  assert.equal(reply.authorLabel, "Developer");
+  assert.equal(reply.edited, false);
+  const listed = await x.reviews.list(tool.id, { page: 1, pageSize: 20, sort: "newest" });
+  assert.equal(listed.items[0].developerReply?.body, "Thanks for the feedback!");
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const updated = await x.interactions.saveReply(review.review.id, "developer", { body: "Updated reply" });
+  assert.equal(updated.edited, true);
+  assert.equal((await x.reviews.list(tool.id, { page: 1, pageSize: 20, sort: "newest" })).items[0].developerReply?.body, "Updated reply");
+  const removed = await x.interactions.removeReply(review.review.id, "developer");
+  assert.equal(removed.body, "Updated reply");
+  assert.equal((await x.reviews.list(tool.id, { page: 1, pageSize: 20, sort: "newest" })).items[0].developerReply, undefined);
+  await assert.rejects(() => x.interactions.removeReply(review.review.id, "developer"), (error: unknown) => error instanceof ToolError && error.code === "REPLY_NOT_FOUND");
+});
+
+test("developer replies validate drafts and only target available reviews", async () => {
+  const x = setup(); const tool = await x.service.create(draft, "actor");
+  const author = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000071", "2026-08-02T00:00:00.000Z");
+  const review = await x.reviews.save(tool.id, author.id, { body: "Could be better" });
+  await assert.rejects(() => x.interactions.saveReply(review.review.id, "developer", {}), (error: unknown) => error instanceof ToolError && error.code === "REPLY_BODY_REQUIRED");
+  await assert.rejects(() => x.interactions.saveReply(review.review.id, "developer", { body: "  " }), (error: unknown) => error instanceof ToolError && error.code === "REPLY_BODY_REQUIRED");
+  await assert.rejects(() => x.interactions.saveReply(review.review.id, "developer", { body: "x".repeat(2001) }), (error: unknown) => error instanceof ToolError && error.code === "REPLY_BODY_TOO_LONG");
+  await x.moderation.hideReview(review.review.id, "moderator", {});
+  await assert.rejects(() => x.interactions.saveReply(review.review.id, "developer", { body: "nope" }), (error: unknown) => error instanceof ToolError && error.code === "REVIEW_NOT_AVAILABLE");
+  await assert.rejects(() => x.interactions.saveReply("00000000-0000-4000-8000-000000000000", "developer", { body: "nope" }), (error: unknown) => error instanceof ToolError && error.code === "REVIEW_NOT_FOUND");
+});
+
+test("interaction audit events are sanitised and reject noisy identifiers", async () => {
+  const x = setup(); const tool = await x.service.create(draft, "actor");
+  const author = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000081", "2026-08-02T00:00:00.000Z");
+  const voter = await x.authorizationRepository.ensureAuthenticatedUser("76561198000000082", "2026-08-02T00:00:00.000Z");
+  const review = await x.reviews.save(tool.id, author.id, { body: "Secret body text" });
+  await x.interactions.addHelpful(review.review.id, author.id).catch(() => {});
+  await x.interactions.addHelpful(review.review.id, voter.id);
+  await x.interactions.removeHelpful(review.review.id, voter.id);
+  const setBirthday = "76561198000000083";
+  const replier = await x.authorizationRepository.ensureAuthenticatedUser(setBirthday, "2026-08-02T00:00:00.000Z");
+  await x.interactions.saveReply(review.review.id, replier.id, { body: "Thanks for the note" });
+  await x.interactions.saveReply(review.review.id, replier.id, { body: "Thank you again" });
+  await x.interactions.removeReply(review.review.id, replier.id);
+  const helpfulEvents = x.helpfulRepository.auditEvents;
+  assert.deepEqual(helpfulEvents.map((event) => event.action).sort(), ["tool.review_helpful_added", "tool.review_helpful_denied", "tool.review_helpful_removed"]);
+  const replyEvents = x.replyRepository.auditEvents;
+  assert.deepEqual(replyEvents.map((event) => event.action).sort(), ["tool.review_developer_reply_created", "tool.review_developer_reply_removed", "tool.review_developer_reply_updated"]);
+  for (const event of [...helpfulEvents, ...replyEvents]) {
+    assert.doesNotMatch(JSON.stringify(event), /steam|account|token|secret|session|Secret body|Thanks for|setBirthday|76561/i);
+  }
 });
 
 test("moderation hide, restore and remove records update status and keep review data", async () => {
@@ -317,6 +413,63 @@ test("review mutations are rate limited with a retry-after header", async () => 
   } finally { await harness.close(); }
 });
 
+test("helpful vote routes toggle counts and enforce authentication and permissions", async () => {
+  const harness = await startReviewHarness();
+  try {
+    const mine = await (await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/my-review`, { headers: { authorization: `Bearer ${harness.ownerSession.token}` } })).json() as { review: { id: string; userId: string } };
+    const reviewId = mine.review.id;
+    const anonymous = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews/${reviewId}/helpful`, { method: "PUT" });
+    assert.equal(anonymous.status, 401);
+    assert.equal((await anonymous.json() as { error: string }).error, "UNAUTHENTICATED");
+    const selfVote = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews/${reviewId}/helpful`, { method: "PUT", headers: { authorization: `Bearer ${harness.ownerSession.token}` } });
+    assert.equal(selfVote.status, 403);
+    assert.equal((await selfVote.json() as { error: string }).error, "CANNOT_VOTE_OWN_REVIEW");
+    const blockedVote = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews/${reviewId}/helpful`, { method: "PUT", headers: { authorization: `Bearer ${harness.blockedSession.token}` } });
+    assert.equal(blockedVote.status, 403);
+    assert.equal((await blockedVote.json() as { error: string }).error, "FORBIDDEN");
+    const vote = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews/${reviewId}/helpful`, { method: "PUT", headers: { authorization: `Bearer ${harness.guestSession.token}` } });
+    assert.equal(vote.status, 200);
+    assert.deepEqual(await vote.json(), { helpfulCount: 1, currentUserHelpful: true });
+    const repeat = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews/${reviewId}/helpful`, { method: "PUT", headers: { authorization: `Bearer ${harness.guestSession.token}` } });
+    assert.equal((await repeat.json() as { helpfulCount: number }).helpfulCount, 1);
+    const listing = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews?page=1&pageSize=10`, { headers: { authorization: `Bearer ${harness.guestSession.token}` } });
+    const page = await listing.json() as { items: Array<{ helpfulCount: number; currentUserHelpful: boolean }> };
+    assert.equal(page.items[0].helpfulCount, 1);
+    assert.equal(page.items[0].currentUserHelpful, true);
+    const removed = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews/${reviewId}/helpful`, { method: "DELETE", headers: { authorization: `Bearer ${harness.guestSession.token}` } });
+    assert.deepEqual(await removed.json(), { helpfulCount: 0, currentUserHelpful: false });
+    const missing = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews/00000000-0000-4000-8000-000000000000/helpful`, { method: "PUT", headers: { authorization: `Bearer ${harness.guestSession.token}` } });
+    assert.equal(missing.status, 404);
+    assert.equal((await missing.json() as { error: string }).error, "REVIEW_NOT_FOUND");
+  } finally { await harness.close(); }
+});
+
+test("developer reply routes require reply permission and manage a single reply", async () => {
+  const harness = await startReviewHarness();
+  try {
+    const mine = await (await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/my-review`, { headers: { authorization: `Bearer ${harness.ownerSession.token}` } })).json() as { review: { id: string } };
+    const reviewId = mine.review.id;
+    const forbiddenGuest = await fetch(`${harness.baseUrl}/api/admin/tool-reviews/${reviewId}/reply`, { method: "PUT", headers: { authorization: `Bearer ${harness.guestSession.token}`, "content-type": "application/json" }, body: JSON.stringify({ body: "no thanks" }) });
+    assert.equal(forbiddenGuest.status, 403);
+    assert.equal((await forbiddenGuest.json() as { error: string }).error, "FORBIDDEN");
+    const created = await fetch(`${harness.baseUrl}/api/admin/tool-reviews/${reviewId}/reply`, { method: "PUT", headers: { authorization: `Bearer ${harness.ownerSession.token}`, "content-type": "application/json" }, body: JSON.stringify({ body: "Thanks for the review!" }) });
+    assert.equal(created.status, 200);
+    assert.equal((await created.json() as { reply: { body: string; authorLabel: string } }).reply.body, "Thanks for the review!");
+    const updated = await fetch(`${harness.baseUrl}/api/admin/tool-reviews/${reviewId}/reply`, { method: "PUT", headers: { authorization: `Bearer ${harness.ownerSession.token}`, "content-type": "application/json" }, body: JSON.stringify({ body: "Glad you like it" }) });
+    assert.equal((await updated.json() as { reply: { body: string; edited: boolean } }).reply.edited, true);
+    const listing = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews?page=1&pageSize=10`, { headers: { authorization: `Bearer ${harness.guestSession.token}` } });
+    const page = await listing.json() as { items: Array<{ developerReply?: { body: string } }> };
+    assert.equal(page.items[0].developerReply?.body, "Glad you like it");
+    const removed = await fetch(`${harness.baseUrl}/api/admin/tool-reviews/${reviewId}/reply`, { method: "DELETE", headers: { authorization: `Bearer ${harness.ownerSession.token}` } });
+    assert.equal(removed.status, 200);
+    const afterList = await (await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/reviews?page=1&pageSize=10`, { headers: { authorization: `Bearer ${harness.guestSession.token}` } })).json() as { items: Array<{ developerReply?: unknown }> };
+    assert.equal(afterList.items[0].developerReply, undefined);
+    const bodyInvalid = await fetch(`${harness.baseUrl}/api/admin/tool-reviews/${reviewId}/reply`, { method: "PUT", headers: { authorization: `Bearer ${harness.ownerSession.token}`, "content-type": "application/json" }, body: JSON.stringify({ body: "x".repeat(2001) }) });
+    assert.equal(bodyInvalid.status, 400);
+    assert.equal((await bodyInvalid.json() as { error: string }).error, "REPLY_BODY_TOO_LONG");
+  } finally { await harness.close(); }
+});
+
 test("moderation administration routes expose reports and moderate reviews", async () => {
   const harness = await startReviewHarness();
   try {
@@ -378,6 +531,7 @@ async function startReviewHarness(limiter?: PollingRateLimiter, reportLimiter?: 
   authorizationRepository.overrides.push({ userId: owner.id, permission: "tools.report_review", effect: "deny" });
   const blocked = await authorizationRepository.ensureAuthenticatedUser("76561198000000013", "2026-07-30T14:00:00.000Z");
   authorizationRepository.overrides.push({ userId: blocked.id, permission: "tools.write_review", effect: "deny" });
+  authorizationRepository.overrides.push({ userId: blocked.id, permission: "tools.vote_review_helpful", effect: "deny" });
   const blockedSession = await sessions.issueForSteamIdentity(blocked.steamId64, "2026-07-30T14:00:00.000Z");
   const badgesRepo = new InMemoryToolBadgeRepository();
   const categories = new InMemoryToolCategoryRepository();
@@ -391,9 +545,14 @@ async function startReviewHarness(limiter?: PollingRateLimiter, reportLimiter?: 
   };
   const reviewRepository = new InMemoryToolReviewRepository(repository, reviewUsers, ratingRepository);
   const reportRepository = new InMemoryToolReviewReportRepository(repository, reviewRepository, reviewUsers);
+  const helpfulRepository = new InMemoryToolReviewHelpfulRepository();
+  const replyRepository = new InMemoryToolReviewDeveloperReplyRepository();
   reviewRepository.attachReportSource(reportRepository);
+  reviewRepository.attachHelpfulSource(helpfulRepository);
+  reviewRepository.attachReplySource(replyRepository);
   const reviews = new ToolReviewService(reviewRepository, reportRepository);
   const moderation = new ToolReviewModerationService(reviewRepository, reportRepository);
+  const interactions = new ToolReviewInteractionService(reviewRepository, helpfulRepository, replyRepository);
   const tool = await tools.create({ ...draft, slug: "review-route-tool", name: "Review Route Tool" }, owner.id);
   await reviews.save(tool.id, owner.id, { title: "First", body: "First review" });
   const config: AuthApiConfig = {
@@ -420,8 +579,11 @@ async function startReviewHarness(limiter?: PollingRateLimiter, reportLimiter?: 
     toolRatingRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
     toolReviews: reviews,
     toolReviewModeration: moderation,
+    toolReviewInteractions: interactions,
     toolReviewRateLimiter: limiter ?? new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
-    toolReportRateLimiter: reportLimiter ?? new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 })
+    toolReportRateLimiter: reportLimiter ?? new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
+    toolHelpfulRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
+    toolReplyRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 })
   }));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();

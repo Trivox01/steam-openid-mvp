@@ -151,7 +151,7 @@ export function DeveloperCenterPage({
         ) : activeSection === "toolCategories" ? (
           <Suspense fallback={<Surface className="badge-state">{t("state.loading")}</Surface>}><ToolsManagementPanel client={services.tools} mode="categories" /></Suspense>
         ) : activeSection === "toolReviews" ? (
-          <Suspense fallback={<Surface className="badge-state">{t("state.loading")}</Surface>}><ReviewModerationPanel client={services.tools} canOpenReports={snapshot.permissions.includes("tools.moderate_reviews")} onOpenReports={() => setActiveSection("toolReviewReports")} /></Suspense>
+          <Suspense fallback={<Surface className="badge-state">{t("state.loading")}</Surface>}><ReviewModerationPanel client={services.tools} canOpenReports={snapshot.permissions.includes("tools.moderate_reviews")} canReply={snapshot.permissions.includes("tools.reply_to_review")} onOpenReports={() => setActiveSection("toolReviewReports")} /></Suspense>
         ) : activeSection === "toolReviewReports" ? (
           <Suspense fallback={<Surface className="badge-state">{t("state.loading")}</Surface>}><ReviewReportsPanel client={services.tools} onBack={() => setActiveSection("toolReviews")} /></Suspense>
         ) : <div className="developer-overview">

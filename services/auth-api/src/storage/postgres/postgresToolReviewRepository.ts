@@ -98,7 +98,7 @@ export class PostgresToolReviewRepository {
     return result.rows[0] ? toRecord(result.rows[0]) : undefined;
   }
 
-  async listActive(toolId: string, query: ToolReviewListQuery): Promise<ToolReviewPage> {
+  async listActive(toolId: string, query: ToolReviewListQuery, viewerId?: string): Promise<ToolReviewPage> {
     await requireTool(this.pool, toolId, false);
     const order = query.sort === "newest"
       ? "r.created_at DESC, r.id ASC"
@@ -109,24 +109,30 @@ export class PostgresToolReviewRepository {
       "SELECT count(*) FROM tool_reviews r WHERE r.tool_id=$1 AND r.status='active'",
       [toolId]
     );
-    const rows = await this.pool.query<ToolReviewView>(
+    const rows = await this.pool.query(
       `SELECT r.id, r.tool_id AS "toolId", r.user_id AS "userId", r.title, r.body, r.status,
               r.created_at AS "createdAt", r.updated_at AS "updatedAt",
               r.moderated_at AS "moderatedAt", r.moderated_by AS "moderatedBy", r.moderation_reason AS "moderationReason",
               (r.updated_at > r.created_at) AS edited,
               coalesce(nullif(u.display_name,''), nullif(u.steam_nickname,''), 'Nexus User') AS "displayName",
               u.avatar_url AS "avatarUrl",
-              t.rating AS rating
+              t.rating AS rating,
+              coalesce(hc.cnt, 0) AS "helpfulCount",
+              (me.review_id IS NOT NULL) AS "currentUserHelpful",
+              dr.id AS "drId", dr.body AS "drBody", dr.created_at AS "drCreatedAt", dr.updated_at AS "drUpdatedAt"
        FROM tool_reviews r
        JOIN users u ON u.id=r.user_id
        LEFT JOIN tool_ratings t ON t.tool_id=r.tool_id AND t.user_id=r.user_id
+       LEFT JOIN (SELECT review_id, count(*) AS cnt FROM tool_review_helpful_votes GROUP BY review_id) hc ON hc.review_id=r.id
+       LEFT JOIN tool_review_developer_replies dr ON dr.review_id=r.id AND dr.status='active'
+       LEFT JOIN tool_review_helpful_votes me ON me.review_id=r.id AND me.user_id=$2
        WHERE r.tool_id=$1 AND r.status='active'
        ORDER BY ${order}
-       LIMIT $2 OFFSET $3`,
-      [toolId, query.pageSize, (query.page - 1) * query.pageSize]
+       LIMIT $3 OFFSET $4`,
+      [toolId, viewerId ?? null, query.pageSize, (query.page - 1) * query.pageSize]
     );
     return {
-      items: rows.rows.map((row) => toView(row)),
+      items: rows.rows.map((row) => toView(row, viewerId)),
       total: Number(count.rows[0]?.count ?? 0),
       page: query.page,
       pageSize: query.pageSize
@@ -152,11 +158,13 @@ export class PostgresToolReviewRepository {
               r.created_at AS "createdAt", r.updated_at AS "updatedAt",
               coalesce(nullif(u.display_name,''), nullif(u.steam_nickname,''), 'Nexus User') AS "displayName",
               t.name AS "toolName", t.slug AS "toolSlug",
-              tr.rating AS rating
+              tr.rating AS rating,
+              dr.id AS "drId", dr.body AS "drBody", dr.created_at AS "drCreatedAt", dr.updated_at AS "drUpdatedAt"
        FROM tool_reviews r
        JOIN users u ON u.id=r.user_id
        JOIN tool_definitions t ON t.id=r.tool_id
        LEFT JOIN tool_ratings tr ON tr.tool_id=r.tool_id AND tr.user_id=r.user_id
+       LEFT JOIN tool_review_developer_replies dr ON dr.review_id=r.id AND dr.status='active'
        ${where}
        ORDER BY r.created_at DESC, r.id
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
@@ -242,17 +250,21 @@ function toAdminRecord(value: any): Omit<ToolReviewAdminView, "reportsCount"> {
     rating: value.rating === null || value.rating === undefined ? null : Number(value.rating),
     tool: { id: String(value.toolId), name: String(value.toolName), slug: String(value.toolSlug) },
     createdAt: iso(value.createdAt),
-    updatedAt: iso(value.updatedAt)
+    updatedAt: iso(value.updatedAt),
+    ...(value.drId ? { developerReply: { id: String(value.drId), reviewId: String(value.id), body: String(value.drBody), createdAt: iso(value.drCreatedAt), updatedAt: iso(value.drUpdatedAt), edited: Date.parse(String(value.drUpdatedAt)) > Date.parse(String(value.drCreatedAt)) } } : {})
   };
 }
 
-function toView(value: any): ToolReviewView {
+function toView(value: any, viewerId?: string): ToolReviewView {
   return {
     ...toRecord(value),
     edited: Boolean(value.edited),
     displayName: String(value.displayName),
     ...(value.avatarUrl ? { avatarUrl: String(value.avatarUrl) } : {}),
-    rating: value.rating === null || value.rating === undefined ? null : Number(value.rating)
+    rating: value.rating === null || value.rating === undefined ? null : Number(value.rating),
+    helpfulCount: Number(value.helpfulCount ?? 0),
+    ...(viewerId ? { currentUserHelpful: Boolean(value.currentUserHelpful) } : {}),
+    ...(value.drId ? { developerReply: { id: String(value.drId), body: String(value.drBody), createdAt: iso(value.drCreatedAt), updatedAt: iso(value.drUpdatedAt), edited: Date.parse(String(value.drUpdatedAt)) > Date.parse(String(value.drCreatedAt)) } } : {})
   };
 }
 

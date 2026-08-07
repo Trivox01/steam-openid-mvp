@@ -37,6 +37,8 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState(false);
   const [reportDone, setReportDone] = useState(false);
+  const [helpfulBusyId, setHelpfulBusyId] = useState("");
+  const [helpfulError, setHelpfulError] = useState(false);
   const signedIn = Boolean(services.steamOpenId?.getActiveSession());
   useEffect(() => {
     const controller = new AbortController();
@@ -78,6 +80,20 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
     } catch { /* keep current list */ }
     if (services.steamOpenId?.getActiveSession()) {
       try { setMyReview(await services.tools.myReview(tool.id)); } catch { /* keep current my review */ }
+    }
+  };
+  const toggleHelpful = async (review: ToolReviewView) => {
+    if (!services.tools || !tool || helpfulBusyId) return;
+    setHelpfulBusyId(review.id);
+    setHelpfulError(false);
+    try {
+      const state = await services.tools.setReviewHelpful(tool.id, review.id, !review.currentUserHelpful);
+      setReviews((current) => current.map((item) => item.id === review.id ? { ...item, helpfulCount: state.helpfulCount, currentUserHelpful: state.currentUserHelpful } : item));
+    } catch (reason) {
+      if (String((reason as Error)?.message).includes("RATE_LIMITED")) { /* keep quiet; user retries later */ }
+      setHelpfulError(true);
+    } finally {
+      setHelpfulBusyId("");
     }
   };
   const saveReview = async (title: string, body: string) => {
@@ -251,7 +267,8 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
         </select>
       </div>
       {reviewsError && <p className="review-load-error" role="alert">{t("review.loadFailed")}</p>}
-      <ReviewList items={reviews} ownReviewId={myReview?.id} canReport={signedIn} language={language} onReport={setReportTarget} />
+      {helpfulError && <p className="tool-rating-feedback is-error" role="alert">{t("review.helpfulFailed")}</p>}
+      <ReviewList items={reviews} ownReviewId={myReview?.id} canReport={signedIn} canVote={signedIn} busyHelpfulId={helpfulBusyId} language={language} onReport={setReportTarget} onHelpful={(review) => void toggleHelpful(review)} />
       {reviewsTotal > 10 && (
         <nav className="review-pagination" aria-label={t("review.pagination")}>
           <button type="button" disabled={reviewsPage <= 1} onClick={() => setReviewsPage(reviewsPage - 1)}>{t("review.previous")}</button>

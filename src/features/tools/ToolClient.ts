@@ -1,5 +1,5 @@
 import type { BackendSessionSource } from "../developer-center/AuthorizationStore";
-import type { NexusTool, ToolBadge, ToolBadgeDraft, ToolCategory, ToolCategoryDraft, ToolDraft, ToolRatingSummary, ToolReviewAdminPage, ToolReviewPage, ToolReviewReason, ToolReviewReportPage, ToolReviewView } from "./types";
+import type { NexusTool, ToolBadge, ToolBadgeDraft, ToolCategory, ToolCategoryDraft, ToolDraft, ToolRatingSummary, ToolReviewAdminPage, ToolReviewDeveloperReply, ToolReviewPage, ToolReviewReason, ToolReviewReportPage, ToolReviewView, ReviewHelpfulState } from "./types";
 export class ToolClient {
   constructor(private readonly baseUrl: string, private readonly sessions?: BackendSessionSource) {}
   list(params = new URLSearchParams(), signal?: AbortSignal) { return this.request<{ items: NexusTool[]; total: number; page: number; pageSize: number }>(`/api/tools?${params}`, { signal }, false).then(x => ({ ...x, items: x.items.map(tool => this.resolveAssets(tool)) })); }
@@ -24,6 +24,9 @@ export class ToolClient {
   saveReview(toolId: string, draft: { title?: string; body: string }) { return this.request<ToolReviewView>(`/api/tools/${encodeURIComponent(toolId)}/my-review`, { method: "PUT", body: JSON.stringify(draft) }); }
   removeReview(toolId: string) { return this.request<void>(`/api/tools/${encodeURIComponent(toolId)}/my-review`, { method: "DELETE" }); }
   reportReview(toolId: string, reviewId: string, reason: ToolReviewReason, details?: string) { return this.request<{ report: unknown }>(`/api/tools/${encodeURIComponent(toolId)}/reviews/${encodeURIComponent(reviewId)}/report`, { method: "POST", body: JSON.stringify({ ...(details ? { details } : {}), reason }) }); }
+  setReviewHelpful(toolId: string, reviewId: string, helpful: boolean) { return this.request<ReviewHelpfulState>(`/api/tools/${encodeURIComponent(toolId)}/reviews/${encodeURIComponent(reviewId)}/helpful`, { method: helpful ? "PUT" : "DELETE" }); }
+  saveDeveloperReply(reviewId: string, body: string) { return this.request<{ reply: ToolReviewDeveloperReply }>(`/api/admin/tool-reviews/${encodeURIComponent(reviewId)}/reply`, { method: "PUT", body: JSON.stringify({ body }) }); }
+  removeDeveloperReply(reviewId: string) { return this.request<{ reply: ToolReviewDeveloperReply }>(`/api/admin/tool-reviews/${encodeURIComponent(reviewId)}/reply`, { method: "DELETE" }); }
   adminReviews(params = new URLSearchParams()) { return this.request<ToolReviewAdminPage>(`/api/admin/tool-reviews?${params}`); }
   moderateReview(id: string, action: "hide" | "restore" | "remove", reason?: string) { return this.request<ToolReviewAdminPage["items"][number]>(`/api/admin/tool-reviews/${id}/${action}`, { method: "POST", ...(action === "restore" ? {} : { body: JSON.stringify(reason ? { reason } : {}) }) }); }
   adminReports(params = new URLSearchParams()) { return this.request<ToolReviewReportPage>(`/api/admin/tool-review-reports?${params}`); }

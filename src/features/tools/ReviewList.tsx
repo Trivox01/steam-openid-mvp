@@ -1,4 +1,4 @@
-import { Flag, Star } from "lucide-react";
+import { Flag, Star, ThumbsUp } from "lucide-react";
 import { ProfileAvatar } from "../../components/ui/ProfileAvatar";
 import { useTranslation } from "../../i18n/TranslationContext";
 import type { ToolReviewView } from "./types";
@@ -18,7 +18,7 @@ function reviewStars(rating: number | null) {
   );
 }
 
-export function ReviewList({ items, ownReviewId, canReport, language, onReport }: { items: ToolReviewView[]; ownReviewId?: string; canReport: boolean; language: string; onReport: (review: ToolReviewView) => void }) {
+export function ReviewList({ items, ownReviewId, canReport, canVote, busyHelpfulId, language, onReport, onHelpful }: { items: ToolReviewView[]; ownReviewId?: string; canReport: boolean; canVote: boolean; busyHelpfulId?: string; language: string; onReport: (review: ToolReviewView) => void; onHelpful: (review: ToolReviewView) => void }) {
   const { t } = useTranslation();
   if (!items.length) return <p className="review-empty">{t("review.empty")}</p>;
   return (
@@ -33,11 +33,40 @@ export function ReviewList({ items, ownReviewId, canReport, language, onReport }
             {review.edited && <small className="review-card__edited">{t("review.edited")}</small>}
             {review.title && <h3 dir="auto">{review.title}</h3>}
             <p dir="auto" className="review-card__text">{review.body}</p>
-            {review.id !== ownReviewId && canReport && (
-              <button type="button" className="review-card__report" onClick={() => onReport(review)}>
-                <Flag aria-hidden="true" />
-                {t("review.report")}
-              </button>
+            <div className="review-card__actions">
+              {review.id === ownReviewId ? (
+                <span className="review-helpful-count" aria-label={t("review.helpfulCount", { count: review.helpfulCount })}><ThumbsUp aria-hidden="true" />{review.helpfulCount}</span>
+              ) : canVote ? (
+                <button
+                  type="button"
+                  className={review.currentUserHelpful ? "review-helpful is-on" : "review-helpful"}
+                  aria-pressed={Boolean(review.currentUserHelpful)}
+                  disabled={Boolean(busyHelpfulId)}
+                  onClick={() => onHelpful(review)}
+                >
+                  <ThumbsUp aria-hidden="true" />
+                  {review.currentUserHelpful ? t("review.helpfulMarked") : t("review.helpfulMark")}
+                  <span className="review-helpful__count">{review.helpfulCount}</span>
+                </button>
+              ) : (
+                <span className="review-helpful-count" aria-label={t("review.helpfulCount", { count: review.helpfulCount })}><ThumbsUp aria-hidden="true" />{review.helpfulCount}</span>
+              )}
+              {review.id !== ownReviewId && canReport && (
+                <button type="button" className="review-card__report" onClick={() => onReport(review)}>
+                  <Flag aria-hidden="true" />
+                  {t("review.report")}
+                </button>
+              )}
+            </div>
+            {review.developerReply && (
+              <div className="review-reply" lang={language}>
+                <div className="review-reply__head">
+<span className="review-reply__badge" role="img" aria-hidden="true"><ThumbsUp size={12} /><span>{t("review.developer")}</span></span>
+                <time dateTime={review.developerReply.createdAt}>{new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(new Date(review.developerReply.createdAt))}</time>
+                  {review.developerReply.edited && <small className="review-card__edited">{t("review.edited")}</small>}
+                </div>
+                <p dir="auto" className="review-reply__body">{review.developerReply.body}</p>
+              </div>
             )}
           </div>
         </li>

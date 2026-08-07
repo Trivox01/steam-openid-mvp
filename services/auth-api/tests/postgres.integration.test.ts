@@ -20,9 +20,11 @@ import { PostgresToolRepositories, PostgresToolBadgeRepository, PostgresToolCate
 import { PostgresToolRatingRepository } from "../src/storage/postgres/postgresToolRatingRepository.ts";
 import { PostgresToolReviewRepository } from "../src/storage/postgres/postgresToolReviewRepository.ts";
 import { PostgresToolReviewReportRepository } from "../src/storage/postgres/postgresToolReviewReportRepository.ts";
+import { PostgresToolReviewHelpfulRepository } from "../src/storage/postgres/postgresToolReviewHelpfulRepository.ts";
+import { PostgresToolReviewDeveloperReplyRepository } from "../src/storage/postgres/postgresToolReviewDeveloperReplyRepository.ts";
 import { ToolService } from "../src/tools/toolService.ts";
 import { ToolRatingService } from "../src/tools/toolRatingService.ts";
-import { ToolReviewService, ToolReviewModerationService } from "../src/tools/toolReviewService.ts";
+import { ToolReviewService, ToolReviewModerationService, ToolReviewInteractionService } from "../src/tools/toolReviewService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -58,7 +60,7 @@ test("PostgreSQL repository integration and concurrency", {
       "SELECT count(*) FROM permissions"
     );
     assert.equal(Number(roleCount.rows[0].count), 5);
-    assert.equal(Number(permissionCount.rows[0].count), 30);
+    assert.equal(Number(permissionCount.rows[0].count), 32);
     const badgeRepository = new PostgresBadgeRepository(pool);
     await badgeRepository.validateSchema();
     const cleanupStorageKey =
@@ -208,6 +210,39 @@ test("PostgreSQL repository integration and concurrency", {
     const adminRemoved = await moderation.listReviews({ page: 1, pageSize: 20, status: "removed" });
     assert.equal(adminRemoved.total, 1);
     assert.equal(adminRemoved.items[0].reportsCount, 1);
+    const helpfulRepository = new PostgresToolReviewHelpfulRepository(pool);
+    await helpfulRepository.validateSchema();
+    const replyRepository = new PostgresToolReviewDeveloperReplyRepository(pool);
+    await replyRepository.validateSchema();
+    const interactions = new ToolReviewInteractionService(reviewRepository, helpfulRepository, replyRepository);
+    const thirdUser = await authorizationRepository.ensureAuthenticatedUser("76561198000000003", "2026-07-28T12:00:00.000Z");
+    const interactionTool = await tools.create({ ...toolDraft, slug: "interaction-tool", name: "Interaction Tool" }, user.id);
+    const discussion = await reviews.save(interactionTool.id, user.id, { body: "Discussion starter" });
+    assert.deepEqual((await interactions.addHelpful(discussion.review.id, thirdUser.id)), { helpfulCount: 1, currentUserHelpful: true });
+    await interactions.addHelpful(discussion.review.id, secondUser.id);
+    assert.equal((await interactions.addHelpful(discussion.review.id, thirdUser.id)).helpfulCount, 2);
+    const likedView = await reviews.list(interactionTool.id, { page: 1, pageSize: 20, sort: "newest" }, thirdUser.id);
+    assert.equal(likedView.items[0].helpfulCount, 2);
+    assert.equal(likedView.items[0].currentUserHelpful, true);
+    assert.equal((await reviews.list(interactionTool.id, { page: 1, pageSize: 20, sort: "newest" })).items[0].currentUserHelpful, undefined);
+    await assert.rejects(() => interactions.addHelpful(discussion.review.id, user.id), /CANNOT_VOTE_OWN_REVIEW/);
+    assert.deepEqual(await interactions.removeHelpful(discussion.review.id, thirdUser.id), { helpfulCount: 1, currentUserHelpful: false });
+    const reply = await interactions.saveReply(discussion.review.id, user.id, { body: "Thanks for the feedback" });
+    assert.equal(reply.authorLabel, "Developer");
+    assert.equal(reply.edited, false);
+    assert.equal((await interactions.saveReply(discussion.review.id, user.id, { body: "Updated acknowledgment" })).edited, true);
+    const repliedView = await reviews.list(interactionTool.id, { page: 1, pageSize: 20, sort: "newest" }, thirdUser.id);
+    assert.equal(repliedView.items[0].developerReply?.body, "Updated acknowledgment");
+    const removedReply = await interactions.removeReply(discussion.review.id, user.id);
+    assert.equal(removedReply.body, "Updated acknowledgment");
+    assert.equal((await reviews.list(interactionTool.id, { page: 1, pageSize: 20, sort: "newest" }, thirdUser.id)).items[0].developerReply, undefined);
+    await assert.rejects(() => interactions.removeReply(discussion.review.id, user.id), /REPLY_NOT_FOUND/);
+    const interactionAudit = await pool.query<{ action: string; metadata_json: Record<string, unknown> }>(
+      "SELECT action, metadata_json FROM audit_events WHERE target_type='tool_review' AND metadata_json ->> 'reviewId'=$1 ORDER BY action",
+      [discussion.review.id]
+    );
+    assert.deepEqual(interactionAudit.rows.map((row) => row.action).sort(), ["tool.review_developer_reply_created", "tool.review_developer_reply_denied", "tool.review_developer_reply_removed", "tool.review_developer_reply_updated", "tool.review_helpful_added", "tool.review_helpful_added", "tool.review_helpful_denied", "tool.review_helpful_removed"].sort());
+    for (const row of interactionAudit.rows) assert.doesNotMatch(JSON.stringify(row.metadata_json), /steam|account|token|session|secret/i);
     await tools.archive(reviewTool.id, user.id);
     await assert.rejects(() => reviews.save(reviewTool.id, user.id, { body: "y" }), /TOOL_ARCHIVED/);
     assert.equal((await reviews.list(reviewTool.id, { page: 1, pageSize: 20, sort: "newest" })).total, 1);

@@ -18,6 +18,7 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
     "assets.delete", "settings.view", "settings.edit", "audit.view",
     "developer.tools", "tools.view", "tools.manage", "tools.rate", "tools.view_ratings",
     "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.moderate_reviews",
+    "tools.vote_review_helpful", "tools.reply_to_review",
     "tool_badges.manage", "tool_categories.manage"
   ],
   administrator: [
@@ -27,6 +28,7 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
     "assets.delete", "settings.view", "settings.edit", "audit.view",
     "tools.view", "tools.manage", "tools.rate", "tools.view_ratings",
     "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.moderate_reviews",
+    "tools.vote_review_helpful", "tools.reply_to_review",
     "tool_badges.manage", "tool_categories.manage"
   ],
   developer: [
@@ -34,6 +36,7 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
     "badges.edit", "assets.upload", "settings.view", "audit.view",
     "developer.tools", "tools.view", "tools.manage", "tools.rate", "tools.view_ratings",
     "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.moderate_reviews",
+    "tools.vote_review_helpful", "tools.reply_to_review",
     "tool_badges.manage", "tool_categories.manage"
   ],
   moderator: [

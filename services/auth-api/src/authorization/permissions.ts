@@ -27,6 +27,8 @@ export const PERMISSION_KEYS = [
   "tools.write_review",
   "tools.report_review",
   "tools.moderate_reviews",
+  "tools.vote_review_helpful",
+  "tools.reply_to_review",
   "tool_badges.manage",
   "tool_categories.manage"
 ] as const;
