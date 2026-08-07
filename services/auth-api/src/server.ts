@@ -19,6 +19,7 @@ import { SteamUserProfileClient } from "./steam/steamUserProfileClient.ts";
 import { SteamDataClient } from "./steam/steamDataClient.ts";
 import { ToolService } from "./tools/toolService.ts";
 import { createToolAssetStorages } from "./tools/toolAssetStorage.ts";
+import { ToolRatingService } from "./tools/toolRatingService.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -82,6 +83,7 @@ async function main() {
   const badgeAssets = createBadgeAssetStorage(config);
   const toolAssets = createToolAssetStorages(config);
   const tools = new ToolService(storage.toolRepository, storage.toolBadgeRepository, storage.toolCategoryRepository, storage.badgeRepository, toolAssets.routed);
+  const toolRatings = new ToolRatingService(storage.toolRatingRepository);
   const bootstrapResult = await authorization.bootstrapOwner(
     config.bootstrapOwnerSteamId64
   );
@@ -120,6 +122,8 @@ async function main() {
       steamData,
       steamDataRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 1_000 }),
       tools,
+      toolRatings,
+      toolRatingRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 750, windowMs: 60_000, maxRequests: 12 }),
       toolAssets
     })
   );

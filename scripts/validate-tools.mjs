@@ -22,7 +22,7 @@ assert.match(image, /"lazy"/);
 assert.match(image, /onError/);
 assert.match(page, /tools\.recommended/);
 assert.match(page, /tools\.new/);
-assert.doesNotMatch(page + details, /rating|review|downloadCount|dangerouslySetInnerHTML/i);
+assert.doesNotMatch(page + details, /review|downloadCount|dangerouslySetInnerHTML/i);
 assert.match(details, /role="dialog"/);
 assert.match(details, /aria-modal="true"/);
 assert.match(details, /invoke\("open_external_tool_url"/);

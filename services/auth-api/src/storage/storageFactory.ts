@@ -27,6 +27,8 @@ import { InMemoryToolRepository, type ToolRepository } from "../tools/toolReposi
 import { InMemoryToolBadgeRepository, type ToolBadgeRepository } from "../tools/toolBadgeRepository.ts";
 import { InMemoryToolCategoryRepository, type ToolCategoryRepository } from "../tools/toolCategoryRepository.ts";
 import { PostgresToolRepositories, PostgresToolBadgeRepository, PostgresToolCategoryRepository } from "./postgres/postgresToolRepositories.ts";
+import { InMemoryToolRatingRepository, type ToolRatingRepository } from "../tools/toolRatingRepository.ts";
+import { PostgresToolRatingRepository } from "./postgres/postgresToolRatingRepository.ts";
 
 export interface InitializedStorage {
   repository: AuthTransactionRepository;
@@ -37,6 +39,7 @@ export interface InitializedStorage {
   toolRepository: ToolRepository;
   toolBadgeRepository: ToolBadgeRepository;
   toolCategoryRepository: ToolCategoryRepository;
+  toolRatingRepository: ToolRatingRepository;
   close(): Promise<void>;
 }
 
@@ -62,6 +65,7 @@ export async function initializeStorage(
     const toolBadgeRepository = new InMemoryToolBadgeRepository();
     const toolCategoryRepository = new InMemoryToolCategoryRepository();
     const toolRepository = new InMemoryToolRepository(toolBadgeRepository, toolCategoryRepository);
+    const toolRatingRepository = new InMemoryToolRatingRepository(toolRepository);
     return {
       repository,
       authorizationRepository,
@@ -71,6 +75,7 @@ export async function initializeStorage(
       toolRepository,
       toolBadgeRepository,
       toolCategoryRepository,
+      toolRatingRepository,
       async close() {}
     };
   }
@@ -100,6 +105,8 @@ export async function initializeStorage(
     await toolRepository.validateSchema();
     const toolBadgeRepository = new PostgresToolBadgeRepository(toolRepository);
     const toolCategoryRepository = new PostgresToolCategoryRepository(toolRepository);
+    const toolRatingRepository = new PostgresToolRatingRepository(pool);
+    await toolRatingRepository.validateSchema();
     return {
       repository,
       authorizationRepository,
@@ -109,6 +116,7 @@ export async function initializeStorage(
       toolRepository,
       toolBadgeRepository,
       toolCategoryRepository,
+      toolRatingRepository,
       async close() {
         await pool.end();
       }

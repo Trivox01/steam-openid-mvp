@@ -36,7 +36,8 @@ export type ToolCategoryMutation = Omit<ToolCategory, "id" | "archivedAt" | "cre
 
 export type ToolErrorCode = "INVALID_TOOL" | "INVALID_TOOL_QUERY" | "INVALID_TOOL_URL" |
   "TOOL_NOT_FOUND" | "TOOL_ARCHIVED" | "TOOL_SLUG_CONFLICT" | "TOOL_BADGE_NOT_FOUND" |
-  "TOOL_CATEGORY_NOT_FOUND" | "TOOL_REFERENCE_ARCHIVED" | "TOOL_METADATA_IN_USE" | "TOOL_ASSET_NOT_FOUND" | "INVALID_JSON";
+  "TOOL_CATEGORY_NOT_FOUND" | "TOOL_REFERENCE_ARCHIVED" | "TOOL_METADATA_IN_USE" | "TOOL_ASSET_NOT_FOUND" | "INVALID_JSON" |
+  "INVALID_TOOL_RATING" | "RATING_NOT_FOUND";
 export class ToolError extends Error {
   readonly code: ToolErrorCode;
   constructor(code: ToolErrorCode) { super(code); this.code = code; this.name = "ToolError"; }

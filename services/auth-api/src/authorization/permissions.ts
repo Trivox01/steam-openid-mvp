@@ -21,6 +21,8 @@ export const PERMISSION_KEYS = [
   "developer.tools",
   "tools.view",
   "tools.manage",
+  "tools.rate",
+  "tools.view_ratings",
   "tool_badges.manage",
   "tool_categories.manage"
 ] as const;

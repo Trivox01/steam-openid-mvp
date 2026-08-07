@@ -7,17 +7,21 @@ import { parseToolBadge, parseToolCategory, parseToolQuery, type ToolService } f
 import type { BadgeRepository } from "../badges/badgeRepository.ts";
 import { BadgeAssetNotFoundError, validateBadgeAsset, type BadgeAssetStorage } from "../badges/badgeAssetStorage.ts";
 import { persistBadgeAsset } from "../badges/badgeAssetLifecycle.ts";
+import type { ToolRatingService } from "../tools/toolRatingService.ts";
+import { PollingRateLimitError, type PollingRateLimiter } from "../security/pollingRateLimiter.ts";
 
-type Deps = { tools: ToolService; authorization: AuthorizationService; sessions: SessionTokenService; assets: BadgeRepository; toolAssets: { icon: BadgeAssetStorage; cover: BadgeAssetStorage; routed: BadgeAssetStorage } };
-export function isToolPath(path: string) { return path === "/api/tools" || /^\/api\/tools\/[a-z0-9-]+$/.test(path) || /^\/api\/tool-assets\/[0-9a-f-]+\/content$/i.test(path) || path.startsWith("/api/admin/tools") || path.startsWith("/api/admin/tool-assets") || path.startsWith("/api/admin/tool-badges") || path.startsWith("/api/admin/tool-categories"); }
+type Deps = { tools: ToolService; ratings:ToolRatingService; ratingRateLimiter:PollingRateLimiter; authorization: AuthorizationService; sessions: SessionTokenService; assets: BadgeRepository; toolAssets: { icon: BadgeAssetStorage; cover: BadgeAssetStorage; routed: BadgeAssetStorage } };
+export function isToolPath(path: string) { return path === "/api/tools" || /^\/api\/tools\/[a-z0-9-]+$/.test(path) || /^\/api\/tools\/[0-9a-f-]+\/(rating-summary|my-rating)$/i.test(path) || /^\/api\/tool-assets\/[0-9a-f-]+\/content$/i.test(path) || path.startsWith("/api/admin/tools") || path.startsWith("/api/admin/tool-assets") || path.startsWith("/api/admin/tool-badges") || path.startsWith("/api/admin/tool-categories"); }
 
 export async function handleTools(req: IncomingMessage, res: ServerResponse, url: URL, deps: Deps) {
   if (!isToolPath(url.pathname)) return false;
   let actor: string | undefined;
   try {
-    if (url.pathname === "/api/tools" && req.method === "GET") { const query = parseToolQuery(url.searchParams); return json(res, 200, { ...await deps.tools.list(query), page: query.page, pageSize: query.pageSize }); }
+    if (url.pathname === "/api/tools" && req.method === "GET") { const query = parseToolQuery(url.searchParams),result=await deps.tools.list(query),summaries=await deps.ratings.summaries(result.items.map(x=>x.id));return json(res, 200, { ...result,items:result.items.map(x=>({...x,ratingSummary:summaries[x.id]})), page: query.page, pageSize: query.pageSize }); }
+    const rating= url.pathname.match(/^\/api\/tools\/([0-9a-f-]+)\/(rating-summary|my-rating)$/i);
+    if(rating?.[2]==="rating-summary"&&req.method==="GET")return json(res,200,await deps.ratings.summary(rating[1]));
     const publicTool = url.pathname.match(/^\/api\/tools\/([a-z0-9-]+)$/);
-    if (publicTool && req.method === "GET") { const tool = await deps.tools.getBySlug(publicTool[1]); if (!tool) throw new ToolError("TOOL_NOT_FOUND"); return json(res, 200, tool); }
+    if (publicTool && req.method === "GET") { const tool = await deps.tools.getBySlug(publicTool[1]); if (!tool) throw new ToolError("TOOL_NOT_FOUND"); return json(res, 200, {...tool,ratingSummary:await deps.ratings.summary(tool.id)}); }
     const content = url.pathname.match(/^\/api\/tool-assets\/([0-9a-f-]+)\/content$/i);
     if (content && req.method === "GET") {
       const asset = await deps.assets.getAsset(content[1]); if (!asset || asset.deletedAt) return empty(res, 404);
@@ -25,10 +29,19 @@ export async function handleTools(req: IncomingMessage, res: ServerResponse, url
       catch (error) { if (error instanceof BadgeAssetNotFoundError) return empty(res, 404); throw error; }
     }
     const user = await deps.sessions.authenticateBearer(typeof req.headers.authorization === "string" ? req.headers.authorization : undefined); actor = user.id;
+    if(rating?.[2]==="my-rating"){
+      await deps.authorization.requirePermission(actor,"tools.rate");
+      if(req.method==="GET")return json(res,200,{rating:await deps.ratings.mine(rating[1],actor)});
+      if(req.method==="PUT"||req.method==="DELETE"){
+        try{deps.ratingRateLimiter.assertAllowed(`tool-rating:${actor}`);}catch(error){await deps.ratings.repository.audit("tool.rating_denied",actor,rating[1]).catch(()=>{});throw error;}
+        if(req.method==="PUT")return json(res,200,await deps.ratings.save(rating[1],actor,await body(req)));
+        await deps.ratings.remove(rating[1],actor);return empty(res,204);
+      }
+    }
     const upload = url.pathname.match(/^\/api\/admin\/tool-assets\/(icon|cover)$/);
     if (upload && req.method === "POST") { await deps.authorization.requirePermission(actor, "tools.manage"); const bytes = await binary(req, 2 * 1024 * 1024); const declared = typeof req.headers["content-type"] === "string" ? req.headers["content-type"].split(";")[0] : undefined; const asset = validateBadgeAsset(bytes, declared); return json(res, 201, await persistBadgeAsset(deps.assets, deps.toolAssets[upload[1] as "icon" | "cover"], asset, actor)); }
     if (url.pathname === "/api/admin/tool-assets/missing" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tools.manage"); const candidates = (await deps.assets.listAvailableAssets(500)).filter(asset => asset.storageKey.includes("/tools/") || asset.storageKey.startsWith("tools/")); const missing: Array<{ id: string }> = []; for (const asset of candidates) if (!await deps.toolAssets.routed.exists(asset.storageKey)) missing.push({ id: asset.id }); return json(res, 200, { items: missing }); }
-    if (url.pathname === "/api/admin/tools" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tools.manage"); const query = parseToolQuery(url.searchParams, true); return json(res, 200, { ...await deps.tools.list(query), page: query.page, pageSize: query.pageSize }); }
+    if (url.pathname === "/api/admin/tools" && req.method === "GET") { await deps.authorization.requirePermission(actor, "tools.manage"); const query = parseToolQuery(url.searchParams, true),result=await deps.tools.list(query); await deps.authorization.requirePermission(actor, "tools.view_ratings"); const summaries=await deps.ratings.summaries(result.items.map(x=>x.id)); return json(res, 200, { ...result,items:result.items.map(x=>({...x,ratingSummary:summaries[x.id]})), page: query.page, pageSize: query.pageSize }); }
     if (url.pathname === "/api/admin/tools" && req.method === "POST") { await deps.authorization.requirePermission(actor, "tools.manage"); return json(res, 201, await deps.tools.create(await body(req), actor)); }
     const tool = url.pathname.match(/^\/api\/admin\/tools\/([0-9a-f-]+)(?:\/(archive|reactivate))?$/i);
     if (tool) { await deps.authorization.requirePermission(actor, "tools.manage"); if (req.method === "PATCH" && !tool[2]) return json(res, 200, await deps.tools.update(tool[1], await body(req), actor)); if (req.method === "POST" && tool[2]) return json(res, 200, tool[2] === "archive" ? await deps.tools.archive(tool[1], actor) : await deps.tools.reactivate(tool[1], actor)); }
@@ -43,9 +56,10 @@ export async function handleTools(req: IncomingMessage, res: ServerResponse, url
     return json(res, 405, { error: "METHOD_NOT_ALLOWED" });
   } catch (error) {
     if (error instanceof AuthorizationError && actor) await deps.authorization.repository.writeAuditEvent({ actorUserId: actor, action: "tool.action_denied", targetType: "tool", metadata: { path: url.pathname, method: req.method ?? "UNKNOWN" } }).catch(() => {});
-    const code = error instanceof ToolError || error instanceof AuthorizationError ? error.code : error instanceof Error && error.message.includes("slug") ? "TOOL_SLUG_CONFLICT" : error instanceof Error && error.name === "BadgeError" ? error.message : "TOOL_OPERATION_FAILED";
-    const status = code === "AUTHENTICATION_REQUIRED" ? 401 : code === "PERMISSION_DENIED" ? 403 : code.endsWith("NOT_FOUND") ? 404 : code.includes("CONFLICT") || code === "TOOL_METADATA_IN_USE" ? 409 : code === "TOOL_OPERATION_FAILED" ? 500 : 400;
-    return json(res, status, { error: code });
+    const raw = error instanceof ToolError || error instanceof AuthorizationError ? error.code : error instanceof PollingRateLimitError ? "RATING_RATE_LIMITED" : error instanceof Error && error.message.includes("slug") ? "TOOL_SLUG_CONFLICT" : error instanceof Error && error.name === "BadgeError" ? error.message : "TOOL_OPERATION_FAILED";
+    const ratingPath=/\/api\/tools\/[0-9a-f-]+\/(rating-summary|my-rating)$/i.test(url.pathname);const code=ratingPath&&raw==="AUTHENTICATION_REQUIRED"?"UNAUTHENTICATED":ratingPath&&raw==="PERMISSION_DENIED"?"FORBIDDEN":raw;
+    const status = code === "UNAUTHENTICATED"||code === "AUTHENTICATION_REQUIRED" ? 401 : code === "FORBIDDEN"||code === "PERMISSION_DENIED" ? 403 : code === "RATING_RATE_LIMITED"?429:code.endsWith("NOT_FOUND") ? 404 : code.includes("CONFLICT") || code === "TOOL_METADATA_IN_USE" ? 409 : code === "TOOL_OPERATION_FAILED" ? 500 : 400;
+    if(error instanceof PollingRateLimitError)res.setHeader("retry-after",String(Math.max(1,Math.ceil(error.retryAfterMs/1000))));return json(res, status, { error: code });
   }
 }
 async function body(req: IncomingMessage) { const bytes = await binary(req, 128 * 1024); try { return JSON.parse(bytes.toString("utf8")); } catch { throw new ToolError("INVALID_JSON"); } }

@@ -17,7 +17,9 @@ import { BadgeAssignmentService } from "../src/badgeAssignments/badgeAssignmentS
 import { PostgresUserRepository } from "../src/storage/postgres/postgresUserRepository.ts";
 import { UserService } from "../src/users/userService.ts";
 import { PostgresToolRepositories, PostgresToolBadgeRepository, PostgresToolCategoryRepository } from "../src/storage/postgres/postgresToolRepositories.ts";
+import { PostgresToolRatingRepository } from "../src/storage/postgres/postgresToolRatingRepository.ts";
 import { ToolService } from "../src/tools/toolService.ts";
+import { ToolRatingService } from "../src/tools/toolRatingService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -53,7 +55,7 @@ test("PostgreSQL repository integration and concurrency", {
       "SELECT count(*) FROM permissions"
     );
     assert.equal(Number(roleCount.rows[0].count), 5);
-    assert.equal(Number(permissionCount.rows[0].count), 24);
+    assert.equal(Number(permissionCount.rows[0].count), 26);
     const badgeRepository = new PostgresBadgeRepository(pool);
     await badgeRepository.validateSchema();
     const cleanupStorageKey =
@@ -91,6 +93,41 @@ test("PostgreSQL repository integration and concurrency", {
     assert.equal((await tools.list({ page: 1, pageSize: 20, activeOnly: true, includeArchived: false, sort: "newest" })).items.some(item => item.id === createdTool.id), false);
     const toolIndexes = await pool.query<{ count: string }>("SELECT count(*) FROM pg_indexes WHERE schemaname=current_schema() AND indexname IN ('tool_definitions_public_idx','tool_definitions_category_idx','tool_badge_assignments_badge_idx','tool_definitions_icon_asset_idx','tool_definitions_cover_asset_idx')");
     assert.equal(Number(toolIndexes.rows[0].count), 5);
+    const ratingRepository = new PostgresToolRatingRepository(pool);
+    await ratingRepository.validateSchema();
+    const ratings = new ToolRatingService(ratingRepository);
+    const secondUser = await authorizationRepository.ensureAuthenticatedUser("76561198000000002", "2026-07-28T12:00:00.000Z");
+    const ratingTool = await tools.create({ ...toolDraft, slug: "rating-tool", name: "Rating Tool" }, user.id);
+    await ratings.save(ratingTool.id, user.id, { rating: 5 });
+    assert.deepEqual(await ratings.summary(ratingTool.id), { average: 5.0, total: 1, distribution: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 1 } });
+    await ratings.save(ratingTool.id, user.id, { rating: 4 });
+    assert.equal(await ratings.mine(ratingTool.id, user.id), 4);
+    await ratings.save(ratingTool.id, secondUser.id, { rating: 2 });
+    assert.deepEqual(await ratings.summary(ratingTool.id), { average: 3.0, total: 2, distribution: { "1": 0, "2": 1, "3": 0, "4": 1, "5": 0 } });
+    assert.deepEqual((await ratings.summaries([ratingTool.id]))[ratingTool.id], { average: 3.0, total: 2, distribution: { "1": 0, "2": 1, "3": 0, "4": 1, "5": 0 } });
+    const concurrentRatings = await Promise.allSettled([
+      ratingRepository.upsert(ratingTool.id, user.id, 1),
+      ratingRepository.upsert(ratingTool.id, user.id, 5),
+      ratingRepository.upsert(ratingTool.id, user.id, 2)
+    ]);
+    assert.equal(concurrentRatings.every((item) => item.status === "fulfilled"), true);
+    assert.equal((await ratings.summary(ratingTool.id)).total, 2);
+    assert.ok([1, 2, 5].includes((await ratings.mine(ratingTool.id, user.id)) as number));
+    await assert.rejects(() => ratings.save("00000000-0000-4000-8000-000000000000", user.id, { rating: 3 }), /TOOL_NOT_FOUND/);
+    await tools.archive(ratingTool.id, user.id);
+    await assert.rejects(() => ratings.save(ratingTool.id, secondUser.id, { rating: 4 }), /TOOL_ARCHIVED/);
+    assert.equal((await ratings.summary(ratingTool.id)).total, 2);
+    await ratings.remove(ratingTool.id, secondUser.id);
+    const surviving = await ratings.mine(ratingTool.id, user.id) as number;
+    assert.deepEqual(await ratings.summary(ratingTool.id), { average: surviving, total: 1, distribution: { "1": surviving === 1 ? 1 : 0, "2": surviving === 2 ? 1 : 0, "3": surviving === 3 ? 1 : 0, "4": surviving === 4 ? 1 : 0, "5": surviving === 5 ? 1 : 0 } });
+    await assert.rejects(() => ratings.remove(ratingTool.id, secondUser.id), /RATING_NOT_FOUND/);
+    const ratingAudit = await pool.query<{ action: string; metadata_json: Record<string, unknown> }>(
+      "SELECT action, metadata_json FROM audit_events WHERE target_type='tool' AND target_id=$1 AND action LIKE 'tool.rating_%'",
+      [ratingTool.id]
+    );
+    assert.deepEqual(ratingAudit.rows.map((row) => row.action).sort(), ["tool.rating_created", "tool.rating_created", "tool.rating_denied", "tool.rating_denied", "tool.rating_removed", "tool.rating_updated"].sort());
+    for (const row of ratingAudit.rows) assert.doesNotMatch(JSON.stringify(row.metadata_json), /steam|account|token|secret|session/i);
+    assert.equal((await pool.query<{ count: string }>("SELECT count(*) FROM tool_ratings WHERE user_id=$1", [secondUser.id])).rows[0].count, "0");
     const badgeDraft = {
       slug: "staging-founder", displayName: "Staging Founder",
       description: "Migration validation", category: "special" as const,
