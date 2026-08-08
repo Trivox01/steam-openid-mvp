@@ -97,6 +97,7 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.emit("nexus://app-visibility-changed", true);
     }
 }
 
@@ -189,6 +190,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let WindowEvent::Focused(focused) = event {
+                let _ = window.emit("nexus://app-visibility-changed", *focused);
+            }
             if matches!(event, WindowEvent::Focused(true)) {
                 window
                     .state::<steam_installation::SteamInstallationProbe>()
@@ -202,6 +206,7 @@ pub fn run() {
                     && !state.quitting.load(Ordering::Acquire)
                 {
                     api.prevent_close();
+                    let _ = window.emit("nexus://app-visibility-changed", false);
                     if !state.tray_notice_shown.swap(true, Ordering::AcqRel) {
                         let _ = window
                             .app_handle()
@@ -251,6 +256,8 @@ pub fn run() {
             ,commands::list_game_sessions
             ,commands::game_session_statistics
             ,commands::game_session_diagnostics
+            ,commands::list_game_session_summaries
+            ,commands::mark_game_session_summary_seen
             ,discord_presence::discord_presence_configure
             ,discord_presence::discord_presence_refresh
             ,discord_presence::discord_presence_status

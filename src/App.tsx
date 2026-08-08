@@ -24,6 +24,7 @@ import { AmbientBackdrop } from "./components/ui/NexusGlass";
 import { AchievementToastHost } from "./features/achievement-toasts/AchievementToastHost";
 import { discordPresenceBridge } from "./services/DiscordPresenceBridge";
 import { subscribeToLibraryChanges } from "./services/dataEvents";
+import { SessionSummaryHost } from "./features/session-summaries/SessionSummaryHost";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const GamesPage = lazy(() => import("./pages/GamesPage").then((module) => ({ default: module.GamesPage })));
@@ -204,6 +205,7 @@ export function App() {
       <GlobalRefreshStatus />
       <UpdateExperience autoCheck={preferences.autoCheckForUpdates} />
       <AchievementToastHost />
+      <SessionSummaryHost onOpenGame={openGame} />
       <Sidebar
         activePage={activeNavigationPage(view, activePage)}
         collapsed={preferences.sidebarCollapsed}

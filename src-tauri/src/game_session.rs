@@ -1,5 +1,5 @@
 use crate::steam_installation::{app_install_directories, SteamAppInstall};
-use rusqlite::{params, Connection};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -15,6 +15,7 @@ pub const GRACE_PERIOD_MS: u64 = 8_000;
 pub const NEXUS_LAUNCH_TIMEOUT_MS: u64 = 45_000;
 const INDEX_TTL_MS: u64 = 10_000;
 const STATE_EVENT: &str = "nexus://game-session-state";
+const SUMMARY_EVENT: &str = "nexus://game-session-summary-ready";
 
 const IGNORED_PROCESS_NAMES: [&str; 6] = [
     "steam.exe",
@@ -56,7 +57,7 @@ pub struct ActiveGameSession {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GameSessionSummary {
+pub struct SessionHistoryEntry {
     pub app_id: String,
     pub started_at_ms: u64,
     pub ended_at_ms: u64,
@@ -69,8 +70,50 @@ pub struct GameSessionSummary {
 pub struct SessionStatistics {
     pub sessions_today: i64,
     pub seconds_today: i64,
-    pub last_session: Option<GameSessionSummary>,
-    pub recent_sessions: Vec<GameSessionSummary>,
+    pub last_session: Option<SessionHistoryEntry>,
+    pub recent_sessions: Vec<SessionHistoryEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionProgress {
+    pub unlocked: i64,
+    pub total: i64,
+    pub completion_percentage: f64,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionAchievement {
+    pub achievement_id: String,
+    pub name: String,
+    pub description: String,
+    pub icon_url: Option<String>,
+    pub unlocked_at: String,
+    pub rarity_percentage: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GameSessionSummary {
+    pub session_id: String,
+    pub app_id: String,
+    pub game_id: Option<String>,
+    pub game_name: String,
+    pub cover_url: Option<String>,
+    pub background_url: Option<String>,
+    pub started_at_ms: u64,
+    pub ended_at_ms: u64,
+    pub duration_seconds: u64,
+    pub achievements_unlocked: Vec<SessionAchievement>,
+    pub unlocked_count: usize,
+    pub progress_before: Option<SessionProgress>,
+    pub progress_after: Option<SessionProgress>,
+    pub progress_delta: Option<i64>,
+    pub source: String,
+    pub generated_at_ms: u64,
+    pub recovered: bool,
+    pub seen: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -322,14 +365,37 @@ fn open_sql_session(
     launch_source: &str,
     recovered: bool,
 ) -> Result<(), String> {
-    connection
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| format!("Unable to start game session record: {error}"))?;
+    transaction
         .execute(
             "INSERT INTO game_sessions(id, app_id, started_at, last_seen_at, launch_source, recovered)
              VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
             params![session_id, app_id, started_at_ms as i64, last_seen_at_ms as i64, launch_source, recovered as i64],
         )
-        .map(|_| ())
-        .map_err(|error| format!("Unable to record game session: {error}"))
+        .map_err(|error| format!("Unable to record game session: {error}"))?;
+    transaction
+        .execute(
+            "INSERT INTO game_session_baselines(
+               session_id,game_id,game_name,cover_url,background_url,
+               unlocked_count,total_count,completion_percentage,achievements_synced_at,captured_at
+             )
+             SELECT ?1,g.id,COALESCE(g.name,''),NULLIF(g.cover_url,''),NULLIF(g.background_url,''),
+               CASE WHEN g.achievements_sync_status IN ('success','partial') AND g.achievements_total>0 THEN g.achievements_unlocked END,
+               CASE WHEN g.achievements_sync_status IN ('success','partial') AND g.achievements_total>0 THEN g.achievements_total END,
+               CASE WHEN g.achievements_sync_status IN ('success','partial') AND g.achievements_total>0 THEN g.completion_percentage END,
+               CASE WHEN g.achievements_sync_status IN ('success','partial') AND g.achievements_total>0 THEN g.achievements_synced_at END,
+               ?2
+             FROM (SELECT 1) seed
+             LEFT JOIN games g ON g.platform_id='steam' AND g.platform_game_id=?3
+             LIMIT 1",
+            params![session_id, last_seen_at_ms as i64, app_id],
+        )
+        .map_err(|error| format!("Unable to capture game session baseline: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Unable to commit game session record: {error}"))
 }
 
 fn close_sql_session(
@@ -348,6 +414,211 @@ fn close_sql_session(
         )
         .map(|_| ())
         .map_err(|error| format!("Unable to close game session: {error}"))
+}
+
+#[derive(Debug)]
+struct SummarySeed {
+    app_id: String,
+    game_id: Option<String>,
+    game_name: String,
+    cover_url: Option<String>,
+    background_url: Option<String>,
+    started_at_ms: u64,
+    ended_at_ms: u64,
+    duration_seconds: u64,
+    recovered: bool,
+    before: Option<SessionProgress>,
+    after: Option<SessionProgress>,
+}
+
+fn finalize_sql_session(
+    connection: &Connection,
+    session_id: &str,
+    ended_at_ms: u64,
+    last_seen_at_ms: u64,
+) -> Result<Option<GameSessionSummary>, String> {
+    close_sql_session(connection, session_id, ended_at_ms, last_seen_at_ms)?;
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| format!("Unable to start session summary: {error}"))?;
+    let already_generated = transaction
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM game_session_summaries WHERE session_id=?1)",
+            [session_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| format!("Unable to inspect session summary: {error}"))?;
+    if already_generated {
+        transaction
+            .commit()
+            .map_err(|error| format!("Unable to close session summary transaction: {error}"))?;
+        return Ok(None);
+    }
+
+    let seed = transaction
+        .query_row(
+            "SELECT s.app_id,s.started_at,s.ended_at,s.duration_seconds,s.recovered,
+                    COALESCE(b.game_id,g.id),COALESCE(NULLIF(b.game_name,''),g.name,''),
+                    COALESCE(b.cover_url,NULLIF(g.cover_url,'')),
+                    COALESCE(b.background_url,NULLIF(g.background_url,'')),
+                    b.unlocked_count,b.total_count,b.completion_percentage,
+                    CASE WHEN g.achievements_sync_status IN ('success','partial')
+                              AND g.achievements_total>0
+                              AND CAST(strftime('%s',g.achievements_synced_at) AS INTEGER)*1000 >= s.ended_at
+                         THEN g.achievements_unlocked END,
+                    CASE WHEN g.achievements_sync_status IN ('success','partial')
+                              AND g.achievements_total>0
+                              AND CAST(strftime('%s',g.achievements_synced_at) AS INTEGER)*1000 >= s.ended_at
+                         THEN g.achievements_total END,
+                    CASE WHEN g.achievements_sync_status IN ('success','partial')
+                              AND g.achievements_total>0
+                              AND CAST(strftime('%s',g.achievements_synced_at) AS INTEGER)*1000 >= s.ended_at
+                         THEN g.completion_percentage END
+             FROM game_sessions s
+             LEFT JOIN game_session_baselines b ON b.session_id=s.id
+             LEFT JOIN games g ON g.platform_id='steam' AND g.platform_game_id=s.app_id
+             WHERE s.id=?1 AND s.ended_at IS NOT NULL",
+            [session_id],
+            |row| {
+                let before_unlocked = row.get::<_, Option<i64>>(9)?;
+                let before_total = row.get::<_, Option<i64>>(10)?;
+                let before_completion = row.get::<_, Option<f64>>(11)?;
+                let after_unlocked = row.get::<_, Option<i64>>(12)?;
+                let after_total = row.get::<_, Option<i64>>(13)?;
+                let after_completion = row.get::<_, Option<f64>>(14)?;
+                Ok(SummarySeed {
+                    app_id: row.get(0)?,
+                    started_at_ms: row.get::<_, i64>(1)? as u64,
+                    ended_at_ms: row.get::<_, i64>(2)? as u64,
+                    duration_seconds: row.get::<_, i64>(3)?.max(0) as u64,
+                    recovered: row.get::<_, i64>(4)? != 0,
+                    game_id: row.get(5)?,
+                    game_name: row.get(6)?,
+                    cover_url: row.get(7)?,
+                    background_url: row.get(8)?,
+                    before: progress_from_columns(before_unlocked, before_total, before_completion),
+                    after: progress_from_columns(after_unlocked, after_total, after_completion),
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read completed session: {error}"))?
+        .ok_or_else(|| "Completed session is unavailable".to_string())?;
+
+    let achievements = query_session_unlocks(&transaction, &seed)?;
+    let source = if achievements.is_empty() { "session_monitor" } else { "steam_unlock_time" };
+    let progress_delta = match (&seed.before, &seed.after) {
+        (Some(before), Some(after)) if before.total == after.total => Some(after.unlocked - before.unlocked),
+        _ => None,
+    };
+    let generated_at_ms = now_ms();
+    transaction
+        .execute(
+            "INSERT INTO game_session_summaries(
+               session_id,app_id,game_id,game_name,cover_url,background_url,started_at,ended_at,duration_seconds,
+               before_unlocked,before_total,before_completion,after_unlocked,after_total,after_completion,
+               progress_delta,source,recovered,generated_at
+             ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+            params![
+                session_id,seed.app_id,seed.game_id,seed.game_name,seed.cover_url,seed.background_url,
+                seed.started_at_ms as i64,seed.ended_at_ms as i64,seed.duration_seconds as i64,
+                seed.before.as_ref().map(|value| value.unlocked),seed.before.as_ref().map(|value| value.total),
+                seed.before.as_ref().map(|value| value.completion_percentage),
+                seed.after.as_ref().map(|value| value.unlocked),seed.after.as_ref().map(|value| value.total),
+                seed.after.as_ref().map(|value| value.completion_percentage),progress_delta,source,
+                seed.recovered as i64,generated_at_ms as i64
+            ],
+        )
+        .map_err(|error| format!("Unable to save session summary: {error}"))?;
+    {
+        let mut statement = transaction
+            .prepare_cached(
+                "INSERT INTO game_session_summary_achievements(
+                   session_id,achievement_id,name,description,icon_url,unlocked_at,rarity_percentage
+                 ) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+            )
+            .map_err(|error| format!("Unable to prepare session achievements: {error}"))?;
+        for achievement in &achievements {
+            statement
+                .execute(params![
+                    session_id,achievement.achievement_id,achievement.name,achievement.description,
+                    achievement.icon_url,achievement.unlocked_at,achievement.rarity_percentage
+                ])
+                .map_err(|error| format!("Unable to save session achievement: {error}"))?;
+        }
+    }
+    transaction
+        .commit()
+        .map_err(|error| format!("Unable to commit session summary: {error}"))?;
+    Ok(Some(GameSessionSummary {
+        session_id: session_id.to_string(),
+        app_id: seed.app_id,
+        game_id: seed.game_id,
+        game_name: seed.game_name,
+        cover_url: seed.cover_url,
+        background_url: seed.background_url,
+        started_at_ms: seed.started_at_ms,
+        ended_at_ms: seed.ended_at_ms,
+        duration_seconds: seed.duration_seconds,
+        unlocked_count: achievements.len(),
+        achievements_unlocked: achievements,
+        progress_before: seed.before,
+        progress_after: seed.after,
+        progress_delta,
+        source: source.to_string(),
+        generated_at_ms,
+        recovered: seed.recovered,
+        seen: false,
+    }))
+}
+
+fn progress_from_columns(
+    unlocked: Option<i64>,
+    total: Option<i64>,
+    completion_percentage: Option<f64>,
+) -> Option<SessionProgress> {
+    match (unlocked, total, completion_percentage) {
+        (Some(unlocked), Some(total), Some(completion_percentage)) if total > 0 && unlocked >= 0 && unlocked <= total => {
+            Some(SessionProgress { unlocked, total, completion_percentage: completion_percentage.clamp(0.0, 100.0) })
+        }
+        _ => None,
+    }
+}
+
+fn query_session_unlocks(connection: &Connection, seed: &SummarySeed) -> Result<Vec<SessionAchievement>, String> {
+    let Some(game_id) = seed.game_id.as_deref() else { return Ok(Vec::new()); };
+    let mut statement = connection
+        .prepare(
+            "SELECT platform_achievement_id,name,description,icon_url,unlocked_at,rarity_percentage
+             FROM (
+               SELECT platform_achievement_id,name,description,NULLIF(icon_url,'') AS icon_url,unlocked_at,
+                      COALESCE(global_unlock_percent,rarity_percentage) AS rarity_percentage,
+                      ROW_NUMBER() OVER(
+                        PARTITION BY platform_achievement_id
+                        ORDER BY id DESC
+                      ) AS trusted_rank
+               FROM achievements
+               WHERE game_id=?1 AND source='steam' AND is_unlocked=1 AND unlocked_at IS NOT NULL
+                 AND CAST(strftime('%s',unlocked_at) AS INTEGER)*1000 BETWEEN ?2 AND ?3
+             )
+             WHERE trusted_rank=1
+             ORDER BY CAST(strftime('%s',unlocked_at) AS INTEGER) ASC, platform_achievement_id ASC",
+        )
+        .map_err(|error| format!("Unable to prepare session achievement query: {error}"))?;
+    let rows = statement
+        .query_map(params![game_id, seed.started_at_ms as i64, seed.ended_at_ms as i64], |row| {
+            Ok(SessionAchievement {
+                achievement_id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                icon_url: row.get(3)?,
+                unlocked_at: row.get(4)?,
+                rarity_percentage: row.get(5)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read session achievements: {error}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to decode session achievements: {error}"))
 }
 
 fn active_rows(connection: &Connection) -> Result<Vec<ActiveRow>, String> {
@@ -415,9 +686,158 @@ pub fn query_session_statistics(
     })
 }
 
+pub fn query_game_session_summaries(
+    connection: &Connection,
+    app_id: Option<&str>,
+    unseen_only: bool,
+    limit: usize,
+) -> Result<Vec<GameSessionSummary>, String> {
+    let bounded_limit = limit.clamp(1, 50) as i64;
+    let mut statement = connection
+        .prepare(
+            "SELECT session_id,app_id,game_id,game_name,cover_url,background_url,
+                    started_at,ended_at,duration_seconds,
+                    before_unlocked,before_total,before_completion,
+                    after_unlocked,after_total,after_completion,progress_delta,
+                    source,generated_at,recovered,seen_at
+             FROM game_session_summaries
+             WHERE (?1 IS NULL OR app_id=?1) AND (?2=0 OR seen_at IS NULL)
+             ORDER BY ended_at DESC LIMIT ?3",
+        )
+        .map_err(|error| format!("Unable to prepare session summaries: {error}"))?;
+    let rows = statement
+        .query_map(params![app_id, unseen_only as i64, bounded_limit], map_game_session_summary)
+        .map_err(|error| format!("Unable to read session summaries: {error}"))?;
+    let mut summaries = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to decode session summaries: {error}"))?;
+    if summaries.is_empty() {
+        return Ok(summaries);
+    }
+
+    let positions = summaries
+        .iter()
+        .enumerate()
+        .map(|(index, summary)| (summary.session_id.clone(), index))
+        .collect::<HashMap<_, _>>();
+    let placeholders = std::iter::repeat("?")
+        .take(summaries.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT session_id,achievement_id,name,description,icon_url,unlocked_at,rarity_percentage
+         FROM game_session_summary_achievements
+         WHERE session_id IN ({placeholders})
+         ORDER BY unlocked_at ASC,achievement_id ASC"
+    );
+    let mut achievement_statement = connection
+        .prepare(&sql)
+        .map_err(|error| format!("Unable to prepare summary achievements: {error}"))?;
+    let identifiers = summaries.iter().map(|summary| summary.session_id.as_str());
+    let achievement_rows = achievement_statement
+        .query_map(params_from_iter(identifiers), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                SessionAchievement {
+                    achievement_id: row.get(1)?,
+                    name: row.get(2)?,
+                    description: row.get(3)?,
+                    icon_url: row.get(4)?,
+                    unlocked_at: row.get(5)?,
+                    rarity_percentage: row.get(6)?,
+                },
+            ))
+        })
+        .map_err(|error| format!("Unable to read summary achievements: {error}"))?;
+    for row in achievement_rows {
+        let (session_id, achievement) = row
+            .map_err(|error| format!("Unable to decode summary achievement: {error}"))?;
+        if let Some(index) = positions.get(&session_id) {
+            summaries[*index].achievements_unlocked.push(achievement);
+        }
+    }
+    for summary in &mut summaries {
+        summary.unlocked_count = summary.achievements_unlocked.len();
+    }
+    Ok(summaries)
+}
+
+fn map_game_session_summary(row: &rusqlite::Row) -> rusqlite::Result<GameSessionSummary> {
+    let before = progress_from_columns(row.get(9)?, row.get(10)?, row.get(11)?);
+    let after = progress_from_columns(row.get(12)?, row.get(13)?, row.get(14)?);
+    Ok(GameSessionSummary {
+        session_id: row.get(0)?,
+        app_id: row.get(1)?,
+        game_id: row.get(2)?,
+        game_name: row.get(3)?,
+        cover_url: row.get(4)?,
+        background_url: row.get(5)?,
+        started_at_ms: row.get::<_, i64>(6)? as u64,
+        ended_at_ms: row.get::<_, i64>(7)? as u64,
+        duration_seconds: row.get::<_, i64>(8)?.max(0) as u64,
+        achievements_unlocked: Vec::new(),
+        unlocked_count: 0,
+        progress_before: before,
+        progress_after: after,
+        progress_delta: row.get(15)?,
+        source: row.get(16)?,
+        generated_at_ms: row.get::<_, i64>(17)? as u64,
+        recovered: row.get::<_, i64>(18)? != 0,
+        seen: row.get::<_, Option<i64>>(19)?.is_some(),
+    })
+}
+
+pub fn mark_game_session_summary_seen(
+    connection: &Connection,
+    session_id: &str,
+    seen_at_ms: u64,
+) -> Result<bool, String> {
+    connection
+        .execute(
+            "UPDATE game_session_summaries SET seen_at=COALESCE(seen_at,?1) WHERE session_id=?2",
+            params![seen_at_ms as i64, session_id],
+        )
+        .map(|changed| changed > 0)
+        .map_err(|error| format!("Unable to update session summary: {error}"))
+}
+
+fn generate_missing_summaries(connection: &Connection, limit: usize) -> Result<Vec<GameSessionSummary>, String> {
+    let rows = {
+        let mut statement = connection
+            .prepare(
+                "SELECT s.id,s.ended_at,s.last_seen_at
+                 FROM game_sessions s
+                 INNER JOIN game_session_baselines b ON b.session_id=s.id
+                 LEFT JOIN game_session_summaries summary ON summary.session_id=s.id
+                 WHERE s.ended_at IS NOT NULL AND summary.session_id IS NULL
+                 ORDER BY s.ended_at DESC LIMIT ?1",
+            )
+            .map_err(|error| format!("Unable to prepare pending session summaries: {error}"))?;
+        let pending = statement
+            .query_map([limit.clamp(1, 50) as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)? as u64,
+                    row.get::<_, i64>(2)? as u64,
+                ))
+            })
+            .map_err(|error| format!("Unable to read pending session summaries: {error}"))?;
+        pending
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Unable to decode pending session summaries: {error}"))?
+    };
+    let mut summaries = Vec::new();
+    for (session_id, ended_at_ms, last_seen_at_ms) in rows {
+        if let Some(summary) = finalize_sql_session(connection, &session_id, ended_at_ms, last_seen_at_ms)? {
+            summaries.push(summary);
+        }
+    }
+    Ok(summaries)
+}
+
 fn query_last_session(
     connection: &Connection,
-) -> Result<Vec<GameSessionSummary>, String> {
+) -> Result<Vec<SessionHistoryEntry>, String> {
     let mut statement = connection
         .prepare(
             "SELECT app_id, started_at, ended_at, launch_source FROM game_sessions
@@ -434,7 +854,7 @@ fn query_last_session(
 fn query_recent_sessions(
     connection: &Connection,
     limit: usize,
-) -> Result<Vec<GameSessionSummary>, String> {
+) -> Result<Vec<SessionHistoryEntry>, String> {
     let mut statement = connection
         .prepare(
             "SELECT app_id, started_at, ended_at, launch_source FROM game_sessions
@@ -448,10 +868,10 @@ fn query_recent_sessions(
         .map_err(|error| format!("Unable to decode recent sessions: {error}"))
 }
 
-fn summary_row(row: &rusqlite::Row) -> rusqlite::Result<GameSessionSummary> {
+fn summary_row(row: &rusqlite::Row) -> rusqlite::Result<SessionHistoryEntry> {
     let started_at_ms = row.get::<_, i64>(1)? as u64;
     let ended_at_ms = row.get::<_, i64>(2)? as u64;
-    Ok(GameSessionSummary {
+    Ok(SessionHistoryEntry {
         app_id: row.get(0)?,
         started_at_ms,
         ended_at_ms,
@@ -584,13 +1004,20 @@ fn monitor_loop(
             }
         }
     }
+    if let Err(error) = generate_missing_summaries(&connection, 20) {
+        if cfg!(debug_assertions) {
+            eprintln!("[game-session] pending summary recovery failed: {error}");
+        }
+    }
     emit_state(&core, &app);
     let poll_ms = core.lock().unwrap_or_else(|poison| poison.into_inner()).settings.poll_interval_ms;
     loop {
         if rx.recv_timeout(Duration::from_millis(poll_ms)).is_ok() {
             break;
         }
-        match scan_once(&core, &connection, &mut scanner, now_ms()) {
+        match scan_once_with_summary_sink(&core, &connection, &mut scanner, now_ms(), &mut |summary| {
+            let _ = app.emit(SUMMARY_EVENT, summary);
+        }) {
             Ok(transitions) => {
                 if !transitions.is_empty() {
                     emit_state(&core, &app);
@@ -618,11 +1045,22 @@ struct SessionStatePayload {
     sessions: Vec<ActiveGameSession>,
 }
 
+#[cfg(test)]
 fn scan_once(
     core: &Arc<Mutex<MonitorCore>>,
     connection: &Connection,
     scanner: &mut dyn GameScanner,
     now: u64,
+) -> Result<Vec<String>, String> {
+    scan_once_with_summary_sink(core, connection, scanner, now, &mut |_| {})
+}
+
+fn scan_once_with_summary_sink(
+    core: &Arc<Mutex<MonitorCore>>,
+    connection: &Connection,
+    scanner: &mut dyn GameScanner,
+    now: u64,
+    summary_sink: &mut dyn FnMut(GameSessionSummary),
 ) -> Result<Vec<String>, String> {
     let mut inner = core.lock().unwrap_or_else(|poison| poison.into_inner());
     inner.scans += 1;
@@ -710,7 +1148,14 @@ fn scan_once(
             SessionPhase::Ending => {
                 if now >= game.ending_until_ms.unwrap_or(u64::MAX) {
                     if game.persisted {
-                        close_sql_session(connection, &game.session_id, game.last_seen_at_ms, game.last_seen_at_ms)?;
+                        if let Some(summary) = finalize_sql_session(
+                            connection,
+                            &game.session_id,
+                            game.last_seen_at_ms,
+                            game.last_seen_at_ms,
+                        )? {
+                            summary_sink(summary);
+                        }
                         if cfg!(debug_assertions) {
                             eprintln!(
                                 "[game-session] ended app={} source={} duration_ms={}",
@@ -744,7 +1189,12 @@ fn flush_sessions(core: &Arc<Mutex<MonitorCore>>, connection: &Connection) -> Re
     let mut finished = Vec::new();
     for game in inner.games.values_mut() {
         if game.persisted {
-            close_sql_session(connection, &game.session_id, game.last_seen_at_ms, game.last_seen_at_ms)?;
+            let _ = finalize_sql_session(
+                connection,
+                &game.session_id,
+                game.last_seen_at_ms,
+                game.last_seen_at_ms,
+            )?;
         }
         finished.push(game.app_id.clone());
     }
@@ -788,7 +1238,7 @@ pub(crate) fn recover_sessions(
             });
         } else {
             let ended_at = row.last_seen_at_ms.max(row.started_at_ms);
-            close_sql_session(connection, &row.id, ended_at, row.last_seen_at_ms)?;
+            let _ = finalize_sql_session(connection, &row.id, ended_at, row.last_seen_at_ms)?;
             mark_recovered(connection, &row.id)?;
             diagnostics.push(RecoveryDiagnostic {
                 app_id: row.app_id.clone(),
@@ -814,7 +1264,33 @@ mod tests {
         let connection = Connection::open_in_memory().unwrap();
         connection
             .execute_batch(
-                "CREATE TABLE game_sessions (
+                "CREATE TABLE games (
+                   id TEXT PRIMARY KEY,
+                   platform_id TEXT NOT NULL,
+                   platform_game_id TEXT NOT NULL,
+                   name TEXT NOT NULL,
+                   cover_url TEXT NOT NULL DEFAULT '',
+                   background_url TEXT NOT NULL DEFAULT '',
+                   achievements_unlocked INTEGER NOT NULL DEFAULT 0,
+                   achievements_total INTEGER NOT NULL DEFAULT 0,
+                   completion_percentage REAL NOT NULL DEFAULT 0,
+                   achievements_synced_at TEXT,
+                   achievements_sync_status TEXT NOT NULL DEFAULT 'idle'
+                 );
+                 CREATE TABLE achievements (
+                   id TEXT PRIMARY KEY,
+                   game_id TEXT NOT NULL,
+                   platform_achievement_id TEXT NOT NULL,
+                   name TEXT NOT NULL,
+                   description TEXT NOT NULL DEFAULT '',
+                   icon_url TEXT NOT NULL DEFAULT '',
+                   is_unlocked INTEGER NOT NULL DEFAULT 0,
+                   rarity_percentage REAL NOT NULL DEFAULT 0,
+                   unlocked_at TEXT,
+                   source TEXT NOT NULL DEFAULT 'local',
+                   global_unlock_percent REAL
+                 );
+                 CREATE TABLE game_sessions (
                    id TEXT PRIMARY KEY,
                    app_id TEXT NOT NULL,
                    started_at INTEGER NOT NULL,
@@ -827,6 +1303,9 @@ mod tests {
                  );
                  CREATE UNIQUE INDEX idx_one_open ON game_sessions(app_id) WHERE ended_at IS NULL;",
             )
+            .unwrap();
+        connection
+            .execute_batch(include_str!("../migrations/011_game_session_summaries.sql"))
             .unwrap();
         connection
     }
@@ -1158,6 +1637,111 @@ mod tests {
         close_sql_session(&connection, "s1", 100_000, 100_000).unwrap();
         let count: i64 = connection.query_row("SELECT COUNT(*) FROM game_sessions", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 1, "closed sessions remain in history");
+    }
+
+    #[test]
+    fn summary_uses_real_steam_unlock_time_and_reliable_progress_snapshots() {
+        let connection = mem_connection();
+        connection.execute(
+            "INSERT INTO games(
+               id,platform_id,platform_game_id,name,cover_url,background_url,
+               achievements_unlocked,achievements_total,completion_percentage,
+               achievements_synced_at,achievements_sync_status
+             ) VALUES('game-10','steam','10','Game One','cover','hero',2,10,20,
+               '2023-11-14T22:00:00Z','success')",
+            [],
+        ).unwrap();
+        let started = 1_700_000_000_000u64;
+        open_sql_session(&connection, "summary-1", "10", started, started + 10_000, "steam_local", false).unwrap();
+        connection.execute(
+            "UPDATE games SET achievements_unlocked=3,completion_percentage=30,
+              achievements_synced_at='2023-11-14T22:20:00Z' WHERE id='game-10'",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO achievements(
+               id,game_id,platform_achievement_id,name,description,icon_url,is_unlocked,
+               rarity_percentage,unlocked_at,source,global_unlock_percent
+             ) VALUES
+               ('inside','game-10','INSIDE','Inside','Trusted','icon',1,8,
+                '2023-11-14T22:14:00Z','steam',8),
+               ('outside','game-10','OUTSIDE','Outside','','',1,20,
+                '2023-11-14T21:00:00Z','steam',20),
+               ('after','game-10','AFTER','After','','',1,20,
+                '2023-11-14T22:19:00Z','steam',20),
+               ('unknown','game-10','UNKNOWN','Unknown','','',1,20,
+                NULL,'steam',20),
+               ('inside-duplicate','game-10','INSIDE','Inside duplicate','','',1,8,
+                '2023-11-14T22:14:00Z','steam',8),
+               ('local','game-10','LOCAL','Local','','',1,30,
+                '2023-11-14T22:14:30Z','local',30)",
+            [],
+        ).unwrap();
+
+        let summary = finalize_sql_session(
+            &connection,
+            "summary-1",
+            started + 300_000,
+            started + 300_000,
+        ).unwrap().expect("summary should be generated once");
+        assert_eq!(summary.game_name, "Game One");
+        assert_eq!(summary.source, "steam_unlock_time");
+        assert_eq!(summary.unlocked_count, 1);
+        assert_eq!(summary.achievements_unlocked[0].achievement_id, "INSIDE");
+        assert_eq!(summary.progress_before.as_ref().map(|value| value.unlocked), Some(2));
+        assert_eq!(summary.progress_after.as_ref().map(|value| value.unlocked), Some(3));
+        assert_eq!(summary.progress_delta, Some(1));
+        assert!(finalize_sql_session(&connection, "summary-1", started + 300_000, started + 300_000).unwrap().is_none());
+        let persisted = query_game_session_summaries(&connection, Some("10"), true, 5).unwrap();
+        assert_eq!(persisted.len(), 1);
+        assert_eq!(persisted[0].achievements_unlocked.len(), 1);
+        assert!(mark_game_session_summary_seen(&connection, "summary-1", started + 400_000).unwrap());
+        assert!(query_game_session_summaries(&connection, None, true, 5).unwrap().is_empty());
+        assert_eq!(query_game_session_summaries(&connection, Some("10"), false, 5).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn summary_omits_progress_when_no_fresh_end_snapshot_exists() {
+        let connection = mem_connection();
+        connection.execute(
+            "INSERT INTO games(
+               id,platform_id,platform_game_id,name,achievements_unlocked,achievements_total,
+               completion_percentage,achievements_synced_at,achievements_sync_status
+             ) VALUES('game-10','steam','10','Game One',2,10,20,
+               '2023-11-14T22:00:00Z','success')",
+            [],
+        ).unwrap();
+        let started = 1_700_000_000_000u64;
+        open_sql_session(&connection, "summary-stale", "10", started, started, "steam_local", false).unwrap();
+        let summary = finalize_sql_session(&connection, "summary-stale", started + 60_000, started + 60_000)
+            .unwrap().expect("duration-only summary remains useful");
+        assert!(summary.progress_before.is_some());
+        assert!(summary.progress_after.is_none());
+        assert_eq!(summary.progress_delta, None);
+        assert!(summary.achievements_unlocked.is_empty());
+        assert_eq!(summary.source, "session_monitor");
+    }
+
+    #[test]
+    fn pending_summary_recovers_after_restart_without_backfilling_legacy_history() {
+        let connection = mem_connection();
+        open_sql_session(&connection, "new-session", "10", 1_000, 2_000, "steam_local", false).unwrap();
+        close_sql_session(&connection, "new-session", 5_000, 5_000).unwrap();
+        connection.execute(
+            "INSERT INTO game_sessions(id,app_id,started_at,last_seen_at,ended_at,duration_seconds)
+             VALUES('legacy-session','20',1000,4000,4000,3)",
+            [],
+        ).unwrap();
+        let recovered = generate_missing_summaries(&connection, 20).unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].session_id, "new-session");
+        assert!(generate_missing_summaries(&connection, 20).unwrap().is_empty());
+        let legacy_count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM game_session_summaries WHERE session_id='legacy-session'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(legacy_count, 0, "old sessions are never reconstructed");
     }
 
     #[test]

@@ -2376,3 +2376,39 @@ html[dir="rtl"] .achievement-toast__eyebrow{letter-spacing:0;text-transform:none
 @media(max-width:680px){.journey-feature-grid.nexus-bento{grid-template-columns:1fr}.journey-session-tile{min-block-size:190px}.journey-session-tile strong{font-size:24px}}
 @media(prefers-reduced-motion:reduce){.journey-session-tile,.journey-session-tile__art{transition:none;transform:none}}
 @media(forced-colors:active){.journey-session-tile{border:2px solid CanvasText;background:Canvas;color:CanvasText}.journey-session-tile__art,.journey-session-tile__overlay{display:none}.journey-session-tile__status{color:CanvasText}}
+
+/* Post-game summaries */
+.session-summary-backdrop{position:fixed;inset:0;z-index:95;display:grid;place-items:center;padding:24px;background:rgba(6,5,12,.72)}
+.session-summary-modal-shell{inline-size:min(760px,100%);max-block-size:calc(100vh - 48px);outline:none}
+.session-summary-modal{position:relative;isolation:isolate;max-block-size:inherit;overflow:auto;display:grid;gap:20px;padding:clamp(20px,4vw,34px);border-radius:var(--radius-2xl)}
+.session-summary-modal__ambient{position:absolute;inset:0 0 auto;z-index:-2;inline-size:100%;block-size:280px;object-fit:cover;opacity:.12;filter:saturate(.78)}
+.session-summary-modal::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(180deg,color-mix(in srgb,var(--surface-elevated) 74%,transparent),var(--surface-elevated) 48%)}
+.session-summary-modal__close{position:absolute;inset-block-start:14px;inset-inline-end:14px;z-index:2;inline-size:40px;block-size:40px;display:grid;place-items:center;border:1px solid var(--border-muted);border-radius:11px;background:color-mix(in srgb,var(--surface-elevated) 90%,transparent);color:var(--text-secondary);cursor:pointer}
+.session-summary-modal__close:hover{color:var(--text-primary);border-color:var(--border-strong)}
+.session-summary-modal__close:focus-visible,.session-summary-modal h2:focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}
+.session-summary-modal__close svg{inline-size:18px}
+.session-summary-modal__header{display:flex;align-items:center;gap:clamp(18px,4vw,30px);padding-inline-end:40px;min-inline-size:0}
+.session-summary-modal__cover{inline-size:130px;block-size:195px;flex:none;border:1px solid var(--border-muted);border-radius:16px;object-fit:cover;box-shadow:var(--shadow-card)}
+.session-summary-modal__header>div{display:grid;min-inline-size:0;gap:9px}
+.session-summary-modal__eyebrow{inline-size:fit-content;display:inline-flex;align-items:center;gap:7px;color:var(--status-success);font-size:.78rem;font-weight:750;letter-spacing:.035em;text-transform:uppercase}
+.session-summary-modal__eyebrow svg{inline-size:17px}
+.session-summary-modal h2{margin:0;overflow-wrap:anywhere;font-size:clamp(1.65rem,4vw,2.65rem);line-height:1.12}
+.session-summary-modal__header p{display:flex;align-items:center;gap:7px;margin:0;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.session-summary-modal__header p svg{inline-size:17px}.session-summary-modal__header small{color:var(--text-secondary)}
+.session-summary-modal__content{display:grid;gap:14px;padding:18px;border:1px solid var(--border-muted);border-radius:16px;background:var(--surface-default);box-shadow:var(--shadow-card)}
+.session-summary-modal__section-title{display:flex;align-items:center;gap:9px}.session-summary-modal__section-title svg{inline-size:20px;color:var(--accent)}
+.session-summary-modal__content h3{margin:0;font-size:1rem}
+.session-summary-modal__achievements{list-style:none;display:grid;gap:8px;margin:0;padding:0}
+.session-summary-modal__achievements li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:11px;min-block-size:58px;padding:7px 9px;border-radius:12px;background:var(--surface-subtle)}
+.session-summary-modal__achievements li>span{display:grid;min-inline-size:0;gap:2px}.session-summary-modal__achievements strong,.session-summary-modal__achievements small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.session-summary-modal__achievements small{color:var(--text-secondary);font-size:.76rem}.session-summary-modal__achievements b{color:var(--text-secondary);font-size:.72rem;font-variant-numeric:tabular-nums}
+.session-summary-modal__more{margin:0;color:var(--text-secondary);font-size:.8rem;text-align:center}
+.session-summary-modal__progress>div{display:flex;align-items:center;justify-content:space-between;gap:16px}.session-summary-modal__progress strong{font-variant-numeric:tabular-nums}
+.session-summary-modal>footer{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.session-summary-modal>footer button{min-block-size:44px;display:inline-flex;align-items:center;justify-content:center;gap:7px}.session-summary-modal>footer svg{inline-size:16px}
+.game-session-history>ol{list-style:none;display:grid;gap:10px;margin:0;padding:0}.game-session-history>ol>li{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--border-muted);border-radius:14px;background:var(--surface-default)}
+.game-session-history__icon{inline-size:38px;block-size:38px;display:grid;place-items:center;border-radius:11px;background:color-mix(in srgb,var(--accent) 12%,var(--surface-subtle));color:var(--accent)}.game-session-history__icon svg{inline-size:18px}
+.game-session-history li>span:nth-child(2){display:grid;gap:3px}.game-session-history time{color:var(--text-secondary);font-size:.76rem}.game-session-history li>b{color:var(--text-secondary);font-size:.8rem}
+[dir="rtl"] .session-summary-modal__eyebrow{letter-spacing:0;text-transform:none}[dir="rtl"] .session-summary-modal>footer svg{transform:scaleX(-1)}
+@media(max-width:840px){.session-summary-modal__cover{inline-size:112px;block-size:168px}.session-summary-modal{gap:16px}}
+@media(max-width:620px){.session-summary-backdrop{padding:10px;align-items:end}.session-summary-modal-shell{max-block-size:calc(100vh - 20px)}.session-summary-modal{padding:18px 14px}.session-summary-modal__header{align-items:flex-start;padding-inline-end:38px}.session-summary-modal__cover{inline-size:84px;block-size:126px;border-radius:13px}.session-summary-modal__achievements li{grid-template-columns:auto minmax(0,1fr)}.session-summary-modal__achievements li>b{grid-column:2}.session-summary-modal>footer{display:grid;grid-template-columns:1fr}.session-summary-modal>footer button{inline-size:100%}.game-session-history>ol>li{grid-template-columns:auto minmax(0,1fr) auto}.game-session-history li>b{grid-column:2/4}}
+@media(prefers-reduced-motion:reduce){.session-summary-modal,.session-summary-backdrop{scroll-behavior:auto;animation:none;transition:none}}
+@media(forced-colors:active){.session-summary-backdrop{background:Canvas}.session-summary-modal,.session-summary-modal__content,.game-session-history>ol>li{border:1px solid CanvasText;background:Canvas}.session-summary-modal__ambient{display:none}.session-summary-modal__close:focus-visible,.session-summary-modal h2:focus-visible{outline-color:Highlight}}

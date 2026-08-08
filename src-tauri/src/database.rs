@@ -19,7 +19,7 @@ const REQUIRED_GAME_ACHIEVEMENT_COLUMNS: [&str; 3] = [
     "achievements_sync_error",
 ];
 
-fn migrations() -> [Migration; 10] {
+fn migrations() -> [Migration; 11] {
     [
         Migration {
             version: 1,
@@ -70,6 +70,11 @@ fn migrations() -> [Migration; 10] {
             version: 10,
             description: "game_sessions",
             action: MigrationAction::Sql(include_str!("../migrations/010_game_sessions.sql")),
+        },
+        Migration {
+            version: 11,
+            description: "game_session_summaries",
+            action: MigrationAction::Sql(include_str!("../migrations/011_game_session_summaries.sql")),
         },
     ]
 }
@@ -327,8 +332,11 @@ mod tests {
         let version: i64 = connection.query_row(
             "SELECT MAX(version) FROM _achievement_nexus_migrations", [], |row| row.get(0)
         ).expect("migration version should exist");
-        assert_eq!(version, 10);
+        assert_eq!(version, 11);
         assert!(!super::table_exists(&connection, "steam_profile").expect("schema should load"));
+        for table in ["game_session_baselines", "game_session_summaries", "game_session_summary_achievements"] {
+            assert!(super::table_exists(&connection, table).expect("summary schema should load"), "missing {table}");
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, Clock3, Gem, Grid2X2, Heart, HelpCircle, List,
-  LockKeyhole, RefreshCw, Sparkles, Trophy
+  History, LockKeyhole, RefreshCw, Sparkles, Trophy
 } from "lucide-react";
 import { AchievementExperienceCard } from "../components/achievements/AchievementExperienceCard";
 import { EmptyView, ErrorView, LoadingView } from "../components/ui/StateViews";
@@ -26,10 +26,12 @@ import {
   type AchievementView
 } from "../services/gameDetailsExperience";
 import { isAchievementUnlocked } from "../services/achievementData";
-import { services, smartSync } from "../services/compositionRoot";
+import { gameSessionSummaryStore, services, smartSync } from "../services/compositionRoot";
 import type { Achievement, AchievementId, Game, GameId } from "../types";
 import { GameActionButton } from "../components/games/GameActionButton";
 import { GameSessionIndicator } from "../components/games/GameSessionIndicator";
+import { AchievementIcon } from "../components/ui/AchievementIcon";
+import { formatSessionSummaryDuration, sessionSummaryPluralKey } from "../features/session-summaries/sessionSummaryFormatting";
 
 const PAGE_SIZE = 120;
 
@@ -227,6 +229,8 @@ export function GameDetailsPage({
         onSync={syncAchievements}
       />
 
+      <RecentGameSessions appId={game.appId} />
+
       {recent.length > 0 && (
         <AchievementShelf
           title={t("gameDetails.recentTitle")}
@@ -293,6 +297,28 @@ export function GameDetailsPage({
       </section>
     </section>
   );
+}
+
+function RecentGameSessions({ appId }: { appId: string }) {
+  const { language, t } = useTranslation();
+  const [revision, setRevision] = useState(0);
+  useEffect(() => gameSessionSummaryStore.subscribe(() => setRevision((value) => value + 1)), []);
+  const state = useAsyncData(() => gameSessionSummaryStore.forGame(appId, 5), [appId, revision]);
+  if (state.status !== "success" || state.data.length === 0) return null;
+  const date = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" });
+  const number = new Intl.NumberFormat(language);
+  return <section className="game-v2-section game-session-history" aria-labelledby="game-session-history-title">
+    <SectionHeader title={t("sessionSummary.recentTitle")} description={t("sessionSummary.recentDescription")} />
+    <ol>{state.data.map((summary) => <li key={summary.sessionId}>
+      <span className="game-session-history__icon"><History aria-hidden="true" /></span>
+      <span>
+        <strong>{formatSessionSummaryDuration(summary.durationSeconds, language, t)}</strong>
+        <time dateTime={new Date(summary.endedAtMs).toISOString()}>{date.format(new Date(summary.endedAtMs))}</time>
+      </span>
+      {summary.achievementsUnlocked[0] && <AchievementIcon src={summary.achievementsUnlocked[0].iconUrl} alt={t("achievements.iconAlt", { title: summary.achievementsUnlocked[0].name })} size="compact" />}
+      {summary.unlockedCount > 0 && <b>{t(sessionSummaryPluralKey("sessionSummary.historyUnlocks", summary.unlockedCount, language), { count: number.format(summary.unlockedCount) })}</b>}
+    </li>)}</ol>
+  </section>;
 }
 
 function AchievementToolbar(props: {

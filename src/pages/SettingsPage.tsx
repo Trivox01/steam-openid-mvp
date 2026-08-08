@@ -29,7 +29,7 @@ import {
 import { PageHeader } from "../components/ui/PageHeader";
 import { useTheme, type Theme } from "../state/ThemeContext";
 import { useTranslation } from "../i18n/TranslationContext";
-import { achievementToastCoordinator, achievementToastSoundController, applicationRefresh, services } from "../services/compositionRoot";
+import { achievementToastCoordinator, achievementToastSoundController, applicationRefresh, gameSessionSummaryStore, services } from "../services/compositionRoot";
 import { defaultPreferences, preferencesEqual } from "../services/settingsPreferences";
 import type { UserPreferences, UserProfile } from "../types";
 import { ErrorView, LoadingView } from "../components/ui/StateViews";
@@ -38,6 +38,7 @@ import { updateCoordinator } from "../features/updates/UpdateCoordinator";
 import { currentReleaseVersion } from "../features/updates/releaseNotes";
 import { achievementToastPreview, achievementToastQueuePreview } from "../features/achievement-toasts/previewFixtures";
 import { discordPresenceBridge, type DiscordPresenceStatus } from "../services/DiscordPresenceBridge";
+import { sessionSummaryPreview } from "../features/session-summaries/previewFixtures";
 
 type SaveStatus = "idle" | "saving" | "success" | "error";
 
@@ -304,6 +305,11 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
               <button type="button" className="secondary-button" onClick={() => achievementToastCoordinator.enqueue(achievementToastPreview("silent"))}>{t("settings.previewAchievementToastSilent")}</button>
               <button type="button" className="secondary-button" onClick={() => achievementToastQueuePreview(3).forEach((event) => achievementToastCoordinator.enqueue(event))}>{t("settings.previewAchievementToastQueue")}</button>
               <button type="button" className="secondary-button" onClick={() => achievementToastQueuePreview(10).forEach((event) => achievementToastCoordinator.enqueue(event))}>{t("settings.previewAchievementToastBurst")}</button>
+              <button type="button" className="secondary-button" onClick={() => gameSessionSummaryStore.preview(sessionSummaryPreview("none"))}>{t("settings.previewSessionNone")}</button>
+              <button type="button" className="secondary-button" onClick={() => gameSessionSummaryStore.preview(sessionSummaryPreview("one"))}>{t("settings.previewSessionOne")}</button>
+              <button type="button" className="secondary-button" onClick={() => gameSessionSummaryStore.preview(sessionSummaryPreview("five"))}>{t("settings.previewSessionFive")}</button>
+              <button type="button" className="secondary-button" onClick={() => gameSessionSummaryStore.preview(sessionSummaryPreview("long"))}>{t("settings.previewSessionLong")}</button>
+              <button type="button" className="secondary-button" onClick={() => gameSessionSummaryStore.preview(sessionSummaryPreview("arabic"))}>{t("settings.previewSessionArabic")}</button>
             </div>}
           </SettingsSection>
           <SettingsSection icon={Share2} title={t("settings.discordStatus")} description={t("settings.discordStatusDescription")}>

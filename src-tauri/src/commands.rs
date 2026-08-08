@@ -40,6 +40,40 @@ pub fn game_session_statistics(
 }
 
 #[tauri::command]
+pub fn list_game_session_summaries(
+    app_id: Option<String>,
+    unseen_only: Option<bool>,
+    limit: Option<usize>,
+    state: State<DatabaseState>,
+) -> Result<Vec<crate::game_session::GameSessionSummary>, String> {
+    let db = state
+        .0
+        .lock()
+        .map_err(|_| "Local database is unavailable".to_string())?;
+    crate::game_session::query_game_session_summaries(
+        &db,
+        app_id.as_deref(),
+        unseen_only.unwrap_or(false),
+        limit.unwrap_or(10),
+    )
+}
+
+#[tauri::command]
+pub fn mark_game_session_summary_seen(
+    session_id: String,
+    state: State<DatabaseState>,
+) -> Result<bool, String> {
+    if session_id.trim().is_empty() || session_id.len() > 64 {
+        return Err("Invalid session summary identifier".to_string());
+    }
+    let db = state
+        .0
+        .lock()
+        .map_err(|_| "Local database is unavailable".to_string())?;
+    crate::game_session::mark_game_session_summary_seen(&db, &session_id, crate::game_session::now_ms())
+}
+
+#[tauri::command]
 pub fn game_session_diagnostics(
     state: State<crate::SessionMonitorState>,
 ) -> Result<crate::game_session::GameSessionDiagnostics, String> {
