@@ -1,5 +1,6 @@
 mod commands;
 mod database;
+mod discord_presence;
 mod game_session;
 mod models;
 mod steam_installation;
@@ -107,6 +108,8 @@ pub fn run() {
         .setup(|app| {
             let state = database::open_database(app.handle()).map_err(std::io::Error::other)?;
             app.manage(state);
+            app.manage(discord_presence::DiscordPresenceManager::default());
+            app.manage(discord_presence::DiscordPresenceSettingsState::default());
             app.manage(DesktopLifecycleState {
                 minimize_to_tray: AtomicBool::new(true),
                 ..Default::default()
@@ -118,13 +121,14 @@ pub fn run() {
                 let _ = handle.emit("nexus://steam-installation-changed", change);
             }) { app.manage(watcher); }
 
+            app.manage(SessionMonitorState::default());
             match game_session::SessionMonitor::new(app.handle()) {
                 Ok(monitor) => {
-                    app.manage(SessionMonitorState(Mutex::new(Some(monitor))));
+                    let state = app.state::<SessionMonitorState>();
+                    *state.0.lock().unwrap_or_else(|poison| poison.into_inner()) = Some(monitor);
                 }
                 Err(reason) => {
                     eprintln!("[game-session] monitor unavailable: {reason}");
-                    app.manage(SessionMonitorState::default());
                 }
             }
 
@@ -190,6 +194,7 @@ pub fn run() {
                     .state::<steam_installation::SteamInstallationProbe>()
                     .invalidate();
                 let _ = window.emit("nexus://steam-installation-invalidated", ());
+                discord_presence::refresh_from_app(window.app_handle(), true);
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<DesktopLifecycleState>();
@@ -246,6 +251,9 @@ pub fn run() {
             ,commands::list_game_sessions
             ,commands::game_session_statistics
             ,commands::game_session_diagnostics
+            ,discord_presence::discord_presence_configure
+            ,discord_presence::discord_presence_refresh
+            ,discord_presence::discord_presence_status
         ])
         .build(tauri::generate_context!())
         .expect("error while building Achievement Nexus")
@@ -259,6 +267,9 @@ pub fn run() {
                 if let Some(mut monitor) = session_guard.take() {
                     monitor.stop();
                 }
+                app_handle
+                    .state::<discord_presence::DiscordPresenceManager>()
+                    .shutdown();
             }
         });
 }

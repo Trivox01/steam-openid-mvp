@@ -10,6 +10,10 @@ export const defaultPreferences: UserPreferences = {
   notificationsEnabled: true,
   achievementSoundEnabled: false,
   achievementSoundVolume: 70,
+  discordPresenceEnabled: false,
+  discordShowGameName: true,
+  discordShowAchievementProgress: true,
+  discordShowSessionDuration: true,
   autoCheckForUpdates: true,
   updateChannel: "beta",
   hidePlaytime: false,
@@ -37,6 +41,10 @@ export function normalizePreferences(value: unknown): UserPreferences {
     notificationsEnabled: normalizeNotifications(source),
     achievementSoundEnabled: booleanOrDefault(source.achievementSoundEnabled, false),
     achievementSoundVolume: normalizeVolume(source.achievementSoundVolume),
+    discordPresenceEnabled: booleanOrDefault(source.discordPresenceEnabled, false),
+    discordShowGameName: booleanOrDefault(source.discordShowGameName, true),
+    discordShowAchievementProgress: booleanOrDefault(source.discordShowAchievementProgress, true),
+    discordShowSessionDuration: booleanOrDefault(source.discordShowSessionDuration, true),
     autoCheckForUpdates: booleanOrDefault(
       source.autoCheckForUpdates ?? source.automaticUpdates,
       defaultPreferences.autoCheckForUpdates
@@ -61,6 +69,10 @@ export function preferencesEqual(left: UserPreferences, right: UserPreferences) 
     left.notificationsEnabled === right.notificationsEnabled &&
     left.achievementSoundEnabled === right.achievementSoundEnabled &&
     left.achievementSoundVolume === right.achievementSoundVolume &&
+    left.discordPresenceEnabled === right.discordPresenceEnabled &&
+    left.discordShowGameName === right.discordShowGameName &&
+    left.discordShowAchievementProgress === right.discordShowAchievementProgress &&
+    left.discordShowSessionDuration === right.discordShowSessionDuration &&
     left.autoCheckForUpdates === right.autoCheckForUpdates &&
     left.updateChannel === right.updateChannel &&
     left.hidePlaytime === right.hidePlaytime &&

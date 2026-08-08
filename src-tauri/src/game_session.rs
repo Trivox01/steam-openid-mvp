@@ -609,6 +609,7 @@ fn monitor_loop(
 fn emit_state(core: &Arc<Mutex<MonitorCore>>, app: &AppHandle) {
     let sessions = core.lock().unwrap_or_else(|poison| poison.into_inner()).snapshot();
     let _ = app.emit(STATE_EVENT, SessionStatePayload { sessions });
+    crate::discord_presence::refresh_from_app(app, false);
 }
 
 #[derive(Clone, Serialize)]

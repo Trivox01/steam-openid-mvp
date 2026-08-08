@@ -80,6 +80,10 @@ export interface AppSettings {
   notificationsEnabled: boolean;
   achievementSoundEnabled: boolean;
   achievementSoundVolume: number;
+  discordPresenceEnabled: boolean;
+  discordShowGameName: boolean;
+  discordShowAchievementProgress: boolean;
+  discordShowSessionDuration: boolean;
   autoCheckForUpdates: boolean;
   updateChannel: "beta";
   hidePlaytime: boolean;

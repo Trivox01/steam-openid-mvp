@@ -24,3 +24,4 @@ notify = "8"
 url = "2"
 sysinfo = "0.33"
 uuid = { version = "1", features = ["v4"] }
+discord-presence = "3.2"

@@ -22,6 +22,7 @@ import {
   PlayCircle,
   RefreshCw,
   RotateCw,
+  Share2,
   Trash2,
   Sparkles
 } from "lucide-react";
@@ -36,6 +37,7 @@ import { SteamAccountSettings } from "../components/settings/SteamAccountSetting
 import { updateCoordinator } from "../features/updates/UpdateCoordinator";
 import { currentReleaseVersion } from "../features/updates/releaseNotes";
 import { achievementToastPreview, achievementToastQueuePreview } from "../features/achievement-toasts/previewFixtures";
+import { discordPresenceBridge, type DiscordPresenceStatus } from "../services/DiscordPresenceBridge";
 
 type SaveStatus = "idle" | "saving" | "success" | "error";
 
@@ -59,6 +61,7 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
     const [draft, setDraft] = useState<UserPreferences>();
     const [refreshStatus, setRefreshStatus] = useState(applicationRefresh.getSnapshot());
     const [updateStatus, setUpdateStatus] = useState(updateCoordinator.getSnapshot());
+    const [discordStatus, setDiscordStatus] = useState<DiscordPresenceStatus>();
     useEffect(() => applicationRefresh.subscribe(setRefreshStatus), []);
     useEffect(() => updateCoordinator.subscribe(setUpdateStatus), []);
     const [loadError, setLoadError] = useState("");
@@ -71,6 +74,7 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
     const syncTimer = useRef<number | null>(null);
     const confirmDialogRef = useRef<HTMLDivElement>(null);
     const confirmTriggerRef = useRef<HTMLElement | null>(null);
+    const savedPreferencesRef = useRef<UserPreferences | undefined>(undefined);
     const dirty = Boolean(saved && draft && !preferencesEqual(saved, draft));
 
     useEffect(() => {
@@ -143,6 +147,23 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
         });
       };
     }, [draft, saved]);
+    useEffect(() => { savedPreferencesRef.current = saved; }, [saved]);
+    useEffect(() => {
+      if (!draft) return;
+      let active = true;
+      void discordPresenceBridge.configure(draft).then((status) => {
+        if (active) setDiscordStatus(status);
+      }).catch(() => {
+        if (active) setDiscordStatus(undefined);
+      });
+      return () => {
+        active = false;
+      };
+    }, [draft]);
+    useEffect(() => () => {
+      const persisted = savedPreferencesRef.current;
+      if (persisted) void discordPresenceBridge.configure(persisted).catch(() => undefined);
+    }, []);
     useEffect(() => () => {
       if (successTimer.current) window.clearTimeout(successTimer.current);
       if (syncTimer.current) window.clearTimeout(syncTimer.current);
@@ -285,6 +306,19 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
               <button type="button" className="secondary-button" onClick={() => achievementToastQueuePreview(10).forEach((event) => achievementToastCoordinator.enqueue(event))}>{t("settings.previewAchievementToastBurst")}</button>
             </div>}
           </SettingsSection>
+          <SettingsSection icon={Share2} title={t("settings.discordStatus")} description={t("settings.discordStatusDescription")}>
+            <SettingToggle label={t("settings.discordStatusEnable")} description={t("settings.discordStatusEnableDescription")} checked={draft.discordPresenceEnabled} onChange={() => toggle("discordPresenceEnabled")} />
+            <SettingToggle label={t("settings.discordGameName")} description={t("settings.discordGameNameDescription")} checked={draft.discordShowGameName} disabled={!draft.discordPresenceEnabled} onChange={() => toggle("discordShowGameName")} />
+            <SettingToggle label={t("settings.discordAchievementProgress")} description={t("settings.discordAchievementProgressDescription")} checked={draft.discordShowAchievementProgress} disabled={!draft.discordPresenceEnabled} onChange={() => toggle("discordShowAchievementProgress")} />
+            <SettingToggle label={t("settings.discordSessionDuration")} description={t("settings.discordSessionDurationDescription")} checked={draft.discordShowSessionDuration} disabled={!draft.discordPresenceEnabled} onChange={() => toggle("discordShowSessionDuration")} />
+            {draft.discordPresenceEnabled && discordStatus && (
+              <p className="discord-presence-status" role="status">
+                {t(discordStatus.availability === "unconfigured"
+                  ? "settings.discordAvailability.unconfigured"
+                  : "settings.discordEnabled")}
+              </p>
+            )}
+          </SettingsSection>
           <SettingsSection icon={Eye} title={t("settings.privacy")} description={t("settings.privacyDescription")}>
             <SettingToggle label={t("settings.hidePlaytime")} description={t("settings.hidePlaytimeDescription")} checked={draft.hidePlaytime} onChange={() => toggle("hidePlaytime")} />
             <SettingToggle label={t("settings.hideGames")} description={t("settings.hideGamesDescription")} checked={draft.hideHiddenGames} onChange={() => toggle("hideHiddenGames")} />
@@ -381,6 +415,6 @@ function SettingsSection({ icon: Icon, title, description, children, className }
   return <article className={`panel settings-section ${className ?? ""}`}><header><div><Icon size={18} /></div><span><h2>{title}</h2><p>{description}</p></span></header><div className="settings-content">{children}</div></article>;
 }
 
-function SettingToggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: () => void }) {
-  return <button type="button" className="setting-toggle" onClick={onChange} role="switch" aria-checked={checked}><span><strong>{label}</strong><small>{description}</small></span><i className={checked ? "checked" : ""}><b /></i></button>;
+function SettingToggle({ label, description, checked, disabled = false, onChange }: { label: string; description: string; checked: boolean; disabled?: boolean; onChange: () => void }) {
+  return <button type="button" className="setting-toggle" disabled={disabled} onClick={onChange} role="switch" aria-checked={checked}><span><strong>{label}</strong><small>{description}</small></span><i className={checked ? "checked" : ""}><b /></i></button>;
 }

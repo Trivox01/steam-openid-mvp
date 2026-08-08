@@ -42,6 +42,7 @@
     "test:achievement-icons": "node --experimental-strip-types scripts/validate-achievement-icons.mjs",
     "test:achievement-toasts": "node --experimental-strip-types scripts/validate-achievement-toasts.mjs",
     "test:achievement-sound": "node --experimental-strip-types scripts/validate-achievement-sound.mjs",
+    "test:discord-presence": "node --experimental-strip-types scripts/validate-discord-presence.mjs",
     "test:ux-copy": "node --experimental-strip-types scripts/validate-ux-microcopy.mjs",
     "test:steam-artwork": "node --experimental-strip-types scripts/validate-steam-artwork.mjs",
     "test:profile": "node --experimental-strip-types scripts/validate-profile-card.mjs",

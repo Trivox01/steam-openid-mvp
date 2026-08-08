@@ -96,6 +96,10 @@ function isCurrentSchema(stored: unknown, normalized: UserPreferences) {
     typeof value.notificationsEnabled === "boolean" &&
     typeof value.achievementSoundEnabled === "boolean" &&
     typeof value.achievementSoundVolume === "number" &&
+    typeof value.discordPresenceEnabled === "boolean" &&
+    typeof value.discordShowGameName === "boolean" &&
+    typeof value.discordShowAchievementProgress === "boolean" &&
+    typeof value.discordShowSessionDuration === "boolean" &&
     typeof value.autoCheckForUpdates === "boolean" &&
     typeof value.hidePlaytime === "boolean" &&
     typeof value.hideHiddenGames === "boolean" &&

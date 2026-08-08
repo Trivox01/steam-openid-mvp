@@ -22,6 +22,8 @@ import { updateCoordinator } from "./features/updates/UpdateCoordinator";
 import { UpdateExperience } from "./features/updates/UpdateExperience";
 import { AmbientBackdrop } from "./components/ui/NexusGlass";
 import { AchievementToastHost } from "./features/achievement-toasts/AchievementToastHost";
+import { discordPresenceBridge } from "./services/DiscordPresenceBridge";
+import { subscribeToLibraryChanges } from "./services/dataEvents";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const GamesPage = lazy(() => import("./pages/GamesPage").then((module) => ({ default: module.GamesPage })));
@@ -100,6 +102,20 @@ export function App() {
     achievementToastCoordinator.configure({ notificationsEnabled: preferences.notificationsEnabled, soundEnabled: preferences.achievementSoundEnabled });
     achievementToastSoundController.configure({ enabled: preferences.notificationsEnabled && preferences.achievementSoundEnabled, volume: preferences.achievementSoundVolume });
   }, [preferences]);
+  useEffect(() => {
+    if (!preferences) return;
+    void discordPresenceBridge.configure(preferences).catch(() => {
+      if (import.meta.env.DEV) console.debug("[discord-presence] configuration unavailable");
+    });
+  }, [preferences]);
+  useEffect(() => {
+    const unsubscribe = subscribeToLibraryChanges(() => {
+      void discordPresenceBridge.refresh().catch(() => {
+        if (import.meta.env.DEV) console.debug("[discord-presence] refresh unavailable");
+      });
+    });
+    return () => { unsubscribe(); };
+  }, []);
   useEffect(() => installAchievementAudioUnlock(achievementSoundService), []);
   useEffect(() => {
     if (!isTauriRuntime()) return;
