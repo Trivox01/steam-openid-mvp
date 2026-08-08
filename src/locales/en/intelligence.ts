@@ -37,6 +37,7 @@ export const intelligence = {
   "journey.heroTitle": "What will you unlock next?",
   "journey.heroInsufficient": "Keep playing to unlock personalized journey recommendations.",
   "journey.analyzedGames": "{{count}} games in your journey",
+  "journey.currentSession": "Currently playing",
   "journey.continueTitle": "Continue Journey",
   "journey.continueDescription": "Pick up where your progress feels strongest.",
   "journey.noContinue": "Keep playing and your next journey will appear here.",

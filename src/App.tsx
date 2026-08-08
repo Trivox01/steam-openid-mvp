@@ -19,6 +19,7 @@ import { useAuthorization } from "./features/developer-center/AuthorizationConte
 import { DeveloperCenterRoute } from "./features/developer-center/DeveloperCenterRoute";
 import { updateCoordinator } from "./features/updates/UpdateCoordinator";
 import { UpdateExperience } from "./features/updates/UpdateExperience";
+import { AmbientBackdrop } from "./components/ui/NexusGlass";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const GamesPage = lazy(() => import("./pages/GamesPage").then((module) => ({ default: module.GamesPage })));
@@ -175,6 +176,7 @@ export function App() {
   }
   return (
     <div className={`app-shell ${preferences.sidebarCollapsed ? "app-shell--sidebar-collapsed" : ""}`}>
+      <AmbientBackdrop />
       <GlobalRefreshStatus />
       <UpdateExperience autoCheck={preferences.autoCheckForUpdates} />
       <Sidebar

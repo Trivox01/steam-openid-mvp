@@ -22,6 +22,12 @@ export function useGameSession(appId?: string): GameSessionView {
   };
 }
 
+export function useActiveGameSessions(): ActiveGameSession[] {
+  const [, setTick] = useState(0);
+  useEffect(() => gameSessionStore.subscribe(() => setTick((value) => value + 1)), []);
+  return gameSessionStore.list();
+}
+
 export function formatSessionClock(seconds: number): string {
   const safe = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(safe / 3600);

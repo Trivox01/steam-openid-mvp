@@ -37,6 +37,7 @@ export const intelligence = {
   "journey.heroTitle": "ما الإنجاز الذي ستفتحه بعد ذلك؟",
   "journey.heroInsufficient": "واصل اللعب لفتح توصيات مخصصة لرحلتك.",
   "journey.analyzedGames": "{{count}} لعبة في رحلتك",
+  "journey.currentSession": "قيد اللعب الآن",
   "journey.continueTitle": "تابع الرحلة",
   "journey.continueDescription": "واصل من حيث يبدو تقدمك أقوى.",
   "journey.noContinue": "واصل اللعب وستظهر رحلتك التالية هنا.",

@@ -26,6 +26,9 @@ import { SectionHeader } from "../components/ui/SectionHeader";
 import { Skeleton } from "../components/ui/Skeleton";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { Surface } from "../components/ui/Surface";
+import { BentoGrid, BentoTile } from "../components/ui/NexusGlass";
+import { GameArtwork } from "../components/ui/GameArtwork";
+import { formatSessionClock, useActiveGameSessions } from "../hooks/useGameSession";
 import type { AchievementId, GameId } from "../types";
 
 type DashboardPageProps = {
@@ -37,6 +40,7 @@ type DashboardPageProps = {
 export function DashboardPage({ search, onOpenGame, onOpenAchievement }: DashboardPageProps) {
   const { language, t } = useTranslation();
   const { state, retry } = useAchievementJourneyData();
+  const activeSessions = useActiveGameSessions();
   const source = state.status === "success" ? state.data : null;
   const intelligence = useMemo(
     () => source ? {
@@ -64,10 +68,12 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
   const nextGame = next ? gameById.get(next.gameId) : undefined;
   const primaryJourney = analysis.journeyCards[0];
   const firstName = source.profile.displayName.trim().split(/\s+/)[0] || source.profile.displayName;
+  const activeSession = activeSessions[0];
+  const activeGame = activeSession ? source.games.find((game) => game.appId === activeSession.appId) : undefined;
 
   return (
     <div className="achievement-journey">
-      <Surface className="journey-hero" elevation="elevated">
+      <Surface className="journey-hero" elevation="elevated" variant="strong">
         <div className="journey-hero__glow" aria-hidden="true" />
         <div className="journey-hero__content">
           <span className="journey-eyebrow"><Sparkles size={14} />{t("journey.eyebrow")}</span>
@@ -83,6 +89,21 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
           {t("journey.analyzedGames", { count: formatNumber(analysis.rankedGames.length, language) })}
         </StatusBadge>
       </Surface>
+
+      {activeGame && activeSession && (
+        <button type="button" className="journey-session-tile" onClick={() => onOpenGame(activeGame.id)}>
+          <GameArtwork src={activeGame.backgroundUrl || activeGame.coverUrl} alt="" variant="background" className="journey-session-tile__art" eager />
+          <span className="journey-session-tile__overlay" aria-hidden="true" />
+          <span className="journey-session-tile__content">
+            <span className="journey-session-tile__status"><i aria-hidden="true" />{t("journey.currentSession")}</span>
+            <strong dir="auto">{activeGame.name}</strong>
+            <time dir="ltr">{formatSessionClock(Math.max(0, Math.floor((Date.now() - activeSession.startedAtMs) / 1000)))}</time>
+            {activeGame.totalAchievements > 0 && (
+              <ProgressBar value={activeGame.completionPercentage} label={t("journey.achievementProgress")} showValue />
+            )}
+          </span>
+        </button>
+      )}
 
       <section className="journey-section">
         <SectionHeader title={t("journey.continueTitle")} description={t("journey.continueDescription")} />
@@ -103,8 +124,8 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
         )}
       </section>
 
-      <div className="journey-feature-grid">
-        <Surface className="journey-next-achievement" elevation="default">
+      <BentoGrid className="journey-feature-grid">
+        <BentoTile className="journey-next-achievement" size="wide">
           <SectionHeader title={t("journey.nextTitle")} description={t("journey.nextDescription")} />
           {next && nextAchievement && nextGame ? (
             <button
@@ -129,9 +150,9 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
           ) : (
             <div className="journey-inline-empty">{t("journey.noNextAchievement")}</div>
           )}
-        </Surface>
+        </BentoTile>
 
-        <Surface className="journey-dna" elevation="default">
+        <BentoTile className="journey-dna" size="medium">
           <SectionHeader title={t("journey.dnaTitle")} description={t("journey.dnaDescription")} />
           <div className="journey-dna__mark"><Sparkles size={28} /></div>
           <StatusBadge tone={analysis.achievementDna.confidence < 0.4 ? "neutral" : "accent"}>
@@ -150,8 +171,8 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
             label={t("journey.confidence")}
             showValue
           />
-        </Surface>
-      </div>
+        </BentoTile>
+      </BentoGrid>
 
       <section className="journey-section">
         <SectionHeader title={t("journey.cardsTitle")} description={t("journey.cardsDescription")} />
@@ -171,8 +192,8 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
         ) : <Surface className="journey-inline-empty" elevation="subtle">{t("journey.noCards")}</Surface>}
       </section>
 
-      <div className="journey-feature-grid">
-        <Surface className="journey-weekly" elevation="default">
+      <BentoGrid className="journey-feature-grid">
+        <BentoTile className="journey-weekly" size="wide">
           <SectionHeader title={t("journey.weeklyTitle")} description={t("journey.weeklyDescription")} />
           <div className="journey-metric-grid">
             <JourneyMetric icon={Clock3} label={t("journey.weeklyPlaytime")} value={source.capabilities.weeklyPlaytime ? formatMinutes(analysis.weeklyInsights.totalPlaytimeMinutes, language, t) : t("journey.unavailable")} />
@@ -182,9 +203,9 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
             <JourneyMetric icon={Flame} label={t("journey.streak")} value={t("journey.days", { count: formatNumber(analysis.weeklyInsights.streakDays, language) })} />
             <JourneyMetric icon={Target} label={t("journey.weekChange")} value={analysis.weeklyInsights.changeComparedToPreviousWeek === null ? t("journey.unavailable") : `${analysis.weeklyInsights.changeComparedToPreviousWeek > 0 ? "+" : ""}${formatNumber(analysis.weeklyInsights.changeComparedToPreviousWeek, language)}%`} />
           </div>
-        </Surface>
+        </BentoTile>
 
-        <Surface className="journey-library" elevation="default">
+        <BentoTile className="journey-library" size="medium">
           <SectionHeader title={t("journey.libraryTitle")} description={t("journey.libraryDescription")} />
           <div className="journey-metric-grid">
             <JourneyMetric icon={Library} label={t("journey.totalGames")} value={formatNumber(snapshot.totalGames, language)} />
@@ -193,8 +214,8 @@ export function DashboardPage({ search, onOpenGame, onOpenAchievement }: Dashboa
             <JourneyMetric icon={Clock3} label={t("journey.totalPlaytime")} value={formatMinutes(snapshot.totalPlaytimeMinutes, language, t)} />
             <JourneyMetric icon={Gamepad2} label={t("journey.unstartedGames")} value={formatNumber(snapshot.unstartedGames, language)} />
           </div>
-        </Surface>
-      </div>
+        </BentoTile>
+      </BentoGrid>
     </div>
   );
 }

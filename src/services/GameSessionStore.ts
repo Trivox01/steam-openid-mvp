@@ -63,6 +63,10 @@ export class GameSessionStore {
     return this.sessions.size;
   }
 
+  list(): ActiveGameSession[] {
+    return [...this.sessions.values()];
+  }
+
   elapsedSeconds(appId: string): number {
     const started = this.sessions.get(appId)?.startedAtMs;
     if (started === undefined) return 0;
