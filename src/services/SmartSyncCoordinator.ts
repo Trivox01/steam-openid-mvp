@@ -4,7 +4,7 @@ import type { SteamLibrarySyncService } from "./platform/SteamLibrarySyncService
 import type { SteamAchievementSyncService } from "./platform/SteamAchievementSyncService";
 import { publishLibraryChange } from "./dataEvents.ts";
 
-export type SmartSyncTrigger = "startup" | "page-open" | "manual" | "reconnect";
+export type SmartSyncTrigger = "startup" | "page-open" | "manual" | "reconnect" | "live-session";
 export type SmartSyncStatus = "idle" | "queued" | "updating" | "success" | "saved" | "unavailable";
 type Listener = () => void;
 type Job = { key: string; priority: 1 | 2 | 3; run: (signal: AbortSignal) => Promise<unknown>; resolve: (value: unknown) => void; reject: (error: unknown) => void };
@@ -116,6 +116,16 @@ export class SmartSyncCoordinator {
       if (!game || game.platform !== "steam") return "unsupported";
       if (!force && fresh(game.achievementsSyncedAt, SMART_SYNC_POLICY.gameCooldownMs, this.now())) return "cooldown";
       const result = await this.achievements.syncGame(gameId, signal);
+      publishLibraryChange();
+      return result;
+    });
+  }
+
+  syncLiveGame(gameId: string) {
+    return this.schedule(`achievements:${gameId}`, 1, "live-session", true, 0, async (signal) => {
+      const game = await this.games.getGameById(gameId);
+      if (!game || game.platform !== "steam") return "unsupported";
+      const result = await this.achievements.syncLiveGame(gameId, signal);
       publishLibraryChange();
       return result;
     });

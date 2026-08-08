@@ -7,7 +7,7 @@ import { ErrorView, LoadingView } from "./components/ui/StateViews";
 import { FirstLaunchExperience } from "./features/onboarding/FirstLaunchExperience";
 import type { AchievementId, GameId, NavigationView, PageId, UserPreferences, UserProfile } from "./types";
 import { initializeApplication } from "./services/initializationService";
-import { achievementSoundService, achievementToastCoordinator, achievementToastSoundController, applicationRefresh, services, smartSync } from "./services/compositionRoot";
+import { achievementSoundService, achievementToastCoordinator, achievementToastSoundController, applicationRefresh, liveAchievementDetection, services, smartSync } from "./services/compositionRoot";
 import { installAchievementAudioUnlock } from "./features/achievement-toasts/AchievementSoundService";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -75,7 +75,11 @@ export function App() {
   useEffect(() => {
     if (initialization !== "ready") return;
     smartSync.start();
-    return () => smartSync.stop();
+    liveAchievementDetection.start();
+    return () => {
+      liveAchievementDetection.stop();
+      smartSync.stop();
+    };
   }, [initialization]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -102,6 +106,7 @@ export function App() {
     if (!preferences) return;
     achievementToastCoordinator.configure({ notificationsEnabled: preferences.notificationsEnabled, soundEnabled: preferences.achievementSoundEnabled });
     achievementToastSoundController.configure({ enabled: preferences.notificationsEnabled && preferences.achievementSoundEnabled, volume: preferences.achievementSoundVolume });
+    liveAchievementDetection.configure(preferences.notificationsEnabled);
   }, [preferences]);
   useEffect(() => {
     if (!preferences) return;

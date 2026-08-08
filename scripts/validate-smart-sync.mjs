@@ -37,7 +37,8 @@ function harness() {
       });
       active -= 1;
       return { games: [{ gameId: id, status: "success" }] };
-    }
+    },
+    syncLiveGame(id, signal) { return this.syncGame(id, signal); }
   };
   const games = { getGameById: async (id) => game(id) };
   const coordinator = new SmartSyncCoordinator(sessions, library, achievements, games);
@@ -70,6 +71,15 @@ test("per-game tasks deduplicate and global concurrency never exceeds three", as
   await Promise.all([a, ...rest]);
   assert.equal(h.achievementCalls, 4);
   assert.ok(h.maximumActive <= SMART_SYNC_POLICY.concurrency);
+});
+
+test("live detection joins an existing game refresh instead of duplicating it", async () => {
+  const h = harness(); h.sessions.set({ token: "test-session", expiresAt: "2099-01-01T00:00:00Z" });
+  const refresh = h.coordinator.syncGame("steam:2807960", "manual", true);
+  const live = h.coordinator.syncLiveGame("steam:2807960");
+  assert.equal(refresh, live);
+  await Promise.all([refresh, live]);
+  assert.equal(h.achievementCalls, 1);
 });
 
 test("session change cancels work and clears the task registry", async () => {

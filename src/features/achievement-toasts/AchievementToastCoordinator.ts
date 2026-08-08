@@ -1,4 +1,4 @@
-export type AchievementToastSource = "sync_delta" | "test_preview" | "future_live_detection";
+export type AchievementToastSource = "sync_delta" | "test_preview" | "live_detection";
 
 export type AchievementToastEvent = {
   eventId: string;

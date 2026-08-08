@@ -9,6 +9,7 @@ import { mergeSteamAchievements } from "./SteamAchievementMerge";
 import { dedupeSteamGames, isRetryableAchievementError, mapWithConcurrency, summarizeAchievementSync } from "./SteamAchievementSyncCore";
 import type { AchievementToastEvent } from "../../features/achievement-toasts/AchievementToastCoordinator";
 import { trustedUnlockTransitions } from "../../features/achievement-toasts/syncDelta";
+import { LiveAchievementTransitionGate, type LiveAchievementSyncScope } from "../../features/achievement-toasts/LiveAchievementTransitionGate";
 
 const DEFAULT_CONCURRENCY = 2;
 const DEFAULT_BATCH_LIMIT = 20;
@@ -26,22 +27,38 @@ const safeSteamErrorCodes = new Set([
 ]);
 
 export class SteamAchievementSyncError extends Error {
-  constructor(readonly code: string) {
+  readonly code: string;
+
+  constructor(code: string) {
     super("Achievement synchronization failed");
+    this.code = code;
     this.name = "SteamAchievementSyncError";
   }
 }
 
 export class SteamAchievementSyncService {
-  constructor(
-    private provider: SteamProvider,
-    private games: GameRepository,
-    private achievements: AchievementRepository,
-    private metadata: SyncMetadataRepository,
-    private onUnlocked?: (event: AchievementToastEvent) => void
-  ) {}
+  private readonly liveTransitions = new LiveAchievementTransitionGate();
+  private readonly provider: SteamProvider;
+  private readonly games: GameRepository;
+  private readonly achievements: AchievementRepository;
+  private readonly metadata: SyncMetadataRepository;
+  private readonly onUnlocked?: (event: AchievementToastEvent) => void;
 
-  sync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void; signal?: AbortSignal } = {}) {
+  constructor(
+    provider: SteamProvider,
+    games: GameRepository,
+    achievements: AchievementRepository,
+    metadata: SyncMetadataRepository,
+    onUnlocked?: (event: AchievementToastEvent) => void
+  ) {
+    this.provider = provider;
+    this.games = games;
+    this.achievements = achievements;
+    this.metadata = metadata;
+    this.onUnlocked = onUnlocked;
+  }
+
+  sync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void; signal?: AbortSignal; liveOnly?: boolean } = {}) {
     return this.performSync(options);
   }
 
@@ -51,11 +68,29 @@ export class SteamAchievementSyncService {
     });
   }
 
+  syncLiveGame(gameId: string, signal?: AbortSignal) {
+    return this.sync({ gameIds: [gameId], maxGames: 1, signal, liveOnly: true }).catch(() => {
+      throw new SteamAchievementSyncError("local_storage_failed");
+    });
+  }
+
   getLastSync() {
     return this.metadata.getSyncMetadata("steam-achievements");
   }
 
-  private async performSync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void; signal?: AbortSignal }) {
+  beginLiveSession(appId: string) {
+    this.liveTransitions.begin(appId);
+  }
+
+  resetLiveSessionBaseline(appId: string) {
+    this.liveTransitions.resetBaseline(appId);
+  }
+
+  endLiveSession(appId: string) {
+    this.liveTransitions.end(appId);
+  }
+
+  private async performSync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void; signal?: AbortSignal; liveOnly?: boolean }) {
     options.signal?.throwIfAborted();
     const [allGames, allAchievements] = await Promise.all([
       this.games.getAllGames(),
@@ -73,7 +108,7 @@ export class SteamAchievementSyncService {
     const results = await mapWithConcurrency(eligible, DEFAULT_CONCURRENCY, async (game) => {
       const result = blockedBy
         ? failedGameResult(game, blockedBy)
-        : await this.syncOne(game, allAchievements.filter((item) => item.gameId === game.id), options.signal);
+        : await this.syncOne(game, allAchievements.filter((item) => item.gameId === game.id), options.signal, options.liveOnly);
       if (result.errorCode && batchBlockingCodes.has(result.errorCode)) blockedBy = result.errorCode;
       processed += 1;
       options.onProgress?.(processed, eligible.length);
@@ -90,8 +125,9 @@ export class SteamAchievementSyncService {
     return summary;
   }
 
-  private async syncOne(game: Game, existing: import("../../types").Achievement[], signal?: AbortSignal): Promise<SteamAchievementGameSyncResult> {
+  private async syncOne(game: Game, existing: import("../../types").Achievement[], signal?: AbortSignal, liveOnly = false): Promise<SteamAchievementGameSyncResult> {
     const startedAt = performance.now();
+    const liveSession = this.liveTransitions.acquire(game.appId, liveOnly);
     let stage: "steam" | "sqlite" = "steam";
     try {
       const dto = await this.fetchWithRetry(game.appId, signal);
@@ -114,14 +150,14 @@ export class SteamAchievementSyncService {
         achievementsSyncStatus: dto.warnings.length ? "partial" : "success",
         achievementsSyncError: undefined
       });
-      unlocks.forEach((event) => this.onUnlocked?.(event));
+      const unlockTransitions = this.deliverUnlocks(game.appId, unlocks, playerStatsAvailable, liveSession);
       logDevelopmentSync(game.appId, game.name, "database", "success", dto.achievements.length, startedAt);
       return {
         gameId: game.id, appId: game.appId, gameName: game.name,
         status: dto.warnings.length ? "partial" : "success",
         achievementsFetched: dto.achievements.length,
         inserted: merged.inserted, updated: merged.updated, unchanged: merged.unchanged,
-        skipped: merged.skipped, warnings: dto.warnings
+        skipped: merged.skipped, warnings: dto.warnings, unlockTransitions
       };
     } catch (error) {
       if (signal?.aborted) throw error;
@@ -140,7 +176,15 @@ export class SteamAchievementSyncService {
         achievementsFetched: 0, inserted: 0, updated: 0, unchanged: 0, skipped: 0,
         warnings: [], errorCode: code
       };
+    } finally {
+      this.liveTransitions.release(game.appId, liveSession);
     }
+  }
+
+  private deliverUnlocks(appId: string, events: AchievementToastEvent[], playerStatsAvailable: boolean, live: LiveAchievementSyncScope) {
+    const delivered = this.liveTransitions.transitions(appId, events, playerStatsAvailable, live);
+    delivered.forEach((event) => this.onUnlocked?.(event));
+    return delivered.length;
   }
 
   private async fetchWithRetry(appId: string, signal?: AbortSignal) {

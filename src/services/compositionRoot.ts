@@ -48,6 +48,7 @@ import { AchievementSoundService, createHtmlAudioPort } from "../features/achiev
 import { AchievementToastSoundController } from "../features/achievement-toasts/AchievementToastSoundController";
 import achievementUnlockSound from "../assets/audio/achievement-unlocked.mp3";
 import { GameSessionSummaryStore } from "./GameSessionSummaryStore";
+import { LiveAchievementDetectionService } from "./LiveAchievementDetectionService";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -155,6 +156,17 @@ export const smartSync = new SmartSyncCoordinator(
   async () => {
     await Promise.all([achievements.clearAchievements(), games.clearGames()]);
   }
+);
+export const liveAchievementDetection = new LiveAchievementDetectionService(
+  gameSessionStore,
+  games,
+  smartSync,
+  services.steamAchievementSync,
+  steamOpenId,
+  undefined,
+  import.meta.env.DEV
+    ? (entry) => console.info("[live-achievement-detection]", entry)
+    : undefined
 );
 export const applicationRefresh = new ApplicationRefreshCoordinator();
 applicationRefresh.register({

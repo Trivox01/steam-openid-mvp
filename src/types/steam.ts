@@ -73,6 +73,7 @@ export type SteamAchievementGameSyncResult = {
   skipped: number;
   warnings: string[];
   errorCode?: string;
+  unlockTransitions?: number;
 };
 
 export type SteamAchievementSyncResult = {

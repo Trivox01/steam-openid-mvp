@@ -44,6 +44,7 @@
     "test:achievement-sound": "node --experimental-strip-types scripts/validate-achievement-sound.mjs",
     "test:discord-presence": "node --experimental-strip-types scripts/validate-discord-presence.mjs",
     "test:session-summaries": "node --experimental-strip-types scripts/validate-session-summaries.mjs",
+    "test:live-achievements": "node --experimental-strip-types --test scripts/validate-live-achievement-detection.mjs",
     "test:ux-copy": "node --experimental-strip-types scripts/validate-ux-microcopy.mjs",
     "test:steam-artwork": "node --experimental-strip-types scripts/validate-steam-artwork.mjs",
     "test:profile": "node --experimental-strip-types scripts/validate-profile-card.mjs",
