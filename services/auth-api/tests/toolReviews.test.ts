@@ -24,6 +24,9 @@ import { InMemoryToolReviewRepository } from "../src/tools/toolReviewRepository.
 import { InMemoryToolReviewReportRepository } from "../src/tools/toolReviewReportRepository.ts";
 import { InMemoryToolReviewHelpfulRepository } from "../src/tools/toolReviewHelpfulRepository.ts";
 import { InMemoryToolReviewDeveloperReplyRepository } from "../src/tools/toolReviewDeveloperReplyRepository.ts";
+import { InMemoryToolAnalyticsRepository } from "../src/tools/toolAnalyticsRepository.ts";
+import { InMemoryToolFavoriteRepository } from "../src/tools/toolFavoriteRepository.ts";
+import { ToolAnalyticsService } from "../src/tools/toolAnalyticsService.ts";
 import { ToolReviewService, ToolReviewModerationService, ToolReviewInteractionService } from "../src/tools/toolReviewService.ts";
 import { ToolError } from "../src/tools/contracts.ts";
 
@@ -583,7 +586,10 @@ async function startReviewHarness(limiter?: PollingRateLimiter, reportLimiter?: 
     toolReviewRateLimiter: limiter ?? new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
     toolReportRateLimiter: reportLimiter ?? new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
     toolHelpfulRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
-    toolReplyRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 })
+    toolReplyRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
+    toolAnalytics: new ToolAnalyticsService(new InMemoryToolAnalyticsRepository(), new InMemoryToolFavoriteRepository()),
+    toolEventRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 }),
+    toolFavoriteRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, windowMs: 60_000, maxRequests: 100 })
   }));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();

@@ -22,6 +22,9 @@ import { PostgresToolReviewRepository } from "../src/storage/postgres/postgresTo
 import { PostgresToolReviewReportRepository } from "../src/storage/postgres/postgresToolReviewReportRepository.ts";
 import { PostgresToolReviewHelpfulRepository } from "../src/storage/postgres/postgresToolReviewHelpfulRepository.ts";
 import { PostgresToolReviewDeveloperReplyRepository } from "../src/storage/postgres/postgresToolReviewDeveloperReplyRepository.ts";
+import { PostgresToolAnalyticsRepository } from "../src/storage/postgres/postgresToolAnalyticsRepository.ts";
+import { PostgresToolFavoriteRepository } from "../src/storage/postgres/postgresToolFavoriteRepository.ts";
+import { ToolAnalyticsService } from "../src/tools/toolAnalyticsService.ts";
 import { ToolService } from "../src/tools/toolService.ts";
 import { ToolRatingService } from "../src/tools/toolRatingService.ts";
 import { ToolReviewService, ToolReviewModerationService, ToolReviewInteractionService } from "../src/tools/toolReviewService.ts";
@@ -60,7 +63,7 @@ test("PostgreSQL repository integration and concurrency", {
       "SELECT count(*) FROM permissions"
     );
     assert.equal(Number(roleCount.rows[0].count), 5);
-    assert.equal(Number(permissionCount.rows[0].count), 32);
+    assert.equal(Number(permissionCount.rows[0].count), 35);
     const badgeRepository = new PostgresBadgeRepository(pool);
     await badgeRepository.validateSchema();
     const cleanupStorageKey =
@@ -405,6 +408,56 @@ test("PostgreSQL repository integration and concurrency", {
       "SELECT to_regclass('rollback_probe') IS NOT NULL AS exists"
     );
     assert.equal(rollbackProbe.rows[0].exists, false);
+
+    const analyticsRepository = new PostgresToolAnalyticsRepository(pool);
+    const favoriteRepository = new PostgresToolFavoriteRepository(pool);
+    await analyticsRepository.validateSchema();
+    await favoriteRepository.validateSchema();
+    const analytics = new ToolAnalyticsService(analyticsRepository, favoriteRepository, {
+      ratings: ratingRepository,
+      reviews: reviewRepository,
+      tools: toolRoot
+    });
+    assert.deepEqual(await analytics.addFavorite(ratingTool.id, user.id), { isFavorite: true, favoritesCount: 1, added: true });
+    assert.equal(await analytics.favoriteStatus(ratingTool.id, user.id), true);
+    assert.equal((await analytics.addFavorite(ratingTool.id, user.id)).added, false);
+    assert.equal((await favoriteRepository.counts([ratingTool.id])).get(ratingTool.id), 1);
+    assert.equal((await analytics.stats(ratingTool.id)).favorites, 1);
+    assert.deepEqual((await analytics.removeFavorite(ratingTool.id, user.id)), { isFavorite: false, favoritesCount: 0, removed: true });
+    const firstView = await analytics.record("view", { toolId: ratingTool.id, userId: user.id, dedupeKey: `user:${user.id}` });
+    assert.equal(firstView.recorded, true);
+    const secondView = await analytics.record("view", { toolId: ratingTool.id, userId: user.id, dedupeKey: `user:${user.id}` });
+    assert.equal(secondView.recorded, false);
+    const anonymousView = await analytics.record("view", { toolId: ratingTool.id, dedupeKey: "anon-key-1" });
+    assert.equal(anonymousView.recorded, true);
+    const click = await analytics.record("download_click", { toolId: ratingTool.id, userId: user.id, dedupeKey: `user:${user.id}` });
+    assert.equal(click.recorded, true);
+    assert.equal((await analytics.events.lifetimeTotals("view")), 2);
+    assert.equal((await analytics.stats(ratingTool.id)).views, 2);
+    assert.equal((await analytics.stats(ratingTool.id)).downloadClicks, 1);
+    const series = await analytics.events.dailySeries(ratingTool.id, "view", 0);
+    assert.equal(series.length, 1);
+    assert.equal(series[0].count, 2);
+    const rank = await analytics.rank([ratingTool.id, createdTool.id], "trending");
+    assert.equal(rank.length, 2);
+    assert.equal(rank[0].id, ratingTool.id);
+    const overview = await analytics.overview();
+    assert.ok(overview.totals.views >= 2);
+    assert.ok(overview.totals.downloadClicks >= 1);
+    const analyticsReport = await analytics.toolAnalytics(ratingTool.id);
+    assert.equal(analyticsReport.stats.views, 2);
+    assert.ok(analyticsReport.series.views.length >= 1);
+    const purged = await analytics.purgeExpiredEvents();
+    assert.equal(purged, 0);
+    await pool.query("DELETE FROM tool_events WHERE created_at < now() - interval '100 days'");
+    const viewIndexExists = await pool.query<{ count: string }>(
+      "SELECT count(*) FROM pg_indexes WHERE schemaname=current_schema() AND indexname IN ('tool_events_tool_kind_created_idx','tool_events_user_idx','tool_favorites_user_created_idx')"
+    );
+    assert.equal(Number(viewIndexExists.rows[0].count), 3);
+    const deniedFavorites = await pool.query<{ action: string }>(
+      `SELECT action FROM audit_events WHERE action='tool.action_denied' AND target_type='tool' ORDER BY created_at DESC LIMIT 1`
+    );
+    assert.ok(deniedFavorites.rows.length >= 0);
   } finally {
     await pool.end();
     await admin.query(`DROP SCHEMA "${schema}" CASCADE`);

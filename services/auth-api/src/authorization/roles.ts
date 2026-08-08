@@ -19,6 +19,7 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
     "developer.tools", "tools.view", "tools.manage", "tools.rate", "tools.view_ratings",
     "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.moderate_reviews",
     "tools.vote_review_helpful", "tools.reply_to_review",
+    "tools.favorite", "tools.view_public_stats", "tools.view_analytics",
     "tool_badges.manage", "tool_categories.manage"
   ],
   administrator: [
@@ -29,6 +30,7 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
     "tools.view", "tools.manage", "tools.rate", "tools.view_ratings",
     "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.moderate_reviews",
     "tools.vote_review_helpful", "tools.reply_to_review",
+    "tools.favorite", "tools.view_public_stats", "tools.view_analytics",
     "tool_badges.manage", "tool_categories.manage"
   ],
   developer: [
@@ -37,12 +39,14 @@ export const defaultRolePermissions: Readonly<Record<SystemRoleSlug, readonly Pe
     "developer.tools", "tools.view", "tools.manage", "tools.rate", "tools.view_ratings",
     "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.moderate_reviews",
     "tools.vote_review_helpful", "tools.reply_to_review",
+    "tools.favorite", "tools.view_public_stats", "tools.view_analytics",
     "tool_badges.manage", "tool_categories.manage"
   ],
   moderator: [
     "admin.access", "users.view", "badges.view", "badges.view_assignments", "badges.assign",
     "badges.revoke", "audit.view", "tools.view", "tools.rate", "tools.view_ratings",
-    "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.moderate_reviews"
+    "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.moderate_reviews",
+    "tools.favorite", "tools.view_public_stats"
   ],
-  assistant: ["admin.access", "users.view", "badges.view", "settings.view", "tools.view", "tools.rate", "tools.view_ratings", "tools.view_reviews", "tools.write_review", "tools.report_review"]
+  assistant: ["admin.access", "users.view", "badges.view", "settings.view", "tools.view", "tools.rate", "tools.view_ratings", "tools.view_reviews", "tools.write_review", "tools.report_review", "tools.favorite", "tools.view_public_stats"]
 };

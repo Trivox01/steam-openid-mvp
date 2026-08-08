@@ -118,6 +118,7 @@ export interface ToolReviewRepository {
   getMine(toolId: string, userId: string): Promise<ToolReviewRecord | undefined>;
   getById(reviewId: string): Promise<ToolReviewRecord | undefined>;
   listActive(toolId: string, query: ToolReviewListQuery, viewerId?: string): Promise<ToolReviewPage>;
+  countActive(toolId: string): Promise<number>;
   listAdmin(query: ToolReviewAdminQuery): Promise<{ items: Omit<ToolReviewAdminView, "reportsCount">[]; total: number; page: number; pageSize: number }>;
   setStatus(reviewId: string, status: ToolReviewStatus, moderatorId: string, reason?: string): Promise<ToolReviewRecord>;
   audit(action: ToolReviewAuditAction, actor: string, toolId: string, metadata?: Record<string, string>): Promise<void>;
@@ -265,6 +266,10 @@ export class InMemoryToolReviewRepository implements ToolReviewRepository {
       }
     }
     return { items: views, total, page: query.page, pageSize: query.pageSize };
+  }
+
+  async countActive(toolId: string) {
+    return [...this.reviews.values()].filter((review) => review.toolId === toolId && review.status === "active").length;
   }
 
   async setStatus(reviewId: string, status: ToolReviewStatus, moderatorId: string, reason?: string) {

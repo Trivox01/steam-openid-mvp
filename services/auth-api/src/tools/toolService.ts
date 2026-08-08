@@ -6,6 +6,9 @@ import { normalizeSafeExternalUrl } from "./safeExternalUrl.ts";
 import type { BadgeAssetStorage } from "../badges/badgeAssetStorage.ts";
 import type { BadgeRepository } from "../badges/badgeRepository.ts";
 import { removeUnusedBadgeAsset } from "../badges/badgeAssetLifecycle.ts";
+import type { ToolAnalyticsService } from "./toolAnalyticsService.ts";
+
+const ANALYTICS_SORTS = new Set(["popular", "trending", "most_downloaded", "recommended"]);
 
 export class ToolService {
   readonly repository: ToolRepository;
@@ -13,11 +16,27 @@ export class ToolService {
   readonly categories: ToolCategoryRepository;
   private readonly assets?: BadgeRepository;
   private readonly assetStorage?: BadgeAssetStorage;
-  constructor(repository: ToolRepository, badges: ToolBadgeRepository, categories: ToolCategoryRepository, assets?: BadgeRepository, assetStorage?: BadgeAssetStorage) {
+  private readonly analytics?: ToolAnalyticsService;
+  constructor(repository: ToolRepository, badges: ToolBadgeRepository, categories: ToolCategoryRepository, assets?: BadgeRepository, assetStorage?: BadgeAssetStorage, analytics?: ToolAnalyticsService) {
     this.repository = repository; this.badges = badges; this.categories = categories;
     this.assets = assets; this.assetStorage = assetStorage;
+    this.analytics = analytics;
   }
-  list(query: ToolListQuery) { return this.repository.list(query); }
+  async list(query: ToolListQuery) {
+    if (!this.analytics || !ANALYTICS_SORTS.has(query.sort)) return this.repository.list(query);
+    const all = await this.repository.list({ ...query, sort: "newest", page: 1, pageSize: 10_000 });
+    const ranked = await this.analytics.rank(all.items.map((item) => item.id), query.sort as "popular" | "trending" | "most_downloaded" | "recommended");
+    const rankedIds = ranked.map((entry) => entry.id);
+    const byId = new Map(all.items.map((item) => [item.id, item] as const));
+    const pageIdStart = (query.page - 1) * query.pageSize;
+    const pageIds = rankedIds.slice(pageIdStart, pageIdStart + query.pageSize);
+    return {
+      total: rankedIds.length,
+      items: pageIds.map((id) => byId.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item)),
+      page: query.page,
+      pageSize: query.pageSize
+    };
+  }
   getBySlug(slug: string, publicOnly = true) { return this.repository.getBySlug(slug, publicOnly); }
   async create(value: unknown, actor: string) { return this.repository.create(await this.parseTool(value), actor); }
   async update(id: string, value: unknown, actor: string) {
@@ -53,7 +72,7 @@ export class ToolService {
 export function parseToolQuery(params: URLSearchParams, admin = false): ToolListQuery {
   const page=integer(params.get("page"),1,100000), pageSize=integer(params.get("pageSize"),20,50);
   const search=params.get("search")?.trim(); if (search && search.length>100) throw new ToolError("INVALID_TOOL_QUERY");
-  const sort=enumValue(params.get("sort")??"newest",["newest","updated","name"] as const);
+  const sort=enumValue(params.get("sort")??"newest",["newest","updated","name","popular","trending","most_downloaded","recommended"] as const);
   const featured=params.get("featured")==null?undefined:params.get("featured")==="true";
   return {page,pageSize,sort,activeOnly:!admin,includeArchived:admin&&params.get("archived")==="true",...(search?{search}:{}),...(params.get("category")?{category:params.get("category")!}:{}),...(params.get("badge")?{badge:params.get("badge")!}:{}),...(featured===undefined?{}:{featured})};
 }

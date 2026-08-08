@@ -1,5 +1,5 @@
 export type ToolTrustKind = "official" | "external" | "community";
-export type ToolSort = "newest" | "updated" | "name";
+export type ToolSort = "newest" | "updated" | "name" | "popular" | "trending" | "most_downloaded" | "recommended";
 
 export interface ToolBadge {
   id: string; name: string; slug: string; color: ToolBadgeColor; iconKey: ToolBadgeIcon;

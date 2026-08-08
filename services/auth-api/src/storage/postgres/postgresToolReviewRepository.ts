@@ -23,6 +23,14 @@ export class PostgresToolReviewRepository {
     this.pool = pool;
   }
 
+  async countActive(toolId: string) {
+    const result = await this.pool.query<{ count: string }>(
+      "SELECT count(*) FROM tool_reviews WHERE tool_id=$1 AND status='active'",
+      [toolId]
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
   async validateSchema() {
     const result = await this.pool.query<{ count: string }>(
       "SELECT count(*) FROM information_schema.tables WHERE table_schema=current_schema() AND table_name='tool_reviews'"

@@ -47,6 +47,7 @@ import type { ToolService } from "./tools/toolService.ts";
 import type { ToolAssetStorages } from "./tools/toolAssetStorage.ts";
 import type { ToolRatingService } from "./tools/toolRatingService.ts";
 import type { ToolReviewModerationService, ToolReviewInteractionService, ToolReviewService } from "./tools/toolReviewService.ts";
+import type { ToolAnalyticsService } from "./tools/toolAnalyticsService.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
@@ -66,6 +67,9 @@ type RouterDependencies = SteamAuthRouteDependencies & {
   toolReportRateLimiter?: PollingRateLimiter;
   toolHelpfulRateLimiter?: PollingRateLimiter;
   toolReplyRateLimiter?: PollingRateLimiter;
+  toolAnalytics?: ToolAnalyticsService;
+  toolEventRateLimiter?: PollingRateLimiter;
+  toolFavoriteRateLimiter?: PollingRateLimiter;
 };
 
 export function createRouter(
@@ -127,7 +131,7 @@ export function createRouter(
       Boolean(steamAuthDependencies?.steamData) &&
       Boolean(steamAuthDependencies?.steamDataRateLimiter) &&
       Boolean(steamAuthDependencies?.sessions);
-    const isToolsRoute = isToolPath(url.pathname) && Boolean(steamAuthDependencies?.tools) && Boolean(steamAuthDependencies?.toolAssets) && Boolean(steamAuthDependencies?.toolRatings) && Boolean(steamAuthDependencies?.toolRatingRateLimiter) && Boolean(steamAuthDependencies?.toolReviews) && Boolean(steamAuthDependencies?.toolReviewModeration) && Boolean(steamAuthDependencies?.toolReviewInteractions) && Boolean(steamAuthDependencies?.toolReviewRateLimiter) && Boolean(steamAuthDependencies?.toolReportRateLimiter) && Boolean(steamAuthDependencies?.toolHelpfulRateLimiter) && Boolean(steamAuthDependencies?.toolReplyRateLimiter) && Boolean(steamAuthDependencies?.badges) &&
+    const isToolsRoute = isToolPath(url.pathname) && Boolean(steamAuthDependencies?.tools) && Boolean(steamAuthDependencies?.toolAssets) && Boolean(steamAuthDependencies?.toolRatings) && Boolean(steamAuthDependencies?.toolRatingRateLimiter) && Boolean(steamAuthDependencies?.toolReviews) && Boolean(steamAuthDependencies?.toolReviewModeration) && Boolean(steamAuthDependencies?.toolReviewInteractions) && Boolean(steamAuthDependencies?.toolReviewRateLimiter) && Boolean(steamAuthDependencies?.toolReportRateLimiter) && Boolean(steamAuthDependencies?.toolHelpfulRateLimiter) && Boolean(steamAuthDependencies?.toolReplyRateLimiter) && Boolean(steamAuthDependencies?.toolAnalytics) && Boolean(steamAuthDependencies?.toolEventRateLimiter) && Boolean(steamAuthDependencies?.toolFavoriteRateLimiter) && Boolean(steamAuthDependencies?.badges) &&
       Boolean(steamAuthDependencies?.authorization) && Boolean(steamAuthDependencies?.sessions);
     if (
       isSteamAuthRoute ||
@@ -186,6 +190,7 @@ export function createRouter(
         toolAssets: steamAuthDependencies!.toolAssets!
         ,ratings:steamAuthDependencies!.toolRatings!,ratingRateLimiter:steamAuthDependencies!.toolRatingRateLimiter!
         ,reviews:steamAuthDependencies!.toolReviews!,moderation:steamAuthDependencies!.toolReviewModeration!,interactions:steamAuthDependencies!.toolReviewInteractions!,reviewRateLimiter:steamAuthDependencies!.toolReviewRateLimiter!,reportRateLimiter:steamAuthDependencies!.toolReportRateLimiter!,helpfulRateLimiter:steamAuthDependencies!.toolHelpfulRateLimiter!,replyRateLimiter:steamAuthDependencies!.toolReplyRateLimiter!
+        ,analytics:steamAuthDependencies!.toolAnalytics!,eventRateLimiter:steamAuthDependencies!.toolEventRateLimiter!,favoriteRateLimiter:steamAuthDependencies!.toolFavoriteRateLimiter!
       })
     ) return;
     if (
