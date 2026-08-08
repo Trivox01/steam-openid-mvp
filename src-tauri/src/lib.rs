@@ -1,8 +1,10 @@
 mod commands;
 mod database;
+mod game_session;
 mod models;
 mod steam_installation;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -19,6 +21,9 @@ struct DesktopLifecycleState {
     update_checking: AtomicBool,
     tray_notice_shown: AtomicBool,
 }
+
+#[derive(Default)]
+struct SessionMonitorState(pub Mutex<Option<game_session::SessionMonitor>>);
 
 #[tauri::command]
 fn set_tray_behavior_enabled(enabled: bool, state: tauri::State<'_, DesktopLifecycleState>) {
@@ -44,6 +49,28 @@ fn invalidate_steam_installation_index(
 fn open_external_tool_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     let parsed = validate_external_tool_url(&url)?;
     app.opener().open_url(parsed.as_str(), None::<&str>).map_err(|_| "external_link_open_failed".to_string())
+}
+
+#[tauri::command]
+fn note_game_session_launch(app_id: String, state: tauri::State<'_, SessionMonitorState>) {
+    let session_guard = state
+        .0
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    if let Some(monitor) = session_guard.as_ref() {
+        monitor.note_launch(&app_id);
+    }
+}
+
+#[tauri::command]
+fn invalidate_session_index(state: tauri::State<'_, SessionMonitorState>) {
+    let session_guard = state
+        .0
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    if let Some(monitor) = session_guard.as_ref() {
+        monitor.invalidate_index();
+    }
 }
 
 fn validate_external_tool_url(value: &str) -> Result<url::Url, String> {
@@ -90,6 +117,16 @@ pub fn run() {
             if let Ok(watcher) = steam_installation::SteamManifestWatcher::start(probe, move |change| {
                 let _ = handle.emit("nexus://steam-installation-changed", change);
             }) { app.manage(watcher); }
+
+            match game_session::SessionMonitor::new(app.handle()) {
+                Ok(monitor) => {
+                    app.manage(SessionMonitorState(Mutex::new(Some(monitor))));
+                }
+                Err(reason) => {
+                    eprintln!("[game-session] monitor unavailable: {reason}");
+                    app.manage(SessionMonitorState::default());
+                }
+            }
 
             let open = MenuItem::with_id(app, "open-nexus", "Open Nexus", true, None::<&str>)?;
             let check = MenuItem::with_id(
@@ -204,9 +241,26 @@ pub fn run() {
             get_steam_installation_index,
             invalidate_steam_installation_index
             ,open_external_tool_url
+            ,note_game_session_launch
+            ,invalidate_session_index
+            ,commands::list_game_sessions
+            ,commands::game_session_statistics
+            ,commands::game_session_diagnostics
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Achievement Nexus");
+        .build(tauri::generate_context!())
+        .expect("error while building Achievement Nexus")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let app_state = app_handle.state::<SessionMonitorState>();
+                let mut session_guard = app_state
+                    .0
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner());
+                if let Some(mut monitor) = session_guard.take() {
+                    monitor.stop();
+                }
+            }
+        });
 }
 
 #[cfg(test)]

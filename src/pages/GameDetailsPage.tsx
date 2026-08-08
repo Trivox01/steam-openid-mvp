@@ -29,6 +29,7 @@ import { isAchievementUnlocked } from "../services/achievementData";
 import { services, smartSync } from "../services/compositionRoot";
 import type { Achievement, AchievementId, Game, GameId } from "../types";
 import { GameActionButton } from "../components/games/GameActionButton";
+import { GameSessionIndicator } from "../components/games/GameSessionIndicator";
 
 const PAGE_SIZE = 120;
 
@@ -140,7 +141,7 @@ export function GameDetailsPage({
             </div>
             <h1 dir="auto">{game.name}</h1>
             <div className="game-v2-hero__metadata">
-              <span><Clock3 />{formatPlaytime(game.playtimeHours, language, t)}</span>
+              <span title={t("gameSession.steamPlaytime")}><Clock3 />{formatPlaytime(game.playtimeHours, language, t)}</span>
               {isValidDate(game.lastPlayedAt) && <span>{formatLastPlayed(game.lastPlayedAt, language, t)}</span>}
             </div>
             {completion !== null ? (
@@ -153,7 +154,10 @@ export function GameDetailsPage({
                 ? t("gameDetails.achievementDataUnavailable")
                 : `${formatNumber(summary.unlocked, language)} / ${formatNumber(summary.total, language)}`}
             </strong>
-            {game.platform === "steam" && <GameActionButton appId={game.appId} title={game.name} owned />}
+            {game.platform === "steam" && <>
+              <GameActionButton appId={game.appId} title={game.name} owned />
+              <GameSessionIndicator appId={game.appId} className="game-v2-hero__session" />
+            </>}
           </div>
         </div>
       </Surface>

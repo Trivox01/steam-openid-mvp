@@ -28,10 +28,10 @@ export class GameLauncherService {
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly inFlight = new Map<string, Promise<GameLaunchSnapshot>>();
   private readonly ownership = new Map<string,GameOwnership>();
-  private readonly transport:SteamLaunchTransport;private readonly installationProbe:SteamInstallationProbe;private readonly sessionProbe:GameSessionProbe;private readonly logger?:LauncherLogger;private readonly handoffDelayMs:number;
+  private readonly transport:SteamLaunchTransport;private readonly installationProbe:SteamInstallationProbe;private readonly sessionProbe:GameSessionProbe;private readonly logger?:LauncherLogger;private readonly handoffDelayMs:number;private readonly onLaunch?:(appId:string)=>void;
   constructor(
-    transport: SteamLaunchTransport,installationProbe: SteamInstallationProbe,sessionProbe: GameSessionProbe = defaultSessionProbe,logger?: LauncherLogger,handoffDelayMs = 800
-  ) {this.transport=transport;this.installationProbe=installationProbe;this.sessionProbe=sessionProbe;this.logger=logger;this.handoffDelayMs=handoffDelayMs}
+    transport: SteamLaunchTransport,installationProbe: SteamInstallationProbe,sessionProbe: GameSessionProbe = defaultSessionProbe,logger?: LauncherLogger,handoffDelayMs = 800,onLaunch?: (appId:string)=>void
+  ) {this.transport=transport;this.installationProbe=installationProbe;this.sessionProbe=sessionProbe;this.logger=logger;this.handoffDelayMs=handoffDelayMs;this.onLaunch=onLaunch}
 
   static normalizeAppId(value: string | number): string | undefined {
     const raw=String(value).trim(); if(!/^[1-9]\d*$/.test(raw))return undefined;
@@ -92,7 +92,7 @@ export class GameLauncherService {
   private async open(appId:string,uri:string,action:GameAction){
     const started=performance.now();const current=this.getSnapshot(appId);
     this.publish({...current,actionStatus:"openingSteam"});
-    try{await this.transport.open(uri);if(action==="install"){await this.installationProbe.invalidate();await delay(this.handoffDelayMs)}
+    try{if(action==="play")this.onLaunch?.(appId);await this.transport.open(uri);if(action==="install"){await this.installationProbe.invalidate();await delay(this.handoffDelayMs)}
       const result=this.publish({...current,actionStatus:"idle"});this.log(appId,uri,"opened",started);return result;
     }catch{const result=this.publish({...current,actionStatus:"error"});this.log(appId,uri,"failed",started);return result;}
   }

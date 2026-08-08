@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, CheckCircle2, Clock3, Gem, Library, Target, Trophy } from "lucide-react";
 import { EmptyView, ErrorView, LoadingView } from "../components/ui/StateViews";
 import { GameArtwork } from "../components/ui/GameArtwork";
@@ -11,6 +11,8 @@ import { Surface } from "../components/ui/Surface";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { useTranslation } from "../i18n/TranslationContext";
 import { knownAchievementRarity } from "../services/achievementData";
+import { gameSessionStore } from "../services/compositionRoot";
+import { formatSessionDuration } from "../hooks/useGameSession";
 import { services } from "../services/compositionRoot";
 import { steamArtworkSources } from "../services/platform/steamArtwork";
 import {
@@ -32,13 +34,33 @@ export function StatisticsPage({
   const { language, t } = useTranslation();
   const [filter, setFilter] = useState<StatisticsFilter>("all");
   const [activityRange, setActivityRange] = useState<UnlockActivityRange>("12m");
+  const [sessionRevision, setSessionRevision] = useState(0);
   const state = useAsyncData(() => services.statistics.get(), []);
+  const sessionStats = useAsyncData(() => gameSessionStore.statistics(20), [sessionRevision]);
+  useEffect(() => {
+    let lastCount = -1;
+    return gameSessionStore.subscribe(() => {
+      const count = gameSessionStore.sessionCount();
+      if (count !== lastCount) {
+        lastCount = count;
+        setSessionRevision((value) => value + 1);
+      }
+    });
+  }, []);
   const number = useMemo(() => new Intl.NumberFormat(language, { maximumFractionDigits: 1 }), [language]);
   const date = useMemo(() => new Intl.DateTimeFormat(language, { dateStyle: "medium" }), [language]);
   const filteredGames = useMemo(
     () => state.status === "success" ? state.data.games.filter((game) => matchesFilter(game, filter)) : [],
     [state, filter]
   );
+  const gamesByAppId = useMemo(() => {
+    if (state.status !== "success") return new Map<string, string>();
+    const map = new Map<string, string>();
+    for (const game of state.data.games) {
+      if (game.platform === "steam" && game.appId) map.set(game.appId, game.name);
+    }
+    return map;
+  }, [state]);
   const filteredAchievements = useMemo(() => {
     if (state.status !== "success") return [];
     const filteredIds = new Set(filteredGames.map((game) => game.id));
@@ -113,6 +135,29 @@ export function StatisticsPage({
             <Metric icon={Clock3} label={t("statistics.totalPlaytime")} value={formatDuration(insights.totalPlaytimeHours, language, t)} />
           </div>
         </section>
+
+        {sessionStats.status === "success" && sessionStats.data && (
+          <Surface as="section" className="statistics-v2__sessions" aria-label={t("gameSession.statisticsTitle")}>
+            <SectionHeader title={t("gameSession.statisticsTitle")} description={t("gameSession.statisticsDescription")} />
+            {sessionStats.data.sessionsToday > 0 || sessionStats.data.recentSessions.length > 0 ? <>
+              <div className="statistics-v2__sessions-grid">
+                <div><small>{t("gameSession.todaySessions")}</small><strong>{number.format(sessionStats.data.sessionsToday)}</strong></div>
+                <div><small>{t("gameSession.todayTime")}</small><strong>{formatSessionDuration(sessionStats.data.secondsToday)}</strong></div>
+              </div>
+              {sessionStats.data.lastSession && (
+                <p className="statistics-v2__sessions-last">{t("gameSession.lastSessionLabel")}: {gamesByAppId.get(sessionStats.data.lastSession.appId) ?? t("gameSession.unknownGame")}</p>
+              )}
+              {sessionStats.data.recentSessions.length > 0 && (
+                <ol className="statistics-v2__sessions-list">{sessionStats.data.recentSessions.slice(0, 5).map((session) => (
+                  <li key={`${session.appId}-${session.startedAtMs}`}>
+                    <span dir="auto" title={session.appId}>{gamesByAppId.get(session.appId) ?? t("gameSession.unknownGame")}</span>
+                    <strong>{formatSessionDuration(session.durationSeconds)}</strong>
+                  </li>
+                ))}</ol>
+              )}
+            </> : <InlineEmpty text={t("gameSession.sessionsEmpty")} />}
+          </Surface>
+        )}
 
         <div className="statistics-v2__primary-grid">
           <Surface as="section" className="statistics-v2__chart-card" aria-label={t("statistics.completionDistribution")}>

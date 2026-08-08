@@ -7,6 +7,63 @@ fn db_error(context: &str, error: rusqlite::Error) -> String { format!("{context
 const GAME_COLUMNS: &str = "id,platform_id,platform_game_id,name,cover_url,background_url,playtime_minutes,achievements_unlocked,achievements_total,completion_percentage,last_played_at,playtime_two_weeks_minutes,playtime_windows_minutes,playtime_mac_minutes,playtime_linux_minutes,icon_url,synced_at,favorite,hidden,game_status,achievements_synced_at,achievements_sync_status,achievements_sync_error,tracked,last_opened_at";
 
 #[tauri::command]
+pub fn list_game_sessions(
+    state: State<crate::SessionMonitorState>,
+) -> Result<Vec<crate::game_session::ActiveGameSession>, String> {
+    let session_guard = state
+        .0
+        .lock()
+        .map_err(|_| "Session monitor is unavailable".to_string())?;
+    let Some(monitor) = session_guard.as_ref() else {
+        return Ok(Vec::new());
+    };
+    let core_arc = monitor.core();
+    let core_guard = core_arc
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    Ok(core_guard.snapshot())
+}
+
+#[tauri::command]
+pub fn game_session_statistics(
+    state: State<DatabaseState>,
+    limit: Option<usize>,
+) -> Result<crate::game_session::SessionStatistics, String> {
+    let db = state
+        .0
+        .lock()
+        .map_err(|_| "Local database is unavailable".to_string())?;
+    let now = crate::game_session::now_ms();
+    let today = crate::game_session::day_start_ms(now);
+    crate::game_session::query_session_statistics(&db, today, now, limit.unwrap_or(20))
+        .map_err(|error| format!("Unable to read session statistics: {error}"))
+}
+
+#[tauri::command]
+pub fn game_session_diagnostics(
+    state: State<crate::SessionMonitorState>,
+) -> Result<crate::game_session::GameSessionDiagnostics, String> {
+    let session_guard = state
+        .0
+        .lock()
+        .map_err(|_| "Session monitor is unavailable".to_string())?;
+    let Some(monitor) = session_guard.as_ref() else {
+        return Ok(crate::game_session::GameSessionDiagnostics {
+            scans: 0,
+            last_scan_cost_ns: 0,
+            average_scan_cost_ns: 0,
+            scan_index_refreshes: 0,
+            recovery: Vec::new(),
+        });
+    };
+    let core_arc = monitor.core();
+    let core_guard = core_arc
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    Ok(core_guard.diagnostics())
+}
+
+#[tauri::command]
 pub fn get_all_games(state: State<DatabaseState>) -> Result<Vec<GameRecord>, String> {
     let db = state.0.lock().map_err(|_| "Local database is unavailable".to_string())?;
     let mut statement = db.prepare(&format!("SELECT {GAME_COLUMNS} FROM games ORDER BY last_played_at DESC")).map_err(|e| db_error("Unable to query games", e))?;

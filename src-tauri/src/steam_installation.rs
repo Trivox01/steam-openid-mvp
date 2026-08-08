@@ -169,6 +169,70 @@ pub fn build_index(candidates: &[PathBuf]) -> SteamInstallationIndex {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct SteamAppInstall {
+    pub app_id: String,
+    pub installdir: String,
+    pub library_dir: PathBuf,
+}
+
+pub fn app_install_directories() -> Vec<SteamAppInstall> {
+    app_install_directories_for(&steam_candidates())
+}
+
+pub fn app_install_directories_for(candidates: &[PathBuf]) -> Vec<SteamAppInstall> {
+    let Some(root) = candidates.iter().find(|path| path.join("steamapps").is_dir()) else {
+        return vec![];
+    };
+    let mut libraries = BTreeSet::from([root.clone()]);
+    if let Ok(contents) = fs::read_to_string(root.join("steamapps/libraryfolders.vdf")) {
+        libraries.extend(
+            parse_library_paths(&contents)
+                .into_iter()
+                .filter(|path| path.join("steamapps").is_dir()),
+        );
+    }
+    let mut installs = Vec::new();
+    for library in libraries {
+        let Ok(entries) = fs::read_dir(library.join("steamapps")) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(app_id) = name.strip_prefix("appmanifest_").and_then(|value| value.strip_suffix(".acf")) else { continue };
+            if !valid_app_id(app_id) {
+                continue;
+            }
+            let Ok(contents) = fs::read_to_string(entry.path()) else {
+                continue;
+            };
+            let pairs: HashMap<_, _> = parse_pairs(&contents)
+                .into_iter()
+                .map(|(key, value)| (key.to_ascii_lowercase(), value))
+                .collect();
+            let flags = pairs
+                .get("stateflags")
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(0);
+            let directory = pairs
+                .get("installdir")
+                .map(String::as_str)
+                .unwrap_or_default();
+            if pairs.get("appid").is_some_and(|value| value == app_id)
+                && !directory.trim().is_empty()
+                && flags & 4 == 4
+            {
+                installs.push(SteamAppInstall {
+                    app_id: app_id.to_string(),
+                    installdir: directory.trim().to_string(),
+                    library_dir: library.clone(),
+                });
+            }
+        }
+    }
+    installs
+}
+
 fn steam_candidates() -> Vec<PathBuf> {
     let mut candidates = BTreeSet::new();
     for key in ["ProgramFiles(x86)", "ProgramFiles"] {
@@ -381,6 +445,30 @@ mod tests {
         let root=temp("transitions");manifest(&root,"60","2");assert!(build_index(&[root.clone()]).installed_app_ids.is_empty());
         manifest(&root,"60","4");assert_eq!(build_index(&[root.clone()]).installed_app_ids,vec!["60"]);
         fs::remove_file(root.join("steamapps/appmanifest_60.acf")).unwrap();assert!(build_index(&[root]).installed_app_ids.is_empty());
+    }
+    #[test]
+    fn install_directories_map_manifests_across_libraries() {
+        let root = temp("installdirs");
+        let second = temp("installdirs-two");
+        manifest(&root, "10", "4");
+        manifest(&second, "20", "4");
+        write(
+            root.join("steamapps/libraryfolders.vdf"),
+            format!("\"1\" {{ \"path\" \"{}\" }}", second.display()),
+        )
+        .unwrap();
+                let installs = app_install_directories_for(&[root]);
+        assert_eq!(installs.len(), 2);
+        assert!(installs.iter().any(|install| install.app_id == "10" && install.installdir == "Game"));
+        assert!(installs.iter().any(|install| install.app_id == "20" && install.installdir == "Game"));
+    }
+    #[test]
+    fn install_directories_ignore_incomplete_manifests() {
+        let root = temp("installdirs-ordered");
+        manifest(&root, "30", "2");
+        write(root.join("steamapps/appmanifest_40.acf"), "broken").unwrap();
+        let installs = app_install_directories_for(&[root]);
+        assert!(installs.is_empty());
     }
     #[test]
     fn watcher_events_are_debounced_and_target_the_app() {

@@ -17,6 +17,7 @@ import { StatusBadge } from "../ui/StatusBadge";
 import { Surface } from "../ui/Surface";
 import { steamArtworkSources } from "../../services/platform/steamArtwork";
 import { GameActionButton } from "./GameActionButton";
+import { GameSessionIndicator } from "./GameSessionIndicator";
 
 type GameCardProps = GameCardActions & {
   game: GameCardData;
@@ -114,6 +115,9 @@ export const GameCard = memo(function GameCard({
             <h2 title={game.title} dir="auto">{game.title}</h2>
           </div>
         </div>
+        {game.platform === "steam" && game.platformGameId && (
+          <GameSessionIndicator appId={game.platformGameId} className="nexus-game-card__playing-line" />
+        )}
       </div>
     </Surface>
   );

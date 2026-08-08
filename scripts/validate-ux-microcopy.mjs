@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const localeRoot = resolve("src/locales");
-const publicFiles = ["common.ts", "gameCard.ts", "gameDetails.ts", "gameLauncher.ts", "intelligence.ts", "onboarding.ts", "profile.ts", "settings.ts", "smartLibrary.ts", "statistics.ts", "steam.ts"];
+const publicFiles = ["common.ts", "gameCard.ts", "gameDetails.ts", "gameLauncher.ts", "gameSession.ts", "intelligence.ts", "onboarding.ts", "profile.ts", "settings.ts", "smartLibrary.ts", "statistics.ts", "steam.ts"];
 
 function entries(language) {
   const result = new Map();

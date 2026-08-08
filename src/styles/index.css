@@ -2316,3 +2316,26 @@ html[dir="rtl"] .sidebar--collapsed .sidebar-header .brand-copy{transform:transl
 @media(max-width:560px){.achievement-dialog-hero{width:48px;margin-block-start:6px}.achievement-dialog-hero .achievement-icon{--achievement-icon-size:48px!important;--achievement-icon-inner:42px!important;inline-size:48px;block-size:48px}.achievement-dialog-hero .achievement-icon>img{inline-size:42px;block-size:42px}}
 /* Managed Tools artwork keeps a fixed fallback box without broad image hosts. */
 .tools-featured>.tools-featured__image{position:absolute;inset:0;z-index:-2;width:100%;height:100%;object-fit:cover}.tools-featured>svg.tools-featured__image{padding:72px;color:var(--accent-primary);opacity:.35}
+
+/* Local game session indicator (played time detected on this device). */
+.nexus-session-indicator{display:inline-flex;align-items:center;gap:var(--space-2);padding:2px 10px;border:1px solid color-mix(in srgb,var(--accent) 34%,var(--border));border-radius:999px;background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent);font-size:var(--font-xs);font-weight:600}
+.nexus-session-indicator__dot{inline-size:8px;block-size:8px;flex:none;border-radius:999px;background:currentColor;animation:nexus-session-pulse 1.6s ease-in-out infinite}
+.nexus-session-indicator strong{font-weight:700}
+.nexus-session-indicator time{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:embed}
+@keyframes nexus-session-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
+.nexus-game-card__playing-line{margin:0 0 var(--space-1)}
+@media(max-width:560px){.nexus-game-card__playing-line{font-size:11px}}
+.game-v2-hero__session{margin-block-start:var(--space-2)}
+.game-v2-hero__session strong,.game-v2-hero__session time{color:#fff}
+.statistics-v2__sessions{margin-block-start:var(--space-4)}
+.statistics-v2__sessions-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space-3);margin-block-start:14px}
+.statistics-v2__sessions-grid>div{display:grid;gap:var(--space-1);padding:var(--space-4);border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-subtle,var(--soft))}
+.statistics-v2__sessions-grid small{color:var(--text-secondary);font-size:var(--font-xs)}
+.statistics-v2__sessions-grid strong{color:var(--text);font-size:var(--font-md)}
+.statistics-v2__sessions-last{margin:var(--space-3) 0 0;color:var(--text-secondary);font-size:var(--font-sm)}
+.statistics-v2__sessions-list{display:grid;gap:var(--space-1);margin:var(--space-3) 0 0;list-style:none;padding:0}
+.statistics-v2__sessions-list li{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-2) var(--space-3);border:1px solid var(--border-muted);border-radius:var(--radius-md)}
+.statistics-v2__sessions-list span{min-width:0;overflow:hidden;color:var(--text);font-size:var(--font-sm);text-overflow:ellipsis;white-space:nowrap}
+.statistics-v2__sessions-list strong{flex:none;color:var(--text-secondary);font-size:var(--font-sm);font-weight:600;font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){.nexus-session-indicator__dot{animation:none}}
+@media(forced-colors:active){.nexus-session-indicator{border:1px solid CanvasText;color:CanvasText;background:Canvas}}

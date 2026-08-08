@@ -37,11 +37,12 @@ import {
   skipped
 } from "./ApplicationRefreshCoordinator";
 import { SmartSyncCoordinator } from "./SmartSyncCoordinator";
-import { GameLauncherService } from "./GameLauncherService";
+import { GameLauncherService, type GameSessionProbe } from "./GameLauncherService";
 import { TauriSteamLaunchTransport } from "../integrations/steam/TauriSteamLaunchTransport";
 import { TauriSteamInstallationProbe } from "../integrations/steam/TauriSteamInstallationProbe";
 import { listen } from "@tauri-apps/api/event";
 import { ToolClient } from "../features/tools/ToolClient";
+import { GameSessionStore } from "./GameSessionStore";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -102,13 +103,19 @@ const steamSessions = steamOpenId ?? {
 };
 export const steamProvider = new SteamProvider(steamData, steamSessions);
 const steamInstallationProbe = new TauriSteamInstallationProbe();
+export const gameSessionStore = new GameSessionStore();
+const liveSessionProbe: GameSessionProbe = {
+  getState: async (appId) => gameSessionStore.isRunning(appId) ? "running" : "notRunning"
+};
 export const gameLauncher = new GameLauncherService(
   new TauriSteamLaunchTransport(),
   steamInstallationProbe,
-  undefined,
+  liveSessionProbe,
   import.meta.env.DEV
     ? ({ appId, launchUri, result, durationMs }) => console.info("[game-launch]", { appId, launchUri, result, durationMs })
-    : undefined
+    : undefined,
+  undefined,
+  (appId) => gameSessionStore.notifyLaunch(appId)
 );
 if (persistent) void listen<{appId?:string;index:{steamStatus:"installed"|"not_installed"|"unavailable";installedAppIds:string[];scannedAt:number}}>("nexus://steam-installation-changed",({payload})=>{steamInstallationProbe.replaceIndex(payload.index);void gameLauncher.installationChanged(payload.appId)});
 
