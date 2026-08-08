@@ -66,6 +66,12 @@ test("Ranking sorts by score then deterministic id tie-breaks", async () => {
   assert.deepEqual(bySlug.map((entry) => entry.id), expectedTieBreak);
   const recommended = await x.analytics.rank([toolA.id, toolB.id], "recommended");
   assert.equal(recommended.length, 2);
+  await x.ratings.upsert(toolA.id, "u1", 5);
+  await x.ratings.upsert(toolB.id, "u1", 2);
+  const topRated = await x.analytics.rank([toolA.id, toolB.id], "top_rated");
+  assert.equal(topRated[0].id, toolA.id);
+  const topRatedList = await x.tools.list({ page: 1, pageSize: 20, activeOnly: true, includeArchived: false, sort: "top_rated" });
+  assert.equal(topRatedList.items[0].id, toolA.id);
 });
 
 test("Tool list supports analytics sort modes", async () => {
@@ -148,6 +154,10 @@ test("HTTP routes track events, stats and favorites with permission gates", asyn
     assert.equal(status.isFavorite, true);
     const favorites = await (await fetch(`${harness.baseUrl}/api/tools/favorites`, { headers: guestAuth })).json() as { total: number };
     assert.equal(favorites.total, 1);
+    const catalogCategories = await (await fetch(`${harness.baseUrl}/api/tools/categories`)).json() as { items: Array<{ slug: string }> };
+    assert.ok(Array.isArray(catalogCategories.items));
+    const catalogBadges = await (await fetch(`${harness.baseUrl}/api/tools/badges`)).json() as { items: Array<{ slug: string }> };
+    assert.ok(Array.isArray(catalogBadges.items));
     const stats = await (await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/stats`, { headers: guestAuth })).json() as { views: number; downloadClicks: number; favorites: number };
     assert.ok(stats.views >= 2);
     assert.ok(stats.downloadClicks >= 1);
@@ -183,10 +193,11 @@ function buildServices() {
   const repository = new InMemoryToolRepository(badges, categories);
   const events = new InMemoryToolAnalyticsRepository();
   const favorites = new InMemoryToolFavoriteRepository();
-  const analytics = new ToolAnalyticsService(events, favorites, { ratings: new InMemoryToolRatingRepository(repository), reviews: new InMemoryToolReviewRepository(repository), tools: repository });
+  const ratingStore = new InMemoryToolRatingRepository(repository);
+  const analytics = new ToolAnalyticsService(events, favorites, { ratings: ratingStore, reviews: new InMemoryToolReviewRepository(repository), tools: repository });
   const tools = new ToolService(repository, badges, categories, undefined, undefined, analytics);
   return {
-    repository, badges, categories, events, favorites, analytics, tools,
+    repository, badges, categories, events, favorites, analytics, tools, ratings: ratingStore,
     async purge() { return analytics.purgeExpiredEvents(); }
   };
 }

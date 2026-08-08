@@ -6,6 +6,7 @@ import { isTauriRuntime } from "../runtime/environment";
 import { inspectToolUrl } from "../features/tools/safeToolUrl";
 import type { NexusTool, ToolRatingSummary, ToolReviewReason, ToolReviewSort, ToolReviewView } from "../features/tools/types";
 import { RatingSummaryView, StarPicker } from "../features/tools/ToolRating";
+import { ToolFavoriteButton } from "../features/tools/ToolFavoriteButton";
 import { ReviewForm } from "../features/tools/ReviewForm";
 import { ReviewList } from "../features/tools/ReviewList";
 import { ReportReviewModal } from "../features/tools/ReportReviewModal";
@@ -39,6 +40,9 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   const [reportDone, setReportDone] = useState(false);
   const [helpfulBusyId, setHelpfulBusyId] = useState("");
   const [helpfulError, setHelpfulError] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favBusy, setFavBusy] = useState(false);
+  const [favNotice, setFavNotice] = useState(false);
   const signedIn = Boolean(services.steamOpenId?.getActiveSession());
   useEffect(() => {
     const controller = new AbortController();
@@ -50,6 +54,7 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
     const controller = new AbortController();
     if (services.tools) {
       void services.tools.ratingSummary(tool.id, controller.signal).then(setSummary).catch(() => undefined);
+      services.tools.favoriteStatus(tool.id, controller.signal).then((value) => { if (!controller.signal.aborted) setIsFavorite(value.isFavorite); }).catch(() => undefined);
       if (services.steamOpenId?.getActiveSession()) {
         services.tools.myRating(tool.id).then((value) => { if (!controller.signal.aborted) setMine(value); }).catch(() => undefined);
         services.tools.myReview(tool.id).then((value) => { if (!controller.signal.aborted) setMyReview(value); }).catch(() => setMyReview(null));
@@ -176,6 +181,19 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
       setRatingBusy(false);
     }
   };
+  const toggleFavorite = async () => {
+    if (!services.tools || !tool || favBusy) return;
+    setFavBusy(true);
+    setFavNotice(false);
+    try {
+      const result = await services.tools.favorite(tool.id, !isFavorite);
+      setIsFavorite(result.isFavorite);
+    } catch {
+      setFavNotice(true);
+    } finally {
+      setFavBusy(false);
+    }
+  };
   if (error) return <ErrorView message={t("tools.loadError")} onRetry={() => location.reload()} />;
   if (!tool) return <LoadingView label={t("state.loading")} />;
   const requestOpen = (value: string) => {
@@ -202,6 +220,8 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
         <h1 dir="auto">{tool.name}</h1><p>{tool.shortDescription}</p>
         <div className="tool-details__meta"><span dir="auto">{t("tools.by", { developer: tool.developerName })}</span><span dir="ltr">{t("tools.version", { version: tool.version })}</span><span>{t(`tools.trust.${tool.downloadTrust}`)}</span></div>
         <button className="tool-download" type="button" onClick={() => requestOpen(tool.externalDownloadUrl)}><Download />{t("tools.download")}</button>
+        <ToolFavoriteButton active={isFavorite} busy={favBusy} onToggle={() => void toggleFavorite()} className="tool-details__favorite" />
+        {favNotice && <p className="tool-rating-feedback is-error" role="alert">{t("toolsPage.favoriteError")}</p>}
       </div>
     </header>
     <section className="tool-details__ratings">

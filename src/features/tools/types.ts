@@ -18,3 +18,6 @@ export interface ReviewHelpfulState{helpfulCount:number;currentUserHelpful:boole
 export interface ToolReviewAdminPage{items:ToolReviewAdminView[];total:number;page:number;pageSize:number}
 export interface ToolReviewReportView{id:string;reviewId:string;reporterUserId:string;reason:ToolReviewReason;details?:string;status:ToolReviewReportStatus;createdAt:string;resolvedAt?:string;resolvedBy?:string;reporterName:string;reporterAvatarUrl?:string;tool:{id:string;name:string;slug:string};review:{id:string;userId:string;authorName:string;title?:string;body:string;status:ToolReviewStatus;createdAt:string;updatedAt:string;moderatedAt?:string;moderatedBy?:string;moderationReason?:string}}
 export interface ToolReviewReportPage{items:ToolReviewReportView[];total:number;page:number;pageSize:number}
+export interface ToolFavoriteStats{views:number;downloadClicks:number;favorites:number}
+export interface ToolFavoriteEntry{toolId:string;createdAtMs:number;stats:ToolFavoriteStats;tool:NexusTool}
+export interface ToolCatalog{items:ToolCategory[]|ToolBadge[];total:number}

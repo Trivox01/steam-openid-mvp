@@ -8,7 +8,7 @@ import type { BadgeRepository } from "../badges/badgeRepository.ts";
 import { removeUnusedBadgeAsset } from "../badges/badgeAssetLifecycle.ts";
 import type { ToolAnalyticsService } from "./toolAnalyticsService.ts";
 
-const ANALYTICS_SORTS = new Set(["popular", "trending", "most_downloaded", "recommended"]);
+const ANALYTICS_SORTS = new Set(["popular", "trending", "most_downloaded", "recommended", "top_rated"]);
 
 export class ToolService {
   readonly repository: ToolRepository;
@@ -25,7 +25,7 @@ export class ToolService {
   async list(query: ToolListQuery) {
     if (!this.analytics || !ANALYTICS_SORTS.has(query.sort)) return this.repository.list(query);
     const all = await this.repository.list({ ...query, sort: "newest", page: 1, pageSize: 10_000 });
-    const ranked = await this.analytics.rank(all.items.map((item) => item.id), query.sort as "popular" | "trending" | "most_downloaded" | "recommended");
+    const ranked = await this.analytics.rank(all.items.map((item) => item.id), query.sort as "popular" | "trending" | "most_downloaded" | "recommended" | "top_rated");
     const rankedIds = ranked.map((entry) => entry.id);
     const byId = new Map(all.items.map((item) => [item.id, item] as const));
     const pageIdStart = (query.page - 1) * query.pageSize;
@@ -72,7 +72,7 @@ export class ToolService {
 export function parseToolQuery(params: URLSearchParams, admin = false): ToolListQuery {
   const page=integer(params.get("page"),1,100000), pageSize=integer(params.get("pageSize"),20,50);
   const search=params.get("search")?.trim(); if (search && search.length>100) throw new ToolError("INVALID_TOOL_QUERY");
-  const sort=enumValue(params.get("sort")??"newest",["newest","updated","name","popular","trending","most_downloaded","recommended"] as const);
+  const sort=enumValue(params.get("sort")??"newest",["newest","updated","name","popular","trending","most_downloaded","recommended","top_rated"] as const);
   const featured=params.get("featured")==null?undefined:params.get("featured")==="true";
   return {page,pageSize,sort,activeOnly:!admin,includeArchived:admin&&params.get("archived")==="true",...(search?{search}:{}),...(params.get("category")?{category:params.get("category")!}:{}),...(params.get("badge")?{badge:params.get("badge")!}:{}),...(featured===undefined?{}:{featured})};
 }

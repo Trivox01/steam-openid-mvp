@@ -1,9 +1,14 @@
 import type { BackendSessionSource } from "../developer-center/AuthorizationStore";
-import type { NexusTool, ToolBadge, ToolBadgeDraft, ToolCategory, ToolCategoryDraft, ToolDraft, ToolRatingSummary, ToolReviewAdminPage, ToolReviewDeveloperReply, ToolReviewPage, ToolReviewReason, ToolReviewReportPage, ToolReviewView, ReviewHelpfulState } from "./types";
+import type { NexusTool, ToolBadge, ToolBadgeDraft, ToolCategory, ToolCategoryDraft, ToolDraft, ToolFavoriteEntry, ToolRatingSummary, ToolReviewAdminPage, ToolReviewDeveloperReply, ToolReviewPage, ToolReviewReason, ToolReviewReportPage, ToolReviewView, ReviewHelpfulState } from "./types";
 export class ToolClient {
   constructor(private readonly baseUrl: string, private readonly sessions?: BackendSessionSource) {}
   list(params = new URLSearchParams(), signal?: AbortSignal) { return this.request<{ items: NexusTool[]; total: number; page: number; pageSize: number }>(`/api/tools?${params}`, { signal }, false).then(x => ({ ...x, items: x.items.map(tool => this.resolveAssets(tool)) })); }
   get(slug: string, signal?: AbortSignal) { return this.request<NexusTool>(`/api/tools/${encodeURIComponent(slug)}`, { signal }, false).then(tool => this.resolveAssets(tool)); }
+  catalogCategories(signal?: AbortSignal) { return this.request<{ items: ToolCategory[]; total: number }>("/api/tools/categories", { signal }, false); }
+  catalogBadges(signal?: AbortSignal) { return this.request<{ items: ToolBadge[]; total: number }>("/api/tools/badges", { signal }, false); }
+  listFavorites(page = 1, pageSize = 50, signal?: AbortSignal) { return this.request<{ items: ToolFavoriteEntry[]; total: number; page: number; pageSize: number }>(`/api/tools/favorites?page=${page}&pageSize=${pageSize}`, { signal }); }
+  favorite(toolId: string, active: boolean) { return this.request<{ isFavorite: boolean; favoritesCount: number }>(`/api/tools/${encodeURIComponent(toolId)}/favorite`, { method: active ? "PUT" : "DELETE" }); }
+  favoriteStatus(toolId: string, signal?: AbortSignal) { return this.request<{ isFavorite: boolean }>(`/api/tools/${encodeURIComponent(toolId)}/favorite-status`, { signal }); }
   ratingSummary(toolId: string, signal?: AbortSignal) { return this.request<ToolRatingSummary>(`/api/tools/${encodeURIComponent(toolId)}/rating-summary`, { signal }, false); }
   myRating(toolId: string) { return this.request<{ rating: number | null }>(`/api/tools/${encodeURIComponent(toolId)}/my-rating`).then(value => value.rating); }
   saveRating(toolId: string, rating: number) { return this.request<{ rating: number }>(`/api/tools/${encodeURIComponent(toolId)}/my-rating`, { method: "PUT", body: JSON.stringify({ rating }) }); }

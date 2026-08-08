@@ -16,7 +16,7 @@ import {
   VIEW_DEDUPE_WINDOW_MS
 } from "./toolTrendingScore.ts";
 
-export type ToolRankSort = "trending" | "popular" | "most_downloaded" | "recommended";
+export type ToolRankSort = "trending" | "popular" | "most_downloaded" | "recommended" | "top_rated";
 
 export interface ToolPublicStats {
   views: number;
@@ -157,6 +157,16 @@ export class ToolAnalyticsService {
       for (const id of ids) {
         const summary = summaries[id];
         scores.set(id, summary && summary.total >= 3 ? summary.average ?? 0 : 0);
+      }
+      return sortRanked(ids, scores);
+    }
+    if (sort === "top_rated") {
+      if (!this.ratings) return ids.map((id) => ({ id, score: 0 }));
+      const [summaries] = await Promise.all([this.ratings.summaries(ids)]);
+      const scores = new Map<string, number>();
+      for (const id of ids) {
+        const summary = summaries[id];
+        scores.set(id, summary && summary.total > 0 ? (summary.average ?? 0) : 0);
       }
       return sortRanked(ids, scores);
     }

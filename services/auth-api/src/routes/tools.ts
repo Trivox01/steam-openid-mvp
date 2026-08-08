@@ -22,9 +22,11 @@ export async function handleTools(req: IncomingMessage, res: ServerResponse, url
   let actor: string | undefined;
   try {
     if (url.pathname === "/api/tools" && req.method === "GET") { const query = parseToolQuery(url.searchParams),result=await deps.tools.list(query),summaries=await deps.ratings.summaries(result.items.map(x=>x.id));return json(res, 200, { ...result,items:result.items.map(x=>({...x,ratingSummary:summaries[x.id]})), page: query.page, pageSize: query.pageSize }); }
+    if (url.pathname === "/api/tools/categories" && req.method === "GET") { const items=(await deps.tools.categories.list(false)).filter(x=>x.isActive); return json(res, 200, { items, total: items.length }); }
+    if (url.pathname === "/api/tools/badges" && req.method === "GET") { const items=(await deps.tools.badges.list(false)).filter(x=>x.isActive); return json(res, 200, { items, total: items.length }); }
     const rating= url.pathname.match(/^\/api\/tools\/([0-9a-f-]+)\/(rating-summary|my-rating)$/i);
     if(rating?.[2]==="rating-summary"&&req.method==="GET")return json(res,200,await deps.ratings.summary(rating[1]));
-    const publicTool = url.pathname.match(/^\/api\/tools\/(?!favorites$)([a-z0-9-]+)$/i);
+    const publicTool = url.pathname.match(/^\/api\/tools\/(?!favorites$|categories$|badges$)([a-z0-9-]+)$/i);
     if (publicTool && req.method === "GET") { const tool = await deps.tools.getBySlug(publicTool[1]); if (!tool) throw new ToolError("TOOL_NOT_FOUND"); return json(res, 200, {...tool,ratingSummary:await deps.ratings.summary(tool.id)}); }
     const content = url.pathname.match(/^\/api\/tool-assets\/([0-9a-f-]+)\/content$/i);
     if (content && req.method === "GET") {
