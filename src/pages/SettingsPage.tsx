@@ -28,13 +28,14 @@ import {
 import { PageHeader } from "../components/ui/PageHeader";
 import { useTheme, type Theme } from "../state/ThemeContext";
 import { useTranslation } from "../i18n/TranslationContext";
-import { applicationRefresh, services } from "../services/compositionRoot";
+import { achievementToastCoordinator, applicationRefresh, services } from "../services/compositionRoot";
 import { defaultPreferences, preferencesEqual } from "../services/settingsPreferences";
 import type { UserPreferences, UserProfile } from "../types";
 import { ErrorView, LoadingView } from "../components/ui/StateViews";
 import { SteamAccountSettings } from "../components/settings/SteamAccountSettings";
 import { updateCoordinator } from "../features/updates/UpdateCoordinator";
 import { currentReleaseVersion } from "../features/updates/releaseNotes";
+import { nextAchievementToastPreview } from "../features/achievement-toasts/previewFixtures";
 
 type SaveStatus = "idle" | "saving" | "success" | "error";
 
@@ -249,6 +250,8 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
           </SettingsSection>
           <SettingsSection icon={Bell} title={t("settings.notifications")} description={t("settings.notificationsDescription")}>
             <SettingToggle label={t("settings.notificationsEnable")} description={t("settings.notificationsEnableDescription")} checked={draft.notificationsEnabled} onChange={() => toggle("notificationsEnabled")} />
+            <SettingToggle label={t("settings.achievementSound")} description={t("settings.achievementSoundDescription")} checked={draft.achievementSoundEnabled} onChange={() => toggle("achievementSoundEnabled")} />
+            {import.meta.env.DEV && <button type="button" className="secondary-button achievement-toast-preview" onClick={() => achievementToastCoordinator.enqueue(nextAchievementToastPreview())}>{t("settings.previewAchievementToast")}</button>}
           </SettingsSection>
           <SettingsSection icon={Eye} title={t("settings.privacy")} description={t("settings.privacyDescription")}>
             <SettingToggle label={t("settings.hidePlaytime")} description={t("settings.hidePlaytimeDescription")} checked={draft.hidePlaytime} onChange={() => toggle("hidePlaytime")} />

@@ -8,6 +8,7 @@ export const defaultPreferences: UserPreferences = {
   launchAtStartup: false,
   minimizeToTray: true,
   notificationsEnabled: true,
+  achievementSoundEnabled: false,
   autoCheckForUpdates: true,
   updateChannel: "beta",
   hidePlaytime: false,
@@ -33,6 +34,7 @@ export function normalizePreferences(value: unknown): UserPreferences {
       defaultPreferences.minimizeToTray
     ),
     notificationsEnabled: normalizeNotifications(source),
+    achievementSoundEnabled: booleanOrDefault(source.achievementSoundEnabled, false),
     autoCheckForUpdates: booleanOrDefault(
       source.autoCheckForUpdates ?? source.automaticUpdates,
       defaultPreferences.autoCheckForUpdates
@@ -55,6 +57,7 @@ export function preferencesEqual(left: UserPreferences, right: UserPreferences) 
     left.launchAtStartup === right.launchAtStartup &&
     left.minimizeToTray === right.minimizeToTray &&
     left.notificationsEnabled === right.notificationsEnabled &&
+    left.achievementSoundEnabled === right.achievementSoundEnabled &&
     left.autoCheckForUpdates === right.autoCheckForUpdates &&
     left.updateChannel === right.updateChannel &&
     left.hidePlaytime === right.hidePlaytime &&

@@ -94,6 +94,7 @@ function isCurrentSchema(stored: unknown, normalized: UserPreferences) {
     typeof value.launchAtStartup === "boolean" &&
     typeof value.minimizeToTray === "boolean" &&
     typeof value.notificationsEnabled === "boolean" &&
+    typeof value.achievementSoundEnabled === "boolean" &&
     typeof value.autoCheckForUpdates === "boolean" &&
     typeof value.hidePlaytime === "boolean" &&
     typeof value.hideHiddenGames === "boolean" &&

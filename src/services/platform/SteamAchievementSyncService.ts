@@ -7,6 +7,8 @@ import { SteamIntegrationError } from "../../integrations/steam/SteamIntegration
 import type { SteamProvider } from "./SteamProvider";
 import { mergeSteamAchievements } from "./SteamAchievementMerge";
 import { dedupeSteamGames, isRetryableAchievementError, mapWithConcurrency, summarizeAchievementSync } from "./SteamAchievementSyncCore";
+import type { AchievementToastEvent } from "../../features/achievement-toasts/AchievementToastCoordinator";
+import { trustedUnlockTransitions } from "../../features/achievement-toasts/syncDelta";
 
 const DEFAULT_CONCURRENCY = 2;
 const DEFAULT_BATCH_LIMIT = 20;
@@ -35,7 +37,8 @@ export class SteamAchievementSyncService {
     private provider: SteamProvider,
     private games: GameRepository,
     private achievements: AchievementRepository,
-    private metadata: SyncMetadataRepository
+    private metadata: SyncMetadataRepository,
+    private onUnlocked?: (event: AchievementToastEvent) => void
   ) {}
 
   sync(options: { gameIds?: string[]; maxGames?: number; onProgress?: (processed: number, total: number) => void; signal?: AbortSignal } = {}) {
@@ -95,6 +98,7 @@ export class SteamAchievementSyncService {
       signal?.throwIfAborted();
       logDevelopmentSync(game.appId, game.name, "request", "success", dto.achievements.length, startedAt);
       const merged = mergeSteamAchievements(game.id, existing, dto);
+      const unlocks = trustedUnlockTransitions(game.appId, existing, merged.complete);
       stage = "sqlite";
       if (merged.changed.length) await this.achievements.saveAchievements(merged.changed);
       const unlocked = merged.complete.filter((item) => item.unlocked ?? Boolean(item.unlockedAt)).length;
@@ -110,6 +114,7 @@ export class SteamAchievementSyncService {
         achievementsSyncStatus: dto.warnings.length ? "partial" : "success",
         achievementsSyncError: undefined
       });
+      unlocks.forEach((event) => this.onUnlocked?.(event));
       logDevelopmentSync(game.appId, game.name, "database", "success", dto.achievements.length, startedAt);
       return {
         gameId: game.id, appId: game.appId, gameName: game.name,

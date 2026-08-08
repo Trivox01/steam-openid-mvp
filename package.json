@@ -40,6 +40,7 @@
     "test:tool-reviews": "node --experimental-strip-types scripts/validate-tool-reviews.mjs",
     "test:native-ux": "node --experimental-strip-types scripts/validate-native-ux.mjs",
     "test:achievement-icons": "node --experimental-strip-types scripts/validate-achievement-icons.mjs",
+    "test:achievement-toasts": "node --experimental-strip-types scripts/validate-achievement-toasts.mjs",
     "test:ux-copy": "node --experimental-strip-types scripts/validate-ux-microcopy.mjs",
     "test:steam-artwork": "node --experimental-strip-types scripts/validate-steam-artwork.mjs",
     "test:profile": "node --experimental-strip-types scripts/validate-profile-card.mjs",

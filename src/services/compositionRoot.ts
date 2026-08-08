@@ -43,6 +43,7 @@ import { TauriSteamInstallationProbe } from "../integrations/steam/TauriSteamIns
 import { listen } from "@tauri-apps/api/event";
 import { ToolClient } from "../features/tools/ToolClient";
 import { GameSessionStore } from "./GameSessionStore";
+import { AchievementToastCoordinator } from "../features/achievement-toasts/AchievementToastCoordinator";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -104,6 +105,7 @@ const steamSessions = steamOpenId ?? {
 export const steamProvider = new SteamProvider(steamData, steamSessions);
 const steamInstallationProbe = new TauriSteamInstallationProbe();
 export const gameSessionStore = new GameSessionStore();
+export const achievementToastCoordinator = new AchievementToastCoordinator();
 const liveSessionProbe: GameSessionProbe = {
   getState: async (appId) => gameSessionStore.isRunning(appId) ? "running" : "notRunning"
 };
@@ -135,7 +137,7 @@ export const services = {
   userAdmin,
   tools,
   steamLibrarySync: new SteamLibrarySyncService(steamProvider, games, sync),
-  steamAchievementSync: new SteamAchievementSyncService(steamProvider, games, achievements, sync)
+  steamAchievementSync: new SteamAchievementSyncService(steamProvider, games, achievements, sync, (event) => achievementToastCoordinator.enqueue(event))
 };
 export const smartSync = new SmartSyncCoordinator(
   steamOpenId,

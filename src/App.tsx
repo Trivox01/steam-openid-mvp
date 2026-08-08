@@ -7,7 +7,7 @@ import { ErrorView, LoadingView } from "./components/ui/StateViews";
 import { FirstLaunchExperience } from "./features/onboarding/FirstLaunchExperience";
 import type { AchievementId, GameId, NavigationView, PageId, UserPreferences, UserProfile } from "./types";
 import { initializeApplication } from "./services/initializationService";
-import { applicationRefresh, services, smartSync } from "./services/compositionRoot";
+import { achievementToastCoordinator, applicationRefresh, services, smartSync } from "./services/compositionRoot";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauriRuntime } from "./runtime/environment";
@@ -20,6 +20,7 @@ import { DeveloperCenterRoute } from "./features/developer-center/DeveloperCente
 import { updateCoordinator } from "./features/updates/UpdateCoordinator";
 import { UpdateExperience } from "./features/updates/UpdateExperience";
 import { AmbientBackdrop } from "./components/ui/NexusGlass";
+import { AchievementToastHost } from "./features/achievement-toasts/AchievementToastHost";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const GamesPage = lazy(() => import("./pages/GamesPage").then((module) => ({ default: module.GamesPage })));
@@ -92,6 +93,10 @@ export function App() {
   useEffect(() => {
     if (!preferences || !isTauriRuntime()) return;
     void invoke("set_tray_behavior_enabled", { enabled: preferences.minimizeToTray });
+  }, [preferences]);
+  useEffect(() => {
+    if (!preferences) return;
+    achievementToastCoordinator.configure({ notificationsEnabled: preferences.notificationsEnabled, soundEnabled: preferences.achievementSoundEnabled });
   }, [preferences]);
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -179,6 +184,7 @@ export function App() {
       <AmbientBackdrop />
       <GlobalRefreshStatus />
       <UpdateExperience autoCheck={preferences.autoCheckForUpdates} />
+      <AchievementToastHost />
       <Sidebar
         activePage={activeNavigationPage(view, activePage)}
         collapsed={preferences.sidebarCollapsed}
