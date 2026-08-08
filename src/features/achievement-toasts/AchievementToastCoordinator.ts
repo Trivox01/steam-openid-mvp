@@ -10,6 +10,7 @@ export type AchievementToastEvent = {
   rarity?: number;
   unlockedAt?: string;
   source: AchievementToastSource;
+  sound?: "default" | "silent";
 };
 
 export type AchievementToastSnapshot = {

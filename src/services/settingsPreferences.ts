@@ -9,6 +9,7 @@ export const defaultPreferences: UserPreferences = {
   minimizeToTray: true,
   notificationsEnabled: true,
   achievementSoundEnabled: false,
+  achievementSoundVolume: 70,
   autoCheckForUpdates: true,
   updateChannel: "beta",
   hidePlaytime: false,
@@ -35,6 +36,7 @@ export function normalizePreferences(value: unknown): UserPreferences {
     ),
     notificationsEnabled: normalizeNotifications(source),
     achievementSoundEnabled: booleanOrDefault(source.achievementSoundEnabled, false),
+    achievementSoundVolume: normalizeVolume(source.achievementSoundVolume),
     autoCheckForUpdates: booleanOrDefault(
       source.autoCheckForUpdates ?? source.automaticUpdates,
       defaultPreferences.autoCheckForUpdates
@@ -58,6 +60,7 @@ export function preferencesEqual(left: UserPreferences, right: UserPreferences) 
     left.minimizeToTray === right.minimizeToTray &&
     left.notificationsEnabled === right.notificationsEnabled &&
     left.achievementSoundEnabled === right.achievementSoundEnabled &&
+    left.achievementSoundVolume === right.achievementSoundVolume &&
     left.autoCheckForUpdates === right.autoCheckForUpdates &&
     left.updateChannel === right.updateChannel &&
     left.hidePlaytime === right.hidePlaytime &&
@@ -89,6 +92,12 @@ function isTheme(value: unknown): value is UserPreferences["theme"] {
 
 function booleanOrDefault(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function normalizeVolume(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(100, Math.max(0, Math.round(value)))
+    : 70;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

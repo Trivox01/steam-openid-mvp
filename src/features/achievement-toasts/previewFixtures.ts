@@ -14,3 +14,15 @@ export function nextAchievementToastPreview(): AchievementToastEvent {
   const id = `preview-${Date.now()}-${previewIndex}`;
   return { eventId: id, appId: "preview", achievementId: id, ...fixture, source: "test_preview" };
 }
+
+export function achievementToastPreview(mode: "sound" | "silent") {
+  return { ...nextAchievementToastPreview(), sound: mode === "silent" ? "silent" as const : "default" as const };
+}
+
+export function achievementToastQueuePreview(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    ...nextAchievementToastPreview(),
+    eventId: `preview-queue-${Date.now()}-${index}`,
+    achievementId: `preview-queue-${Date.now()}-${index}`
+  }));
+}

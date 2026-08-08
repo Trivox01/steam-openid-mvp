@@ -35,7 +35,7 @@ import { ErrorView, LoadingView } from "../components/ui/StateViews";
 import { SteamAccountSettings } from "../components/settings/SteamAccountSettings";
 import { updateCoordinator } from "../features/updates/UpdateCoordinator";
 import { currentReleaseVersion } from "../features/updates/releaseNotes";
-import { nextAchievementToastPreview } from "../features/achievement-toasts/previewFixtures";
+import { achievementToastPreview, achievementToastQueuePreview } from "../features/achievement-toasts/previewFixtures";
 
 type SaveStatus = "idle" | "saving" | "success" | "error";
 
@@ -251,7 +251,18 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
           <SettingsSection icon={Bell} title={t("settings.notifications")} description={t("settings.notificationsDescription")}>
             <SettingToggle label={t("settings.notificationsEnable")} description={t("settings.notificationsEnableDescription")} checked={draft.notificationsEnabled} onChange={() => toggle("notificationsEnabled")} />
             <SettingToggle label={t("settings.achievementSound")} description={t("settings.achievementSoundDescription")} checked={draft.achievementSoundEnabled} onChange={() => toggle("achievementSoundEnabled")} />
-            {import.meta.env.DEV && <button type="button" className="secondary-button achievement-toast-preview" onClick={() => achievementToastCoordinator.enqueue(nextAchievementToastPreview())}>{t("settings.previewAchievementToast")}</button>}
+            <label className="achievement-sound-volume">
+              <span><strong>{t("settings.achievementSoundVolume")}</strong><output>{draft.achievementSoundVolume}%</output></span>
+              <input type="range" min="0" max="100" step="5" value={draft.achievementSoundVolume}
+                disabled={!draft.achievementSoundEnabled} aria-label={t("settings.achievementSoundVolume")}
+                onChange={(event) => update({ achievementSoundVolume: Number(event.currentTarget.value) })} />
+            </label>
+            {import.meta.env.DEV && <div className="achievement-toast-previews">
+              <button type="button" className="secondary-button" onClick={() => achievementToastCoordinator.enqueue(achievementToastPreview("sound"))}>{t("settings.previewAchievementToastSound")}</button>
+              <button type="button" className="secondary-button" onClick={() => achievementToastCoordinator.enqueue(achievementToastPreview("silent"))}>{t("settings.previewAchievementToastSilent")}</button>
+              <button type="button" className="secondary-button" onClick={() => achievementToastQueuePreview(3).forEach((event) => achievementToastCoordinator.enqueue(event))}>{t("settings.previewAchievementToastQueue")}</button>
+              <button type="button" className="secondary-button" onClick={() => achievementToastQueuePreview(10).forEach((event) => achievementToastCoordinator.enqueue(event))}>{t("settings.previewAchievementToastBurst")}</button>
+            </div>}
           </SettingsSection>
           <SettingsSection icon={Eye} title={t("settings.privacy")} description={t("settings.privacyDescription")}>
             <SettingToggle label={t("settings.hidePlaytime")} description={t("settings.hidePlaytimeDescription")} checked={draft.hidePlaytime} onChange={() => toggle("hidePlaytime")} />

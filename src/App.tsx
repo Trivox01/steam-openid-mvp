@@ -7,7 +7,7 @@ import { ErrorView, LoadingView } from "./components/ui/StateViews";
 import { FirstLaunchExperience } from "./features/onboarding/FirstLaunchExperience";
 import type { AchievementId, GameId, NavigationView, PageId, UserPreferences, UserProfile } from "./types";
 import { initializeApplication } from "./services/initializationService";
-import { achievementToastCoordinator, applicationRefresh, services, smartSync } from "./services/compositionRoot";
+import { achievementToastCoordinator, achievementToastSoundController, applicationRefresh, services, smartSync } from "./services/compositionRoot";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauriRuntime } from "./runtime/environment";
@@ -97,6 +97,7 @@ export function App() {
   useEffect(() => {
     if (!preferences) return;
     achievementToastCoordinator.configure({ notificationsEnabled: preferences.notificationsEnabled, soundEnabled: preferences.achievementSoundEnabled });
+    achievementToastSoundController.configure({ enabled: preferences.notificationsEnabled && preferences.achievementSoundEnabled, volume: preferences.achievementSoundVolume });
   }, [preferences]);
   useEffect(() => {
     if (!isTauriRuntime()) return;

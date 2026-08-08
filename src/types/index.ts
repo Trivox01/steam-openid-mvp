@@ -79,6 +79,7 @@ export interface AppSettings {
   minimizeToTray: boolean;
   notificationsEnabled: boolean;
   achievementSoundEnabled: boolean;
+  achievementSoundVolume: number;
   autoCheckForUpdates: boolean;
   updateChannel: "beta";
   hidePlaytime: boolean;
