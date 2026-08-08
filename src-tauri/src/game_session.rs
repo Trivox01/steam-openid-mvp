@@ -573,7 +573,7 @@ fn monitor_loop(
                         ending_until_ms: None,
                         launch_source: row.launch_source,
                         recovered: true,
-                        persisted: false,
+                        persisted: true,
                     },
                 );
             }
@@ -1103,6 +1103,43 @@ mod tests {
             .query_row("SELECT ended_at, duration_seconds, recovered FROM game_sessions WHERE id='s1'", [], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))).unwrap();
         assert_eq!(ended, 240_000, "closes at last known sighting");
         assert_eq!(duration, 40);
+        assert_eq!(recovered, 1);
+    }
+
+    #[test]
+    fn recovered_session_is_closed_on_db_after_game_exits() {
+        let connection = mem_connection();
+        open_sql_session(&connection, "s1", "10", 200_000, 250_000, "steam_local", true).unwrap();
+        let mut running = StaticScanner { processes: procs(&[(r"C:\Steam\steamapps\common\GameOne\Game.exe", "Game")]) };
+        let (resumed, _) = recover_sessions(&connection, &installs(), &mut running).unwrap();
+        assert_eq!(resumed.len(), 1);
+        let core = Arc::new(Mutex::new(core_with_installs()));
+        {
+            let mut inner = core.lock().unwrap();
+            for row in resumed {
+                inner.games.insert(
+                    row.app_id.clone(),
+                    RunningGame {
+                        session_id: row.id,
+                        app_id: row.app_id,
+                        phase: SessionPhase::Playing,
+                        started_at_ms: row.started_at_ms,
+                        last_seen_at_ms: row.last_seen_at_ms,
+                        ending_until_ms: None,
+                        launch_source: row.launch_source,
+                        recovered: true,
+                        persisted: true,
+                    },
+                );
+            }
+        }
+        let mut gone = StaticScanner { processes: vec![] };
+        scan_once(&core, &connection, &mut gone, 300_100).unwrap();
+        scan_once(&core, &connection, &mut gone, 310_000).unwrap();
+        let (ended, duration, recovered) = connection
+            .query_row("SELECT ended_at, duration_seconds, recovered FROM game_sessions WHERE id='s1'", [], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))).unwrap();
+        assert_eq!(ended, 250_000, "recovered session closes at its last sighting");
+        assert_eq!(duration, 50);
         assert_eq!(recovered, 1);
     }
 
