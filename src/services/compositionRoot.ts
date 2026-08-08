@@ -46,6 +46,7 @@ import { GameSessionStore } from "./GameSessionStore";
 import { AchievementToastCoordinator } from "../features/achievement-toasts/AchievementToastCoordinator";
 import { AchievementSoundService, createHtmlAudioPort } from "../features/achievement-toasts/AchievementSoundService";
 import { AchievementToastSoundController } from "../features/achievement-toasts/AchievementToastSoundController";
+import achievementUnlockSound from "../assets/audio/achievement-unlocked.mp3";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -108,7 +109,7 @@ export const steamProvider = new SteamProvider(steamData, steamSessions);
 const steamInstallationProbe = new TauriSteamInstallationProbe();
 export const gameSessionStore = new GameSessionStore();
 export const achievementToastCoordinator = new AchievementToastCoordinator();
-export const achievementSoundService = new AchievementSoundService(createHtmlAudioPort(undefined));
+export const achievementSoundService = new AchievementSoundService(createHtmlAudioPort(achievementUnlockSound));
 export const achievementToastSoundController = new AchievementToastSoundController(achievementToastCoordinator, achievementSoundService);
 const liveSessionProbe: GameSessionProbe = {
   getState: async (appId) => gameSessionStore.isRunning(appId) ? "running" : "notRunning"
