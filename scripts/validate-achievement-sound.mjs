@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { AchievementSoundService } from "../src/features/achievement-toasts/AchievementSoundService.ts";
+import { AchievementSoundService, installAchievementAudioUnlock } from "../src/features/achievement-toasts/AchievementSoundService.ts";
 import { AchievementToastCoordinator } from "../src/features/achievement-toasts/AchievementToastCoordinator.ts";
 import { AchievementToastSoundController } from "../src/features/achievement-toasts/AchievementToastSoundController.ts";
 import fs from "node:fs";
@@ -39,6 +39,62 @@ assert.equal(await preloadFailure.play(), false, "preload failure is non-blockin
 const playFailure = new AchievementSoundService({ ...audio, play: async () => { throw new Error("blocked"); } });
 playFailure.configure({ enabled: true, volume: 70 });
 assert.equal(await playFailure.play(), false, "play failure is non-blocking");
+
+let releasePreload;
+const preloadGate = new Promise((resolve) => { releasePreload = resolve; });
+const raceCalls = { preload: 0, play: 0 };
+const raceSound = new AchievementSoundService({
+  preload: async () => { raceCalls.preload += 1; await preloadGate; },
+  play: async () => { raceCalls.play += 1; },
+  stop: () => {},
+  dispose: () => {}
+}, () => 2_000, 0);
+raceSound.configure({ enabled: true, volume: 70 });
+const startupPreload = raceSound.preload();
+const playDuringPreload = raceSound.play();
+await flush();
+assert.equal(raceCalls.play, 0, "play waits for the in-flight preload");
+releasePreload();
+assert.equal(await startupPreload, true);
+assert.equal(await playDuringPreload, true, "the first toast is not dropped during startup preload");
+assert.equal(raceCalls.preload, 1, "concurrent preload is shared");
+assert.equal(raceCalls.play, 1);
+
+let unlocked = false;
+let unlockCalls = 0;
+const autoplayDiagnostics = [];
+const autoplaySound = new AchievementSoundService({
+  preload: async () => {},
+  unlock: async () => { unlockCalls += 1; unlocked = true; },
+  play: async () => { if (!unlocked) { const error = new Error("details must not be logged"); error.name = "NotAllowedError"; throw error; } },
+  stop: () => {},
+  dispose: () => {}
+}, () => 3_000, 0, (diagnostic) => autoplayDiagnostics.push(diagnostic));
+autoplaySound.configure({ enabled: true, volume: 50 });
+assert.equal(await autoplaySound.play(), false, "autoplay rejection remains non-blocking");
+const interactionTarget = new EventTarget();
+const removeUnlockListeners = installAchievementAudioUnlock(autoplaySound, interactionTarget);
+interactionTarget.dispatchEvent(new Event("pointerdown"));
+interactionTarget.dispatchEvent(new Event("click"));
+await flush();
+assert.equal(unlockCalls, 1, "audio unlock runs once on the first interaction");
+interactionTarget.dispatchEvent(new Event("keydown"));
+await flush();
+assert.equal(unlockCalls, 1, "successful unlock removes all global interaction listeners");
+assert.equal(await autoplaySound.play(), true, "automatic playback works after interaction unlock");
+removeUnlockListeners();
+assert.ok(autoplayDiagnostics.some((entry) => entry.event === "play" && entry.outcome === "failure" && entry.reason === "NotAllowedError"));
+assert.ok(autoplayDiagnostics.some((entry) => entry.event === "unlock" && entry.outcome === "success"));
+assert.ok(autoplayDiagnostics.some((entry) => entry.event === "play" && entry.outcome === "success"));
+assert.equal(JSON.stringify(autoplayDiagnostics).includes("details must not be logged"), false, "diagnostics exclude error messages and stacks");
+assert.deepEqual(autoplaySound.getSettings(), { enabled: true, volume: 50 }, "service settings match configured UI values");
+
+globalThis.document = { visibilityState: "hidden" };
+const backgroundDiagnostics = [];
+const backgroundSound = new AchievementSoundService(audio, () => 4_000, 0, (diagnostic) => backgroundDiagnostics.push(diagnostic));
+backgroundSound.configure({ enabled: true, volume: 70 });
+assert.ok(backgroundDiagnostics.every((entry) => entry.appState === "background"), "diagnostics report background state without user data");
+delete globalThis.document;
 
 let controllerTime = 5_000;
 const controllerCalls = { play: 0 };
@@ -90,5 +146,8 @@ assert.match(settingsPage, /previewAchievementToastBurst/);
 assert.match(compositionRoot, /createHtmlAudioPort\(achievementUnlockSound\)/);
 assert.equal(soundAsset.size, 18_432, "official sound asset stays compact");
 assert.doesNotMatch(soundServiceSource, /https?:\/\/|getUserMedia|enumerateDevices|setSinkId/);
+assert.match(soundServiceSource, /assetResolved/);
+assert.match(soundServiceSource, /appState/);
+assert.match(soundServiceSource, /installAchievementAudioUnlock/);
 
-console.log("Achievement Sound service, cooldown, failures, background, duplicate and burst policies validated.");
+console.log("Achievement Sound asset, preload race, autoplay unlock, diagnostics, settings, cooldown, background, duplicate and burst policies validated.");

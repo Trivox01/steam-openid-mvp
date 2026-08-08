@@ -28,7 +28,7 @@ import {
 import { PageHeader } from "../components/ui/PageHeader";
 import { useTheme, type Theme } from "../state/ThemeContext";
 import { useTranslation } from "../i18n/TranslationContext";
-import { achievementToastCoordinator, applicationRefresh, services } from "../services/compositionRoot";
+import { achievementToastCoordinator, achievementToastSoundController, applicationRefresh, services } from "../services/compositionRoot";
 import { defaultPreferences, preferencesEqual } from "../services/settingsPreferences";
 import type { UserPreferences, UserProfile } from "../types";
 import { ErrorView, LoadingView } from "../components/ui/StateViews";
@@ -122,6 +122,27 @@ export const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(
 
     useEffect(() => { void load(); }, [load]);
     useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+    useEffect(() => {
+      if (!import.meta.env.DEV || !draft || !saved) return;
+      achievementToastCoordinator.configure({
+        notificationsEnabled: draft.notificationsEnabled,
+        soundEnabled: draft.achievementSoundEnabled
+      });
+      achievementToastSoundController.configure({
+        enabled: draft.notificationsEnabled && draft.achievementSoundEnabled,
+        volume: draft.achievementSoundVolume
+      });
+      return () => {
+        achievementToastCoordinator.configure({
+          notificationsEnabled: saved.notificationsEnabled,
+          soundEnabled: saved.achievementSoundEnabled
+        });
+        achievementToastSoundController.configure({
+          enabled: saved.notificationsEnabled && saved.achievementSoundEnabled,
+          volume: saved.achievementSoundVolume
+        });
+      };
+    }, [draft, saved]);
     useEffect(() => () => {
       if (successTimer.current) window.clearTimeout(successTimer.current);
       if (syncTimer.current) window.clearTimeout(syncTimer.current);

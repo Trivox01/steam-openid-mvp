@@ -17,7 +17,7 @@ export class AchievementToastSoundController {
 
   configure(settings: { enabled: boolean; volume: number }) {
     this.sound.configure(settings);
-    if (settings.enabled && settings.volume > 0) void this.sound.preload();
+    void this.sound.preload();
   }
 
   cleanup() { this.disposed = true; this.unsubscribe(); this.sound.cleanup(); }
