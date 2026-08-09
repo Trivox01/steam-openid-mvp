@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-const CORS_METHODS = "POST, GET, PATCH, DELETE, OPTIONS";
-const corsMethods = new Set(["POST", "GET", "PATCH", "DELETE"]);
+const CORS_METHODS = "POST, GET, PATCH, DELETE, PUT, OPTIONS";
+const corsMethods = new Set(["POST", "GET", "PATCH", "DELETE", "PUT"]);
 const CORS_HEADERS = "Content-Type, Authorization";
 const CORS_MAX_AGE_SECONDS = 600;
 

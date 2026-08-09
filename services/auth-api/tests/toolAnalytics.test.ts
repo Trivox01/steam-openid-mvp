@@ -149,11 +149,26 @@ test("HTTP routes track events, stats and favorites with permission gates", asyn
       method: "POST", body: JSON.stringify({ dedupeKey: "anon-load-1" })
     })).json() as { recorded: boolean };
     assert.equal(anonView.recorded, true);
+    const preflight = await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/favorite`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "http://tauri.localhost",
+        "access-control-request-method": "PUT",
+        "access-control-request-headers": "authorization"
+      }
+    });
+    assert.equal(preflight.status, 204);
+    assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /\bPUT\b/);
     await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/favorite`, { method: "PUT", headers: guestAuth });
     const status = await (await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/favorite-status`, { headers: guestAuth })).json() as { isFavorite: boolean };
     assert.equal(status.isFavorite, true);
     const favorites = await (await fetch(`${harness.baseUrl}/api/tools/favorites`, { headers: guestAuth })).json() as { total: number };
     assert.equal(favorites.total, 1);
+    const removed = await (await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/favorite`, { method: "DELETE", headers: guestAuth })).json() as { isFavorite: boolean };
+    assert.equal(removed.isFavorite, false);
+    const statusAfterRemove = await (await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/favorite-status`, { headers: guestAuth })).json() as { isFavorite: boolean };
+    assert.equal(statusAfterRemove.isFavorite, false);
+    await fetch(`${harness.baseUrl}/api/tools/${harness.toolId}/favorite`, { method: "PUT", headers: guestAuth });
     const catalogCategories = await (await fetch(`${harness.baseUrl}/api/tools/categories`)).json() as { items: Array<{ slug: string }> };
     assert.ok(Array.isArray(catalogCategories.items));
     const catalogBadges = await (await fetch(`${harness.baseUrl}/api/tools/badges`)).json() as { items: Array<{ slug: string }> };
@@ -236,7 +251,7 @@ async function startAnalyticsHarness(limiter?: PollingRateLimiter) {
     openIdReturnUrl: "https://auth.example.test/v1/auth/steam/callback",
     storageDriver: "memory",
     sessionSecret: "tool-analytics-test-secret-012345678901",
-    logLevel: "error", trustProxy: false, allowedOrigins: []
+    logLevel: "error", trustProxy: false, allowedOrigins: ["http://tauri.localhost"]
   };
   const server = createServer(createRouter({
     config,

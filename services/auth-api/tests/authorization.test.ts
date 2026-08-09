@@ -230,11 +230,11 @@ test("/api/me/authorization accepts approved Authorization-header preflight", as
   }
 });
 
-test("CORS preflight accepts PATCH and DELETE only for approved origins", async () => {
+test("CORS preflight accepts PATCH, DELETE and PUT only for approved origins", async () => {
   const { service, sessions } = setup();
   const harness = await startAuthorizationHarness(service, sessions);
   try {
-    for (const method of ["PATCH", "DELETE"]) {
+    for (const method of ["PATCH", "DELETE", "PUT"]) {
       const response = await fetch(`${harness.baseUrl}/v1/auth/steam/start`, {
         method: "OPTIONS",
         headers: {
@@ -248,6 +248,16 @@ test("CORS preflight accepts PATCH and DELETE only for approved origins", async 
       assert.equal(response.headers.get("access-control-allow-origin"), "http://tauri.localhost");
       assert.match(response.headers.get("access-control-allow-methods") ?? "", new RegExp(method));
     }
+    const rejected = await fetch(`${harness.baseUrl}/v1/auth/steam/start`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "http://tauri.localhost",
+        "access-control-request-method": "TRACE",
+        "access-control-request-headers": "authorization",
+        "x-forwarded-proto": "https"
+      }
+    });
+    assert.equal(rejected.status, 403);
   } finally {
     await harness.close();
   }
