@@ -200,6 +200,8 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   const badgeSlots = tool.category ? 2 : 3;
   const visibleBadges = sortedBadges.slice(0, badgeSlots);
   const hiddenBadgeCount = sortedBadges.length - visibleBadges.length;
+  const hasRatings = (summary?.total ?? 0) > 0;
+  const hasReviews = reviewsTotal > 0;
   const requestOpen = (value: string) => {
     try { setTarget(inspectToolUrl(value)); setOpenError(false); }
     catch { setOpenError(true); }
@@ -237,7 +239,7 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
         {favNotice && <p className="tool-rating-feedback is-error" role="alert">{t("toolsPage.favoriteError")}</p>}
       </div>
     </header>
-    <section className="tool-details__ratings">
+    <section className={`tool-details__ratings ${hasRatings ? "" : "is-empty"}`.trim()}>
       <h2 className="nexus-display-title">{t("tools.rating")}</h2>
       <div className="tool-rating-body">
         <RatingSummaryView summary={summary} />
@@ -260,7 +262,7 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
         </div>
       </div>
     </section>
-    <section className="tool-details__reviews" aria-labelledby="reviews-title">
+    <section className={`tool-details__reviews ${hasReviews ? "" : "is-empty"}`.trim()} aria-labelledby="reviews-title">
       <h2 id="reviews-title" className="nexus-display-title">{t("review.title")} <small>({reviewsTotal})</small></h2>
       <div className="tool-review-yours">
         {signedIn ? (
@@ -291,14 +293,14 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
         {reviewNotice === "saved-failed" && <p className="tool-rating-feedback is-error" role="alert">{t("review.saveFailed")}</p>}
         {reviewNotice === "sign" && <p className="tool-rating-feedback is-error" role="alert">{t("review.signInRequired")}</p>}
       </div>
-      <div className="tool-reviews-toolbar">
+      {hasReviews && <div className="tool-reviews-toolbar">
         <span>{t("review.sortLabel")}</span>
         <select aria-label={t("review.sortLabel")} value={reviewsSort} onChange={(event) => { setReviewsSort(event.target.value as ToolReviewSort); setReviewsPage(1); }}>
           <option value="newest">{t("review.sortNewest")}</option>
           <option value="highest_rating">{t("review.sortHighest")}</option>
           <option value="lowest_rating">{t("review.sortLowest")}</option>
         </select>
-      </div>
+      </div>}
       {reviewsError && <p className="review-load-error" role="alert">{t("review.loadFailed")}</p>}
       {helpfulError && <p className="tool-rating-feedback is-error" role="alert">{t("review.helpfulFailed")}</p>}
       <ReviewList items={reviews} ownReviewId={myReview?.id} canReport={signedIn} canVote={signedIn} busyHelpfulId={helpfulBusyId} language={language} onReport={setReportTarget} onHelpful={(review) => void toggleHelpful(review)} />

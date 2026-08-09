@@ -15,6 +15,7 @@ const moderation = read("../src/features/developer-center/tools/ReviewModeration
 const reports = read("../src/features/developer-center/tools/ReviewReportsPanel.tsx");
 const replyModal = read("../src/features/developer-center/tools/ReplyReviewModal.tsx");
 const css = read("../src/styles/index.css");
+const nexusCss = read("../src/styles/nexus-system-v2.css");
 const routes = read("../services/auth-api/src/routes/tools.ts");
 const permissions = read("../services/auth-api/src/authorization/permissions.ts");
 const helpRepo = read("../services/auth-api/src/tools/toolReviewHelpfulRepository.ts");
@@ -75,6 +76,8 @@ assert.match(details, /aria-labelledby="reviews-title"/);
 assert.match(details, /window\.confirm/);
 assert.match(details, /toggleHelpful/);
 assert.match(details, /busyHelpfulId/);
+assert.match(details, /tool-details__reviews \$\{hasReviews \? "" : "is-empty"\}/);
+assert.match(details, /\{hasReviews && <div className="tool-reviews-toolbar">/);
 
 assert.match(replyModal, /aria-modal="true"/);
 assert.match(replyModal, /Escape/);
@@ -126,6 +129,7 @@ assert.match(css, /\.review-helpful/);
 assert.match(css, /\.review-reply/);
 assert.match(css, /\.reply-modal/);
 assert.match(css, /prefers-reduced-motion:reduce/);
+assert.match(nexusCss, /\.tool-details__reviews\.is-empty/);
 assert.match(routes, /\/api\/admin\/tool-reviews/);
 assert.match(routes, /tools\.moderate_reviews/);
 assert.match(routes, /\/api\/admin\/tool-review-reports/);

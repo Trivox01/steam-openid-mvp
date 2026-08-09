@@ -203,6 +203,8 @@ export function GameDetailsPage({
           <OverviewMetric icon={Trophy} label={t("gameDetails.unlocked")} value={formatOptional(summary.unlocked, language, t)} />
           <OverviewMetric icon={LockKeyhole} label={t("gameDetails.locked")} value={formatOptional(summary.locked, language, t)} />
           <OverviewMetric icon={Gem} label={t("gameDetails.rareUnlocked")} value={formatNumber(summary.rareUnlocked, language)} />
+        </div>
+        <div className="game-v2-overview-secondary">
           <OverviewMetric icon={Trophy} label={t("gameDetails.lastUnlocked")} value={summary.lastUnlocked?.title ?? t("gameDetails.achievementDataUnavailable")} auto />
           <OverviewMetric icon={RefreshCw} label={t("gameDetails.lastSync")} value={summary.lastSyncedAt
             ? formatDate(summary.lastSyncedAt, language, t)

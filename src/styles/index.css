@@ -872,7 +872,7 @@ main { width:100%; max-width:1540px; padding:clamp(24px,2.4vw,38px) clamp(20px,2
 .game-v2-sync .primary-button { flex:none; }
 .game-v2-sync--partial { border-color:color-mix(in srgb,var(--warning) 34%,var(--border)); }
 .game-v2-sync--failed,.game-v2-sync--private { border-color:color-mix(in srgb,var(--danger) 30%,var(--border)); }
-.game-v2-toolbar { position:sticky; z-index:12; inset-block-start:76px; display:grid; grid-template-columns:minmax(210px,1fr) auto auto auto auto; align-items:end; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--surface-subtle,var(--soft)); box-shadow:0 8px 24px color-mix(in srgb,var(--bg) 72%,transparent); }
+.game-v2-toolbar { position:sticky; z-index:12; inset-block-start:calc(var(--nx-topbar-height,60px) + 8px); display:grid; grid-template-columns:minmax(210px,1fr) auto auto auto auto; align-items:end; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--surface-subtle,var(--soft)); box-shadow:0 8px 24px color-mix(in srgb,var(--bg) 72%,transparent); }
 .game-v2-toolbar label { display:grid; gap:var(--space-1); color:var(--text-secondary); font-size:var(--font-xs); }
 .game-v2-toolbar input,.game-v2-toolbar select { min-height:40px; padding:0 var(--space-3); border:1px solid var(--border); border-radius:var(--radius-sm); outline:none; color:var(--text); background:var(--panel); font:inherit; }
 .game-v2-toolbar input:focus-visible,.game-v2-toolbar select:focus-visible { border-color:var(--accent); box-shadow:var(--focus-ring); }
@@ -1897,10 +1897,10 @@ html[dir="rtl"] .theme-preview { transform:none; }
   .nexus-game-card:hover .nexus-game-card__artwork > img,.nexus-game-card:focus-within .nexus-game-card__artwork > img { transform:none; }
 }
 
-/* Portrait library density — kept last to supersede legacy grid breakpoints */
+/* Portrait library — committed medium density (5-per-row @1400, 6 @1920, 4 @1280, gaming-desktop feel). */
 .library-grid {
-  --library-card-min:180px;
-  --library-card-max:200px;
+  --library-card-min:208px;
+  --library-card-max:1fr;
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--library-card-min)),var(--library-card-max)));
   justify-content:start;
@@ -1911,6 +1911,7 @@ html[dir="rtl"] .theme-preview { transform:none; }
 .library-grid.library-density-large { --library-card-min:200px;--library-card-max:240px; }
 .library-grid .nexus-game-card { width:100%;min-width:min(100%,var(--library-card-min));max-width:var(--library-card-max); }
 .library-grid .nexus-game-card__media { aspect-ratio:2/3; }
+.library-grid .nexus-game-card-skeleton__artwork { aspect-ratio:2/3; }
 .library-grid .nexus-game-card__content { min-height:66px;gap:var(--space-1);padding:var(--space-3); }
 .library-grid .nexus-game-card__heading h2 {
   display:-webkit-box;

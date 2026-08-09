@@ -179,7 +179,10 @@ export function DeveloperCenterPage({
             <h3>{t("developer.nextSections")}</h3>
             <p>{t("developer.nextSectionsDescription")}</p>
             <ul>
-              {sections.slice(1, 5).map(([id, Icon]) => (
+              {sections
+                .filter(([id, , originallyDisabled]) => originallyDisabled && id !== "users" && id !== "assignments")
+                .slice(0, 4)
+                .map(([id, Icon]) => (
                 <li key={id}>
                   <Icon size={17} aria-hidden="true" />
                   <span>{t(`developer.section.${id}`)}</span>

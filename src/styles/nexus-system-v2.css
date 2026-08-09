@@ -342,3 +342,281 @@ html[dir="rtl"] .tool-details__system-label { letter-spacing: .11em; }
   .tool-details__publisher,
   .tool-details__meta { color: CanvasText; }
 }
+
+/* P1 + desktop-density remediation checkpoint. */
+.game-v2-toolbar {
+  inset-block-start: calc(var(--nx-topbar-height, 60px) + 8px);
+}
+
+.dialog-backdrop:has(.achievement-dialog) {
+  overscroll-behavior: contain;
+}
+
+.achievement-dialog h2[tabindex="-1"]:focus {
+  outline: none;
+}
+
+.nexus-game-card__primary-action {
+  position: absolute;
+  z-index: 5;
+  inset-inline-end: var(--space-2);
+  inset-block-end: var(--space-2);
+  display: flex;
+  justify-content: center;
+  inline-size: 38px;
+  max-inline-size: 38px;
+  pointer-events: none;
+}
+
+.nexus-game-card__primary-action .nexus-shiny-button {
+  inline-size: 38px;
+  min-inline-size: 38px;
+  pointer-events: auto;
+}
+
+.nexus-game-card__primary-action .nexus-shiny-button__content { padding: 0; justify-content: center; }
+.nexus-game-card__primary-action .nexus-shiny-button__label { display: none; }
+
+.nexus-shiny-button--card {
+  min-inline-size: 0;
+  min-block-size: 34px;
+  max-inline-size: 100%;
+  border-radius: 10px;
+  font-size: 10px;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--nexus-action-a) 18%, transparent);
+}
+
+.nexus-shiny-button--card::before { border-radius: 9px; }
+.nexus-shiny-button--card .nexus-shiny-button__content { gap: 5px; padding: 7px 9px; }
+.nexus-shiny-button--card .nexus-shiny-button__content > svg { inline-size: 15px; block-size: 15px; flex: none; }
+.nexus-shiny-button--card .nexus-shiny-button__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nexus-game-card__quick-actions { inset-block-end: 54px; }
+
+.nexus-game-card--compact .nexus-game-card__primary-action {
+  inset-inline-end: var(--space-2);
+  inset-block-end: var(--space-2);
+  inline-size: 34px;
+  max-inline-size: 34px;
+}
+
+.nexus-game-card--compact .nexus-shiny-button--card {
+  inline-size: 34px;
+  min-inline-size: 34px;
+}
+
+.nexus-game-card--compact .nexus-shiny-button--card .nexus-shiny-button__content { padding: 0; }
+.nexus-game-card--compact .nexus-shiny-button--card .nexus-shiny-button__label { display: none; }
+.nexus-game-card--compact .nexus-game-card__quick-actions { inset-block-end: 48px; }
+
+.game-details-v2 { gap: 22px; }
+.game-v2-hero__background {
+  transform: scale(1.035);
+  filter: blur(5px) saturate(.9);
+  opacity: .68;
+}
+
+.game-v2-hero__copy h1 { font-size: clamp(28px, 3.2vw, 40px); }
+.game-v2-overview { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.game-v2-metric { min-block-size: 84px; padding: 14px; }
+.game-v2-overview-secondary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.game-v2-overview-secondary .game-v2-metric {
+  min-block-size: 60px;
+  padding: 10px 12px;
+  border-color: color-mix(in srgb, var(--border) 76%, transparent);
+  background: color-mix(in srgb, var(--surface-subtle, var(--soft)) 82%, transparent);
+  box-shadow: none;
+}
+
+.game-v2-overview-secondary .game-v2-metric > svg { inline-size: 16px; }
+.game-v2-overview-secondary .game-v2-metric strong { font-size: var(--font-sm); }
+.game-v2-insight,
+.game-v2-sync,
+.game-session-history { box-shadow: none; }
+
+.tool-details__ratings.is-empty {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-block-size: 72px;
+  padding: 14px 16px;
+}
+
+.tool-details__ratings.is-empty .tool-rating-body {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+  align-items: center;
+  gap: 14px;
+}
+
+.tool-details__ratings.is-empty .tool-rating-summary { gap: 6px; }
+.tool-details__ratings.is-empty .tool-rating-distribution { gap: 5px; }
+.tool-details__ratings.is-empty .tool-rating-yours {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tool-details__reviews.is-empty {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-block-size: 80px;
+  padding: 14px 16px;
+  gap: 8px;
+}
+
+.tool-details__reviews.is-empty .tool-review-yours { min-inline-size: 0; }
+
+.achievement-journey { gap: clamp(20px, 2vw, 28px); }
+.journey-hero {
+  min-block-size: clamp(180px, 16vw, 220px);
+  padding: clamp(20px, 3vw, 32px);
+  gap: var(--space-5);
+}
+
+.journey-hero__content > p { margin: var(--space-4) 0 var(--space-2); }
+.journey-hero__summary { margin-block-start: var(--space-3); font-size: var(--font-size-md); }
+.journey-feature-grid { gap: 18px; }
+.journey-feature-grid > .nexus-bento__tile { min-block-size: 180px; gap: var(--space-3); padding: 20px; }
+
+.statistics-v2 { gap: 20px; }
+.statistics-v2__metrics { gap: 10px; margin-block-start: 10px; }
+.statistics-v2__metric { min-block-size: 88px; padding: 14px; }
+.statistics-v2__metric:nth-child(n + 5) { min-block-size: 68px; padding: 10px 12px; }
+.statistics-v2__metric:nth-child(n + 5) strong { font-size: 20px; }
+.statistics-v2__primary-grid,
+.statistics-v2__insights-grid { gap: 14px; }
+
+.full-achievement-card {
+  min-block-size: 96px;
+  gap: 12px;
+  padding: 14px;
+}
+
+.full-achievement-card.locked { opacity: .82; }
+.achievement-x-card { min-block-size: 104px; padding: 14px; }
+.achievement-x-card--compact { min-block-size: 76px; padding: 10px; }
+.achievement-x-card--list { min-block-size: 96px; }
+.achievement-x-card--large { min-block-size: 124px; padding: 16px; }
+
+.settings-layout { gap: 12px; }
+.settings-section { padding: 16px; }
+.settings-section > header { padding-block-end: 12px; }
+.settings-section .setting-toggle { min-block-size: 52px; padding-block: 8px; }
+.developer-coming-sections li { padding: 9px 11px; }
+
+/* Dashboard journey tiles: land the approved 160-200px band without feature loss. */
+.journey-feature-grid > .nexus-bento__tile .ds-section-header { align-items: center; }
+.journey-feature-grid > .nexus-bento__tile .ds-section-header h2 { font-size: 18px; }
+.journey-feature-grid > .nexus-bento__tile .ds-section-header p { margin-block-start: 2px; font-size: 11px; }
+.journey-feature-grid > .nexus-bento__tile { gap: var(--space-2); }
+.journey-achievement-button {
+  margin-block-start: var(--space-2);
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: 10px 12px;
+}
+.journey-achievement-button h2 { margin: 2px 0 4px; font-size: 15px; }
+.journey-achievement-button p { margin: 0 0 6px; font-size: 12px; line-height: 1.4; }
+.journey-dna .ds-section-header { margin-block-end: var(--space-2); }
+.journey-dna__mark { inline-size: 40px; block-size: 40px; }
+.journey-dna > p { font-size: 12px; line-height: 1.45; }
+.journey-metric-grid { margin-block-start: var(--space-2); gap: var(--space-2); }
+.journey-metric-grid > * { padding: 10px 12px; }
+.journey-metric-grid strong { font-size: 19px; }
+.journey-hero { gap: var(--space-4); }
+.journey-hero__content > p { margin: var(--space-3) 0 var(--space-1); }
+.journey-hero__summary { margin-block-start: var(--space-2); }
+
+@media (max-width: 1100px) {
+  .game-v2-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statistics-v2__metric:nth-child(n + 5) { grid-column: span 3; }
+}
+
+@media (max-width: 680px) {
+  :root { --nx-topbar-height: 56px; }
+  .game-v2-hero__background { filter: blur(5px) saturate(.88); }
+  .game-v2-overview,
+  .game-v2-overview-secondary { grid-template-columns: 1fr; }
+  .tool-details__ratings.is-empty .tool-rating-body { grid-template-columns: 1fr; }
+  .tool-details__ratings.is-empty,
+  .tool-details__reviews.is-empty { grid-template-columns: 1fr; align-items: stretch; }
+  .journey-hero { min-block-size: 180px; }
+  .journey-feature-grid > .nexus-bento__tile { min-block-size: 160px; }
+  .statistics-v2__metric:nth-child(n + 5) { grid-column: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-shiny-button--card { animation: none; transition: none; }
+}
+
+@media (forced-colors: active) {
+  .nexus-game-card__primary-action .nexus-shiny-button,
+  .game-v2-overview-secondary .game-v2-metric { border: 1px solid ButtonText; box-shadow: none; }
+}
+
+/* Dashboard journey tiles — final density pass landing the 160-200px band (flex-column kills stray grid tracks). */
+.journey-feature-grid > .nexus-bento__tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 8px;
+  padding: 18px;
+}
+.journey-feature-grid > .nexus-bento__tile > .ds-section-header {
+  min-height: 38px;
+  max-height: 38px;
+  height: 38px;
+  overflow: visible;
+  align-items: center;
+}
+.journey-feature-grid > .nexus-bento__tile .ds-section-header h2 { font-size: 17px; line-height: 1.15; }
+.journey-feature-grid > .nexus-bento__tile .ds-section-header p { margin-block-start: 1px; font-size: 11px; line-height: 1.3; }
+
+.journey-achievement-button {
+  margin-block-start: 0;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 10px;
+}
+.journey-achievement-button h2 { margin: 1px 0 2px; font-size: 13px; line-height: 1.25; }
+.journey-achievement-button p { margin: 0 0 3px; font-size: 11px; line-height: 1.3; }
+.journey-achievement-button .ds-progress { margin-block-start: 2px; }
+.journey-achievement-button .ds-progress__meta { margin-block-end: 2px; font-size: 9px; line-height: 1.2; }
+.journey-achievement-button .ds-progress__track { block-size: 5px; }
+
+.journey-feature-grid > .nexus-bento__tile.journey-dna { gap: 4px; }
+.journey-dna { gap: 4px; }
+.journey-dna .ds-section-header { margin-block-end: 0; }
+.journey-dna__mark { inline-size: 28px; block-size: 28px; }
+.journey-dna .ds-status-badge { font-size: 10px; padding-block: 2px; }
+.journey-dna__secondary { font-size: 11px; line-height: 1.3; }
+.journey-dna > p { margin: 0; font-size: 11px; line-height: 1.3; }
+.journey-dna .ds-progress { margin-block-start: 0; }
+.journey-dna .ds-progress__meta { margin-block-end: 2px; font-size: 9px; line-height: 1.2; }
+.journey-dna .ds-progress__track { block-size: 5px; }
+
+.journey-metric-grid { margin-block-start: 0; gap: 4px; }
+.journey-metric {
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  gap: 5px;
+  padding: 5px 8px;
+  align-items: center;
+}
+.journey-metric > svg { grid-row: 1; inline-size: 14px; block-size: 14px; }
+.journey-metric span { font-size: 11px; }
+.journey-metric strong { font-size: 15px; line-height: 1.15; }
+
+@media (max-width: 680px) {
+  .journey-feature-grid > .nexus-bento__tile { padding: 14px; }
+}

@@ -11,7 +11,7 @@ import { services } from "../services/compositionRoot";
 
 type ToolTab = "all" | "featured" | "new" | "topRated" | "recommended";
 const TABS: ToolTab[] = ["all", "featured", "new", "topRated", "recommended"];
-const TAB_SORT: Record<Exclude<ToolTab, "all">, string> = { featured: "feature", new: "newest", topRated: "top_rated", recommended: "recommended" };
+const TAB_SORT: Record<Exclude<ToolTab, "all">, string> = { featured: "newest", new: "newest", topRated: "top_rated", recommended: "recommended" };
 
 export function ToolsPage({ onOpen }: { onOpen: (slug: string) => void }) {
   const { t } = useTranslation();
@@ -40,15 +40,16 @@ export function ToolsPage({ onOpen }: { onOpen: (slug: string) => void }) {
     if (!services.tools) return;
     const controller = new AbortController();
     services.tools.catalogCategories(controller.signal).then((result) => setCategories(result.items as ToolCategory[])).catch(() => {});
-    services.tools.list(new URLSearchParams({ sort: "feature", pageSize: "1" }), controller.signal).then((result) => setFeatured(result.items[0] ?? null)).catch(() => {});
-    services.tools.listFavorites(1, 100, controller.signal).then((result) => setFavoriteEntries(result.items)).catch(() => {});
+    services.tools.list(new URLSearchParams({ sort: "newest", featured: "true", pageSize: "1" }), controller.signal).then((result) => setFeatured(result.items[0] ?? null)).catch(() => {});
+    services.tools.listFavorites(1, 50, controller.signal).then((result) => setFavoriteEntries(result.items)).catch(() => {});
     return () => controller.abort();
   }, [revision]);
 
   useEffect(() => {
     const controller = new AbortController();
     if (!services.tools) { setState("error"); return; }
-    const params = new URLSearchParams({ page: "1", pageSize: "100", sort: tab === "all" ? "newest" : TAB_SORT[tab] });
+    const params = new URLSearchParams({ page: "1", pageSize: "50", sort: tab === "all" ? "newest" : TAB_SORT[tab] });
+    if (tab === "featured") params.set("featured", "true");
     if (appliedSearch) params.set("search", appliedSearch);
     if (category) params.set("category", category);
     setState((current) => (current === "ready" && tools.length ? "ready" : "loading"));

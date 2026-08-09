@@ -1,10 +1,13 @@
 import { readFile } from "node:fs/promises";
 
-const [css, topbar, toolCard, toolDetails] = await Promise.all([
+const [css, topbar, toolCard, toolDetails, gameCard, gameButton, developerPage] = await Promise.all([
   readFile(new URL("../src/styles/nexus-system-v2.css", import.meta.url), "utf8"),
   readFile(new URL("../src/components/layout/Topbar.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/features/tools/ToolCard.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/ToolDetailsPage.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/games/GameCard.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/games/GameActionButton.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/pages/DeveloperCenterPage.tsx", import.meta.url), "utf8"),
 ]);
 
 const checks = [
@@ -20,6 +23,13 @@ const checks = [
   ["NEXUS SYSTEM shell context", topbar.includes("NEXUS SYSTEM") && topbar.includes("activePage")],
   ["bounded card badges", toolCard.includes("shownBadges") && toolCard.includes("hiddenBadges")],
   ["mixed-direction Tool copy", toolCard.includes('dir="auto"') && toolDetails.match(/dir="auto"/g)?.length >= 2],
+  ["always-visible game action", gameCard.includes("nexus-game-card__primary-action") && gameButton.includes('?"card":"hero"')],
+  ["compact card action density", css.includes(".nexus-game-card__primary-action") && css.includes("inline-size: 38px") && css.includes(".nexus-shiny-button__label { display: none")],
+  ["compact empty Tool sections", toolDetails.includes("hasRatings") && toolDetails.includes("hasReviews && <div className=\"tool-reviews-toolbar\"") && css.includes(".tool-details__reviews.is-empty")],
+  ["dashboard density checkpoint", css.includes("min-block-size: clamp(180px, 16vw, 220px)") && css.includes("min-block-size: 180px")],
+  ["statistics density checkpoint", css.includes("min-block-size: 88px") && css.includes("nth-child(n + 5)")],
+  ["settings density checkpoint", css.includes("min-block-size: 52px") && css.includes(".settings-section { padding: 16px")],
+  ["available Developer sections not marked planned", developerPage.includes("originallyDisabled && id !== \"users\" && id !== \"assignments\"")],
 ];
 
 const failed = checks.filter(([, passed]) => !passed);
