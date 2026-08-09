@@ -224,7 +224,7 @@ export function App() {
         void services.settings.save(next).catch(() => undefined);
       }} onNavigate={navigatePage} />
       <div className="main-column">
-        <Topbar profile={profile} search={search} onSearch={setSearch} />
+        <Topbar activePage={activeNavigationPage(view, activePage)} profile={profile} search={search} onSearch={setSearch} />
         <main ref={mainRef}>
           <Suspense fallback={<LoadingView size="md" label={t("state.loadingPage")} delay={150} />}>
             <div className={view.kind === "page" ? "" : "preserved-page"} aria-hidden={view.kind !== "page"}>

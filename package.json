@@ -34,6 +34,7 @@
     "test:game-launcher": "node --experimental-strip-types scripts/validate-game-launcher.mjs",
     "test:themes": "node --experimental-strip-types scripts/validate-themes.mjs",
     "test:nexus-glass": "node scripts/validate-nexus-glass.mjs",
+    "test:nexus-system-v2": "node scripts/validate-nexus-system-v2.mjs",
     "test:arabic-typography": "node --experimental-strip-types scripts/validate-arabic-typography.mjs",
     "test:tools": "node --experimental-strip-types scripts/validate-tools.mjs",
     "test:tool-ratings": "node --experimental-strip-types scripts/validate-tool-ratings.mjs",

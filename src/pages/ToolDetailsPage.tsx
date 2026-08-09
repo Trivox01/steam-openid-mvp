@@ -196,6 +196,10 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   };
   if (error) return <ErrorView message={t("tools.loadError")} onRetry={() => location.reload()} />;
   if (!tool) return <LoadingView label={t("state.loading")} />;
+  const sortedBadges = [...tool.badges].sort((left, right) => left.displayOrder - right.displayOrder);
+  const badgeSlots = tool.category ? 2 : 3;
+  const visibleBadges = sortedBadges.slice(0, badgeSlots);
+  const hiddenBadgeCount = sortedBadges.length - visibleBadges.length;
   const requestOpen = (value: string) => {
     try { setTarget(inspectToolUrl(value)); setOpenError(false); }
     catch { setOpenError(true); }
@@ -214,13 +218,22 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
     <button className="back-button" type="button" onClick={onBack}><ArrowLeft />{t("onboarding.back")}</button>
     <header className="tool-details__hero">
       <ToolImage className="tool-details__cover" src={tool.coverUrl} eager />
-      <div>
-        <ToolImage className="tool-details__icon" src={tool.iconUrl} eager />
-        <div className="tool-card__badges">{tool.category && <span>{tool.category.name}</span>}{tool.badges.map((badge) => <span className={`tool-badge tool-badge--${badge.color}`} key={badge.id}>{badge.name}</span>)}</div>
-        <h1 dir="auto">{tool.name}</h1><p>{tool.shortDescription}</p>
-        <div className="tool-details__meta"><span dir="auto">{t("tools.by", { developer: tool.developerName })}</span><span dir="ltr">{t("tools.version", { version: tool.version })}</span><span>{t(`tools.trust.${tool.downloadTrust}`)}</span></div>
-        <button className="tool-download" type="button" onClick={() => requestOpen(tool.externalDownloadUrl)}><Download />{t("tools.download")}</button>
-        <ToolFavoriteButton active={isFavorite} busy={favBusy} onToggle={() => void toggleFavorite()} className="tool-details__favorite" />
+      <div className="tool-details__hero-content">
+        <div className="tool-details__identity">
+          <ToolImage className="tool-details__icon" src={tool.iconUrl} eager />
+          <div className="tool-details__heading">
+            <span className="tool-details__system-label" dir="ltr">NEXUS SYSTEM // TOOL</span>
+            <div className="tool-card__badges">{tool.category && <span className="tool-category-chip">{tool.category.name}</span>}{visibleBadges.map((badge) => <span className={`tool-badge tool-badge--${badge.color}`} key={badge.id}>{badge.name}</span>)}{hiddenBadgeCount > 0 && <span className="tool-badge tool-badge--overflow">+{hiddenBadgeCount}</span>}</div>
+            <h1 dir="auto">{tool.name}</h1>
+            <span className="tool-details__publisher" dir="auto">{t("tools.by", { developer: tool.developerName })}</span>
+          </div>
+        </div>
+        <p className="tool-details__summary" dir="auto">{tool.shortDescription}</p>
+        <div className="tool-details__meta"><span dir="ltr">{t("tools.version", { version: tool.version })}</span><span>{t(`tools.trust.${tool.downloadTrust}`)}</span></div>
+        <div className="tool-details__actions">
+          <button className="tool-download" type="button" onClick={() => requestOpen(tool.externalDownloadUrl)}><Download />{t("tools.download")}</button>
+          <ToolFavoriteButton active={isFavorite} busy={favBusy} onToggle={() => void toggleFavorite()} className="tool-details__favorite" />
+        </div>
         {favNotice && <p className="tool-rating-feedback is-error" role="alert">{t("toolsPage.favoriteError")}</p>}
       </div>
     </header>
@@ -298,7 +311,7 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
       )}
     </section>
     <section className="tool-details__description">
-      <p>{tool.fullDescription}</p><dl><div><dt>{t("tools.domain")}</dt><dd dir="ltr">{tool.downloadDomain}</dd></div><div><dt>{t("tools.updated", { date: "" }).trim()}</dt><dd>{new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(new Date(tool.updatedAt))}</dd></div></dl>
+      <p dir="auto">{tool.fullDescription}</p><dl><div><dt>{t("tools.domain")}</dt><dd dir="ltr">{tool.downloadDomain}</dd></div><div><dt>{t("tools.updated", { date: "" }).trim()}</dt><dd>{new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(new Date(tool.updatedAt))}</dd></div></dl>
       {tool.officialWebsiteUrl && <button type="button" className="secondary-button" onClick={() => requestOpen(tool.officialWebsiteUrl!)}><ExternalLink />{t("tools.website")}</button>}
       {openError && !target && <p role="alert">{t("tools.openError")}</p>}
     </section>
