@@ -73,8 +73,8 @@ export function ToolsPage({ onOpen }: { onOpen: (slug: string) => void }) {
       if (!services.tools) throw new Error("tools unavailable");
       await services.tools.favorite(toolId, target);
       setFavoriteEntries((previous) => target ? [{ toolId, createdAtMs: Date.now(), stats: { views: 0, downloadClicks: 0, favorites: 1 }, tool }, ...previous] : previous.filter((entry) => entry.toolId !== toolId));
-    } catch {
-      setNotice(t("toolsPage.favoriteError"));
+    } catch (reason) {
+      setNotice(String((reason as Error)?.message).includes("AUTHENTICATION_REQUIRED") ? t("review.signInRequired") : t("toolsPage.favoriteError"));
     } finally {
       setFavBusyIds((previous) => { const next = new Set(previous); next.delete(toolId); return next; });
     }

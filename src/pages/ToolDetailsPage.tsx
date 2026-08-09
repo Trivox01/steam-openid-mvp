@@ -42,7 +42,7 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   const [helpfulError, setHelpfulError] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
-  const [favNotice, setFavNotice] = useState(false);
+  const [favNotice, setFavNotice] = useState("");
   const signedIn = Boolean(services.steamOpenId?.getActiveSession());
   useEffect(() => {
     const controller = new AbortController();
@@ -184,12 +184,12 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   const toggleFavorite = async () => {
     if (!services.tools || !tool || favBusy) return;
     setFavBusy(true);
-    setFavNotice(false);
+    setFavNotice("");
     try {
       const result = await services.tools.favorite(tool.id, !isFavorite);
       setIsFavorite(result.isFavorite);
-    } catch {
-      setFavNotice(true);
+    } catch (reason) {
+      setFavNotice(String((reason as Error)?.message).includes("AUTHENTICATION_REQUIRED") ? "sign" : "failed");
     } finally {
       setFavBusy(false);
     }
@@ -236,7 +236,7 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
           <button className="tool-download" type="button" onClick={() => requestOpen(tool.externalDownloadUrl)}><Download />{t("tools.download")}</button>
           <ToolFavoriteButton active={isFavorite} busy={favBusy} onToggle={() => void toggleFavorite()} className="tool-details__favorite" />
         </div>
-        {favNotice && <p className="tool-rating-feedback is-error" role="alert">{t("toolsPage.favoriteError")}</p>}
+        {favNotice && <p className="tool-rating-feedback is-error" role="alert">{favNotice === "sign" ? t("review.signInRequired") : t("toolsPage.favoriteError")}</p>}
       </div>
     </header>
     <section className={`tool-details__ratings ${hasRatings ? "" : "is-empty"}`.trim()}>
