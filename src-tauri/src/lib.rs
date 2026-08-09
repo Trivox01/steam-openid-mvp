@@ -1,4 +1,5 @@
 mod commands;
+mod config;
 mod database;
 mod discord_presence;
 mod game_session;

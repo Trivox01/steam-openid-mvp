@@ -24,6 +24,7 @@ assert.equal(preferencesEqual(normalized, { ...normalized, discordPresenceEnable
 const rust = fs.readFileSync("src-tauri/src/discord_presence.rs", "utf8");
 const lib = fs.readFileSync("src-tauri/src/lib.rs", "utf8");
 const sessions = fs.readFileSync("src-tauri/src/game_session.rs", "utf8");
+const discordConfig = fs.readFileSync("src-tauri/src/config/discord.rs", "utf8");
 const bridge = fs.readFileSync("src/services/DiscordPresenceBridge.ts", "utf8");
 const settings = fs.readFileSync("src/pages/SettingsPage.tsx", "utf8");
 const cargo = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
@@ -32,7 +33,22 @@ const en = fs.readFileSync("src/locales/en/settings.ts", "utf8");
 const ar = fs.readFileSync("src/locales/ar/settings.ts", "utf8");
 
 assert.match(cargo, /discord-presence = "3\.2"/);
-assert.match(rust, /option_env!\("DISCORD_APPLICATION_ID"\)/, "Application ID has no invented fallback");
+assert.match(cargo, /custom-protocol/, "release binaries serve embedded assets without a dev server");
+const applicationId = discordConfig.match(/pub const APPLICATION_ID: u64 = (\d+);/);
+assert.ok(applicationId, "a public Application ID constant is defined in the central config");
+assert.match(applicationId[1], /^\d{17,19}$/, "the constant is a numeric Discord snowflake");
+assert.match(
+  discordConfig,
+  /std::env::var\("DISCORD_APPLICATION_ID"\)/,
+  "the development environment override stays available"
+);
+assert.match(
+  rust,
+  /crate::config::discord::configured_application_id\(\)/,
+  "presence resolves the Application ID from the central config"
+);
+assert.match(lib, /mod config;/);
+assert.doesNotMatch(discordConfig, /println!|eprintln!|dbg!/, "the Application ID is never printed");
 assert.match(rust, /session\.state == "playing"/, "only confirmed sessions are eligible");
 assert.match(rust, /ActivityTimestamps::new\(\)\.start\(started_at\)/, "Discord owns elapsed-time rendering");
 assert.match(rust, /\*total > 0 && \*unlocked >= 0 && \*unlocked <= \*total/);
@@ -55,4 +71,4 @@ assert.match(en, /"settings\.discordStatus": "Discord status"/);
 assert.match(ar, /"settings\.discordStatus": "حالة Discord"/);
 assert.match(docs, /does not use Discord OAuth, a bot, account linking, access tokens/);
 
-console.log("Discord Rich Presence privacy defaults, typed boundary, lifecycle, dedupe, throttling, retry, settings and localization validated.");
+console.log("Discord Rich Presence central config, privacy defaults, typed boundary, lifecycle, dedupe, throttling, retry, settings and localization validated.");

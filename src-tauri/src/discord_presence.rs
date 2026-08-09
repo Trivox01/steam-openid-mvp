@@ -111,7 +111,7 @@ pub struct DiscordPresenceManager {
 
 impl Default for DiscordPresenceManager {
     fn default() -> Self {
-        Self::new(configured_application_id())
+        Self::new(crate::config::discord::configured_application_id())
     }
 }
 
@@ -185,12 +185,6 @@ impl DiscordPresenceManager {
         let _ = ack_receiver.recv_timeout(Duration::from_secs(2));
         let _ = handle.join();
     }
-}
-
-fn configured_application_id() -> Option<u64> {
-    option_env!("DISCORD_APPLICATION_ID")
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .filter(|value| *value > 0)
 }
 
 fn presence_worker(
