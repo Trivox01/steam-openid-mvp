@@ -52,7 +52,7 @@ test("cleanup is bounded and removes retained terminal memory records", async ()
 
 test("PostgreSQL migrations are ordered and contain no secret-bearing columns", async () => {
   const migrations = await loadPostgresMigrations();
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
   const sql = migrations.map((item) => item.sql).join("\n").toLowerCase();
   assert.match(sql, /create table tool_definitions/);
   assert.match(sql, /create table tool_badges/);
@@ -92,6 +92,34 @@ test("PostgreSQL migrations are ordered and contain no secret-bearing columns", 
   assert.match(sql, /badge_assignments_active_unique/);
   for (const key of PERMISSION_KEYS) assert.match(sql, new RegExp(`'${key.replace(".", "\\.")}'`));
   for (const role of rolePresets) assert.match(sql, new RegExp(`'${role.slug}'`));
+});
+
+test("session revocation migration is re-runnable without a plain ADD CONSTRAINT", async () => {
+  const migrations = await loadPostgresMigrations();
+  const revocation = migrations.find((item) => item.version === 16);
+  assert.ok(revocation, "migration 016 is missing");
+  assert.equal(revocation.name, "016_session_revocation.sql");
+  const sql = revocation.sql.toLowerCase();
+  // The column and the constraint must both survive a re-run: the runner only
+  // skips a migration whose checksum already matches, so a partially applied or
+  // manually replayed migration executes this SQL a second time.
+  assert.match(sql, /add column if not exists session_epoch integer not null default 0/);
+  assert.match(sql, /from pg_constraint/);
+  assert.match(sql, /users_session_epoch_check/);
+  assert.match(sql, /check \(session_epoch >= 0\)/);
+  // A bare "ALTER TABLE ... ADD CONSTRAINT" outside the existence guard would
+  // fail with 42710 on the second run, so the only occurrence must sit inside the
+  // guarded DO block.
+  const guardStart = sql.indexOf("do $$");
+  const guardEnd = sql.indexOf("end $$");
+  const addConstraints = [...sql.matchAll(/add constraint/g)].map((match) => match.index ?? -1);
+  assert.equal(addConstraints.length, 1);
+  assert.ok(guardStart >= 0 && guardEnd > guardStart);
+  assert.ok(addConstraints[0] > guardStart && addConstraints[0] < guardEnd);
+  // No bearer token or secret is persisted by the revocation mechanism. Comments
+  // discuss tokens deliberately, so only executable SQL is inspected.
+  const statements = sql.split("\n").filter((line) => !line.trim().startsWith("--")).join("\n");
+  assert.doesNotMatch(statements, /token|secret|jti/);
 });
 
 test("authorization schema validation derives its permission count from the registry", async () => {

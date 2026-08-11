@@ -30,6 +30,12 @@ export class UserService {
       throw new UserManagementError("USER_STATUS_UNCHANGED");
     }
     await this.repository.changeStatus(id, parsed.status);
+    // Suspending or disabling an account must not leave already-issued bearer
+    // tokens usable, so the session generation is advanced as part of the same
+    // administrative action. Reactivating does not revoke anything.
+    if (parsed.status !== "active") {
+      await this.audit?.revokeSessions(id);
+    }
     await this.audit?.writeAuditEvent({
       actorUserId: actorId,
       action: "user.status_changed",

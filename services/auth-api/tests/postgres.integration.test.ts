@@ -353,6 +353,57 @@ test("PostgreSQL repository integration and concurrency", {
       newStatus: "suspended",
       reason: "Integration test"
     });
+    // Migration 016 must have landed the revocation column, and the status has to
+    // be readable from the authorization user because that is what authentication
+    // re-reads on every request.
+    const epochColumn = await pool.query<{
+      data_type: string; is_nullable: string; column_default: string;
+    }>(
+      `SELECT data_type, is_nullable, column_default FROM information_schema.columns
+       WHERE table_schema=current_schema() AND table_name='users'
+         AND column_name='session_epoch'`
+    );
+    assert.equal(epochColumn.rowCount, 1);
+    assert.equal(epochColumn.rows[0].data_type, "integer");
+    assert.equal(epochColumn.rows[0].is_nullable, "NO");
+    assert.match(epochColumn.rows[0].column_default, /^0/);
+    assert.equal((await pool.query<{ count: string }>(
+      `SELECT count(*) FROM pg_constraint
+       WHERE conrelid='users'::regclass AND conname='users_session_epoch_check'`
+    )).rows[0].count, "1");
+    const suspendedUser = await authorizationRepository.findUserById(user.id);
+    assert.equal(suspendedUser?.accountStatus, "suspended");
+    assert.equal(suspendedUser?.sessionEpoch, 1);
+    // A single atomic UPDATE ... session_epoch + 1: concurrent revocations cannot
+    // lose one another the way a read-then-write would.
+    await Promise.all([
+      authorizationRepository.revokeSessions(user.id),
+      authorizationRepository.revokeSessions(user.id),
+      authorizationRepository.revokeSessions(user.id)
+    ]);
+    assert.equal((await authorizationRepository.findUserById(user.id))?.sessionEpoch, 4);
+    await authorizationRepository.setAccountStatus({ userId: user.id, status: "active" });
+    assert.equal((await authorizationRepository.findUserById(user.id))?.accountStatus, "active");
+    assert.equal((await authorizationRepository.findUserById(user.id))?.sessionEpoch, 4);
+    // The author deleting a moderated review must not erase the moderator's
+    // decision: that was the evasion path (hide -> author deletes -> rewrite).
+    const evasionTool = await tools.create(
+      { ...toolDraft, slug: "evasion-tool", name: "Evasion Tool" }, user.id
+    );
+    const evasionReview = await reviews.save(
+      evasionTool.id, secondUser.id, { body: "to be hidden" }
+    );
+    await moderation.hideReview(evasionReview.review.id, user.id, { reason: "spam" });
+    await reviews.remove(evasionTool.id, secondUser.id);
+    const preserved = await reviewRepository.getById(evasionReview.review.id);
+    assert.equal(preserved?.status, "removed");
+    assert.equal(preserved?.moderatedBy, user.id);
+    assert.equal(preserved?.moderationReason, "spam");
+    assert.ok(preserved?.moderatedAt);
+    await assert.rejects(
+      () => reviews.save(evasionTool.id, secondUser.id, { body: "rewritten past the moderator" }),
+      /REVIEW_NOT_EDITABLE/
+    );
     const slugRace = await Promise.allSettled([
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id),
       badges.create({ ...badgeDraft, slug: "concurrent-badge" }, user.id)

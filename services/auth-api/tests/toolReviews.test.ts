@@ -521,6 +521,62 @@ test("invalid review drafts map to stable errors", async () => {
   } finally { await harness.close(); }
 });
 
+test("deleting a moderated review preserves the moderation evidence", async () => {
+  const x = setup(); const tool = await x.service.create(draft, "actor");
+  const created = await x.reviews.save(tool.id, "user-1", { body: "original" });
+  await x.moderation.hideReview(created.review.id, "moderator", { reason: "spam" });
+  // The evasion path was hide -> author deletes -> the moderation columns are
+  // cleared -> save() no longer sees any moderation and allows a rewrite.
+  await x.reviews.remove(tool.id, "user-1");
+  const removed = await x.reviewRepository.getMine(tool.id, "user-1");
+  assert.equal(removed?.status, "removed");
+  assert.equal(removed?.moderatedBy, "moderator");
+  assert.equal(removed?.moderationReason, "spam");
+  assert.ok(removed?.moderatedAt);
+  await assert.rejects(
+    () => x.reviews.save(tool.id, "user-1", { body: "rewritten past the moderator" }),
+    (error: unknown) => error instanceof ToolError && error.code === "REVIEW_NOT_EDITABLE"
+  );
+});
+
+test("cache classification is public only for viewer-independent catalog reads", async () => {
+  const harness = await startReviewHarness();
+  try {
+    const cacheControl = async (path: string, token?: string) => {
+      const response = await fetch(`${harness.baseUrl}${path}`, {
+        headers: token ? { authorization: `Bearer ${token}` } : {}
+      });
+      assert.equal(response.status, 200, `${path} returned ${response.status}`);
+      return response.headers.get("cache-control");
+    };
+    // Byte-identical for every caller and never reads the Authorization header.
+    for (const path of ["/api/tools", "/api/tools/categories", "/api/tools/badges",
+      `/api/tools/${harness.toolId}/rating-summary`, "/api/tools/review-route-tool"]) {
+      assert.equal(await cacheControl(path), "public, max-age=60, stale-while-revalidate=120", path);
+    }
+    // These two inspect the Authorization header, so their body differs by viewer
+    // even when the caller is anonymous; a shared cache must never hold them.
+    for (const path of [`/api/tools/${harness.toolId}/reviews`, `/api/tools/${harness.toolId}/stats`]) {
+      assert.equal(await cacheControl(path), "private, no-store", `${path} anonymous`);
+      assert.equal(await cacheControl(path, harness.ownerSession.token), "private, no-store", `${path} authenticated`);
+    }
+    // Everything behind the authentication boundary, user-scoped and admin alike.
+    for (const path of ["/api/tools/favorites", `/api/tools/${harness.toolId}/favorite-status`,
+      `/api/tools/${harness.toolId}/my-rating`, `/api/tools/${harness.toolId}/my-review`,
+      "/api/admin/tools", "/api/admin/tool-reviews", "/api/admin/tool-review-reports",
+      "/api/admin/tool-badges", "/api/admin/tool-categories"]) {
+      assert.equal(await cacheControl(path, harness.ownerSession.token), "private, no-store", path);
+    }
+    // Error responses are never cached either.
+    const missing = await fetch(`${harness.baseUrl}/api/tools/00000000-0000-4000-8000-000000000000/reviews`);
+    assert.equal(missing.status, 404);
+    assert.equal(missing.headers.get("cache-control"), "no-store");
+    const unauthenticated = await fetch(`${harness.baseUrl}/api/tools/favorites`);
+    assert.equal(unauthenticated.status, 401);
+    assert.equal(unauthenticated.headers.get("cache-control"), "no-store");
+  } finally { await harness.close(); }
+});
+
 async function startReviewHarness(limiter?: PollingRateLimiter, reportLimiter?: PollingRateLimiter) {
   const authorizationRepository = new InMemoryAuthorizationRepository();
   const authorization = new AuthorizationService(authorizationRepository);

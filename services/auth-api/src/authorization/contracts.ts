@@ -14,6 +14,10 @@ export interface AuthorizationSnapshot {
 
 export type AuthorizationErrorCode =
   | "AUTHENTICATION_REQUIRED"
+  // The signature and expiry were valid, but the account itself may no longer
+  // act. Deliberately one opaque code for every non-active status so the
+  // response never discloses whether an account is suspended or disabled.
+  | "ACCOUNT_NOT_ACTIVE"
   | "PERMISSION_DENIED"
   | "ROLE_ASSIGNMENT_DENIED"
   | "PROTECTED_ROLE"

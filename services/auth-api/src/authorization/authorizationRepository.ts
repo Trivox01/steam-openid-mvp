@@ -2,15 +2,28 @@ import { randomUUID } from "node:crypto";
 import type { PermissionKey } from "./permissions.ts";
 import { defaultRolePermissions, rolePresets } from "./roles.ts";
 
+export type AuthorizationAccountStatus = "active" | "suspended" | "disabled";
+
 export interface AuthorizationUser {
   id: string;
   steamId64: string;
+  /**
+   * Authoritative account state, read on every authentication rather than
+   * inferred from roles. Only "active" may act.
+   */
+  accountStatus: AuthorizationAccountStatus;
+  /**
+   * Monotonic session generation. Every issued session carries the epoch it was
+   * born with; bumping it invalidates all sessions of that account without
+   * storing any bearer token.
+   */
+  sessionEpoch: number;
 }
 
 export interface AuthorizationUserSummary {
   id: string;
   displayName: string;
-  status: "active" | "suspended" | "disabled";
+  status: AuthorizationAccountStatus;
 }
 
 export interface AuthorizationRole {
@@ -39,6 +52,15 @@ export interface AuthorizationRepository {
   ensureAuthenticatedUser(steamId64: string, authenticatedAt: string): Promise<AuthorizationUser>;
   findUserById(userId: string): Promise<AuthorizationUser | undefined>;
   findUserBySteamId(steamId64: string): Promise<AuthorizationUser | undefined>;
+  setAccountStatus(input: {
+    userId: string;
+    status: AuthorizationAccountStatus;
+  }): Promise<void>;
+  /**
+   * Invalidates every session of a user by advancing the stored epoch. No bearer
+   * token is ever persisted, so revocation is a single integer write.
+   */
+  revokeSessions(userId: string): Promise<void>;
   listUserSummaries(input: {
     search?: string;
     page: number;
@@ -82,7 +104,12 @@ export class InMemoryAuthorizationRepository implements AuthorizationRepository 
   async ensureAuthenticatedUser(steamId64: string, _authenticatedAt: string) {
     const existing = await this.findUserBySteamId(steamId64);
     if (existing) return existing;
-    const user = { id: randomUUID(), steamId64 };
+    const user: AuthorizationUser = {
+      id: randomUUID(),
+      steamId64,
+      accountStatus: "active",
+      sessionEpoch: 0
+    };
     this.users.set(user.id, user);
     return user;
   }
@@ -90,6 +117,14 @@ export class InMemoryAuthorizationRepository implements AuthorizationRepository 
   async findUserById(userId: string) { return this.users.get(userId); }
   async findUserBySteamId(steamId64: string) {
     return [...this.users.values()].find((user) => user.steamId64 === steamId64);
+  }
+  async setAccountStatus(input: { userId: string; status: AuthorizationAccountStatus }) {
+    const user = this.users.get(input.userId);
+    if (user) user.accountStatus = input.status;
+  }
+  async revokeSessions(userId: string) {
+    const user = this.users.get(userId);
+    if (user) user.sessionEpoch += 1;
   }
   async listUserSummaries(input: {
     search?: string; page: number; pageSize: number;
@@ -103,7 +138,7 @@ export class InMemoryAuthorizationRepository implements AuthorizationRepository 
       items: users.slice(start, start + input.pageSize).map((user) => ({
         id: user.id,
         displayName: `User ${user.id.slice(0, 8)}`,
-        status: "active" as const
+        status: user.accountStatus
       })),
       total: users.length
     };

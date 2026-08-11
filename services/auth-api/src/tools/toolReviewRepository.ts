@@ -201,13 +201,11 @@ export class InMemoryToolReviewRepository implements ToolReviewRepository {
     const key = `${toolId}:${userId}`;
     const current = this.reviews.get(key);
     if (!current) throw new ToolError("REVIEW_NOT_FOUND");
-    const review: ToolReviewRecord = {
-      ...current,
-      status: "removed",
-      moderatedAt: undefined,
-      moderatedBy: undefined,
-      moderationReason: undefined
-    };
+    // Moderation columns are audit evidence and survive a user deletion. Clearing
+    // them here used to let an author erase a moderator's decision by deleting the
+    // hidden review, after which save() no longer saw any moderation and allowed a
+    // rewrite.
+    const review: ToolReviewRecord = { ...current, status: "removed" };
     this.reviews.set(key, review);
     return review;
   }

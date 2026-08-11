@@ -159,7 +159,7 @@ function writeError(response: ServerResponse, code: string) {
     "BADGE_ASSIGNMENT_ALREADY_REVOKED"
   ]);
   const status = code === "AUTHENTICATION_REQUIRED" ? 401
-    : code === "PERMISSION_DENIED" ? 403
+    : code === "PERMISSION_DENIED" || code === "ACCOUNT_NOT_ACTIVE" ? 403
     : notFound.has(code) ? 404
     : conflict.has(code) ? 409
     : code === "PAYLOAD_TOO_LARGE" ? 413

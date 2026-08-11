@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool, QueryResultRow } from "pg";
 import type {
   AuditEventInput,
+  AuthorizationAccountStatus,
   AuthorizationRepository,
   AuthorizationRole,
   AuthorizationUser,
@@ -14,6 +15,11 @@ import {
   type PermissionKey
 } from "../../authorization/permissions.ts";
 import { StorageError } from "../authRepository.ts";
+
+// Every authentication needs the identity plus the two security-critical fields,
+// so they are projected from one place instead of being restated per query.
+const USER_COLUMNS = `id, trim(steam_id64) AS "steamId64",
+       account_status AS "accountStatus", session_epoch AS "sessionEpoch"`;
 
 export class PostgresAuthorizationRepository implements AuthorizationRepository {
   private readonly pool: Pool;
@@ -33,6 +39,18 @@ export class PostgresAuthorizationRepository implements AuthorizationRepository 
       [requiredTables]
     );
     if (new Set(rows.map((row) => row.table_name)).size !== requiredTables.length) {
+      throw new Error("authorization_schema_invalid");
+    }
+    // Authentication reads the account state and session epoch on every request,
+    // so a database missing either column must fail startup rather than silently
+    // authenticating suspended accounts or accepting revoked sessions.
+    const columns = await this.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = current_schema() AND table_name = 'users'
+         AND column_name = ANY($1::text[])`,
+      [["account_status", "session_epoch"]]
+    );
+    if (new Set(columns.map((row) => row.column_name)).size !== 2) {
       throw new Error("authorization_schema_invalid");
     }
     const [roles, permissions] = await Promise.all([
@@ -57,22 +75,39 @@ export class PostgresAuthorizationRepository implements AuthorizationRepository 
        ON CONFLICT (steam_id64) DO UPDATE SET
          authenticated_at = EXCLUDED.authenticated_at,
          updated_at = now()
-       RETURNING id, trim(steam_id64) AS "steamId64"`,
+       RETURNING ${USER_COLUMNS}`,
       [randomUUID(), steamId64, authenticatedAt]
     );
   }
 
   async findUserById(userId: string) {
     return this.queryOptional<AuthorizationUser>(
-      `SELECT id, trim(steam_id64) AS "steamId64" FROM users WHERE id = $1`,
+      `SELECT ${USER_COLUMNS} FROM users WHERE id = $1`,
       [userId]
     );
   }
 
   async findUserBySteamId(steamId64: string) {
     return this.queryOptional<AuthorizationUser>(
-      `SELECT id, trim(steam_id64) AS "steamId64" FROM users WHERE steam_id64 = $1`,
+      `SELECT ${USER_COLUMNS} FROM users WHERE steam_id64 = $1`,
       [steamId64]
+    );
+  }
+
+  async setAccountStatus(input: {
+    userId: string; status: AuthorizationAccountStatus;
+  }) {
+    await this.execute(
+      `UPDATE users SET account_status = $2, updated_at = now() WHERE id = $1`,
+      [input.userId, input.status]
+    );
+  }
+
+  async revokeSessions(userId: string) {
+    await this.execute(
+      `UPDATE users SET session_epoch = session_epoch + 1, updated_at = now()
+       WHERE id = $1`,
+      [userId]
     );
   }
 
@@ -87,7 +122,7 @@ export class PostgresAuthorizationRepository implements AuthorizationRepository 
     );
     values.push(input.pageSize, (input.page - 1) * input.pageSize);
     const rows = await this.pool.query(
-      `SELECT id FROM users ${where}
+      `SELECT id, account_status FROM users ${where}
        ORDER BY created_at DESC
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
@@ -96,7 +131,7 @@ export class PostgresAuthorizationRepository implements AuthorizationRepository 
       items: rows.rows.map((row) => ({
         id: String(row.id),
         displayName: `User ${String(row.id).slice(0, 8)}`,
-        status: "active" as const
+        status: row.account_status as AuthorizationAccountStatus
       })),
       total: Number(count.rows[0]?.count ?? 0)
     };

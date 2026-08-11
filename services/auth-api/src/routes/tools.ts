@@ -21,13 +21,13 @@ export async function handleTools(req: IncomingMessage, res: ServerResponse, url
   if (!isToolPath(url.pathname)) return false;
   let actor: string | undefined;
   try {
-    if (url.pathname === "/api/tools" && req.method === "GET") { const query = parseToolQuery(url.searchParams),result=await deps.tools.list(query),summaries=await deps.ratings.summaries(result.items.map(x=>x.id));return json(res, 200, { ...result,items:result.items.map(x=>({...x,ratingSummary:summaries[x.id]})), page: query.page, pageSize: query.pageSize }); }
-    if (url.pathname === "/api/tools/categories" && req.method === "GET") { const items=(await deps.tools.categories.list(false)).filter(x=>x.isActive); return json(res, 200, { items, total: items.length }); }
-    if (url.pathname === "/api/tools/badges" && req.method === "GET") { const items=(await deps.tools.badges.list(false)).filter(x=>x.isActive); return json(res, 200, { items, total: items.length }); }
+    if (url.pathname === "/api/tools" && req.method === "GET") { const query = parseToolQuery(url.searchParams),result=await deps.tools.list(query),summaries=await deps.ratings.summaries(result.items.map(x=>x.id));return publicJson(res, { ...result,items:result.items.map(x=>({...x,ratingSummary:summaries[x.id]})), page: query.page, pageSize: query.pageSize }); }
+    if (url.pathname === "/api/tools/categories" && req.method === "GET") { const items=(await deps.tools.categories.list(false)).filter(x=>x.isActive); return publicJson(res, { items, total: items.length }); }
+    if (url.pathname === "/api/tools/badges" && req.method === "GET") { const items=(await deps.tools.badges.list(false)).filter(x=>x.isActive); return publicJson(res, { items, total: items.length }); }
     const rating= url.pathname.match(/^\/api\/tools\/([0-9a-f-]+)\/(rating-summary|my-rating)$/i);
-    if(rating?.[2]==="rating-summary"&&req.method==="GET")return json(res,200,await deps.ratings.summary(rating[1]));
+    if(rating?.[2]==="rating-summary"&&req.method==="GET")return publicJson(res,await deps.ratings.summary(rating[1]));
     const publicTool = url.pathname.match(/^\/api\/tools\/(?!favorites$|categories$|badges$)([a-z0-9-]+)$/i);
-    if (publicTool && req.method === "GET") { const tool = await deps.tools.getBySlug(publicTool[1]); if (!tool) throw new ToolError("TOOL_NOT_FOUND"); return json(res, 200, {...tool,ratingSummary:await deps.ratings.summary(tool.id)}); }
+    if (publicTool && req.method === "GET") { const tool = await deps.tools.getBySlug(publicTool[1]); if (!tool) throw new ToolError("TOOL_NOT_FOUND"); return publicJson(res, {...tool,ratingSummary:await deps.ratings.summary(tool.id)}); }
     const content = url.pathname.match(/^\/api\/tool-assets\/([0-9a-f-]+)\/content$/i);
     if (content && req.method === "GET") {
       const asset = await deps.assets.getAsset(content[1]); if (!asset || asset.deletedAt) return empty(res, 404);
@@ -181,4 +181,12 @@ async function recordEvent(kind: "view" | "download_click", toolId: string, req:
 }
 function empty(res: ServerResponse, status: number) { res.writeHead(status, { "cache-control": "no-store", "x-content-type-options": "nosniff" }); res.end(); return true; }
 function parsePage(value: string | null, fallback: number) { if (value == null) return fallback; const parsed = Number(value); if (!Number.isSafeInteger(parsed) || parsed < 1) throw new ToolError("INVALID_TOOL_QUERY"); return parsed; }
-function json(res: ServerResponse, status: number, payload: object) { const value = JSON.stringify(payload); res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": status === 200 ? "public, max-age=60, stale-while-revalidate=120" : "no-store", "x-content-type-options": "nosniff", "content-length": Buffer.byteLength(value) }); res.end(value); return true; }
+// Default-deny caching: every response is private unless a handler opts in via
+// publicJson. A new endpoint added later is therefore uncacheable by shared
+// proxies until someone proves its body is identical for every caller.
+function json(res: ServerResponse, status: number, payload: object) { return write(res, status, payload, "private, no-store"); }
+// Only for catalog reads whose body is byte-identical for every caller and which
+// never inspect the Authorization header. Anything that varies with the viewer
+// (even by omitting viewer fields when anonymous) must not land here.
+function publicJson(res: ServerResponse, payload: object) { return write(res, 200, payload, "public, max-age=60, stale-while-revalidate=120"); }
+function write(res: ServerResponse, status: number, payload: object, cacheControl: string) { const value = JSON.stringify(payload); res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": status === 200 ? cacheControl : "no-store", "x-content-type-options": "nosniff", "content-length": Buffer.byteLength(value) }); res.end(value); return true; }

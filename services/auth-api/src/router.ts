@@ -1,6 +1,9 @@
-import type { RequestListener } from "node:http";
+import { randomUUID } from "node:crypto";
+import type { RequestListener, ServerResponse } from "node:http";
 import { HEALTH_PATH, writeHealthResponse } from "./routes/health.ts";
 import { READINESS_PATH, writeReadinessResponse } from "./routes/readiness.ts";
+import { sanitizeLogCode } from "./security/redaction.ts";
+import type { SafeLogger } from "./security/safeLogger.ts";
 import {
   getSecureTransportDiagnostic,
   validatePublicAuthRequest
@@ -180,79 +183,134 @@ export function createRouter(
         return;
       }
     }
-    if (
-      isToolsRoute &&
-      await handleTools(request, response, url, {
-        tools: steamAuthDependencies!.tools!,
-        authorization: steamAuthDependencies!.authorization!,
-        sessions: steamAuthDependencies!.sessions!,
-        assets: steamAuthDependencies!.badges!.repository,
-        toolAssets: steamAuthDependencies!.toolAssets!
-        ,ratings:steamAuthDependencies!.toolRatings!,ratingRateLimiter:steamAuthDependencies!.toolRatingRateLimiter!
-        ,reviews:steamAuthDependencies!.toolReviews!,moderation:steamAuthDependencies!.toolReviewModeration!,interactions:steamAuthDependencies!.toolReviewInteractions!,reviewRateLimiter:steamAuthDependencies!.toolReviewRateLimiter!,reportRateLimiter:steamAuthDependencies!.toolReportRateLimiter!,helpfulRateLimiter:steamAuthDependencies!.toolHelpfulRateLimiter!,replyRateLimiter:steamAuthDependencies!.toolReplyRateLimiter!
-        ,analytics:steamAuthDependencies!.toolAnalytics!,eventRateLimiter:steamAuthDependencies!.toolEventRateLimiter!,favoriteRateLimiter:steamAuthDependencies!.toolFavoriteRateLimiter!
-      })
-    ) return;
-    if (
-      isSteamDataRoute &&
-      await handleSteamData(request, response, url, {
-        sessions: steamAuthDependencies!.sessions!,
-        steam: steamAuthDependencies!.steamData!,
-        rateLimiter: steamAuthDependencies!.steamDataRateLimiter!
-      })
-    ) return;
-    if (
-      isUserRoute &&
-      await handleAdminUsers(request, response, url, {
-        users: steamAuthDependencies!.users!,
-        authorization: steamAuthDependencies!.authorization!,
-        sessions: steamAuthDependencies!.sessions!
-      })
-    ) return;
-    if (
-      isPublicBadgeRoute &&
-      await handlePublicBadges(request, response, url, {
-        assignments: steamAuthDependencies!.badgeAssignments!,
-        badges: steamAuthDependencies!.badges!.repository,
+    // Every real dispatch runs inside this boundary. Without it a throw from any
+    // repository escaped as an unhandled rejection: the socket hung with no
+    // response and the failure was invisible.
+    const startedAt = Date.now();
+    try {
+      if (
+        isToolsRoute &&
+        await handleTools(request, response, url, {
+          tools: steamAuthDependencies!.tools!,
+          authorization: steamAuthDependencies!.authorization!,
+          sessions: steamAuthDependencies!.sessions!,
+          assets: steamAuthDependencies!.badges!.repository,
+          toolAssets: steamAuthDependencies!.toolAssets!
+          ,ratings:steamAuthDependencies!.toolRatings!,ratingRateLimiter:steamAuthDependencies!.toolRatingRateLimiter!
+          ,reviews:steamAuthDependencies!.toolReviews!,moderation:steamAuthDependencies!.toolReviewModeration!,interactions:steamAuthDependencies!.toolReviewInteractions!,reviewRateLimiter:steamAuthDependencies!.toolReviewRateLimiter!,reportRateLimiter:steamAuthDependencies!.toolReportRateLimiter!,helpfulRateLimiter:steamAuthDependencies!.toolHelpfulRateLimiter!,replyRateLimiter:steamAuthDependencies!.toolReplyRateLimiter!
+          ,analytics:steamAuthDependencies!.toolAnalytics!,eventRateLimiter:steamAuthDependencies!.toolEventRateLimiter!,favoriteRateLimiter:steamAuthDependencies!.toolFavoriteRateLimiter!
+        })
+      ) return;
+      if (
+        isSteamDataRoute &&
+        await handleSteamData(request, response, url, {
+          sessions: steamAuthDependencies!.sessions!,
+          steam: steamAuthDependencies!.steamData!,
+          rateLimiter: steamAuthDependencies!.steamDataRateLimiter!
+        })
+      ) return;
+      if (
+        isUserRoute &&
+        await handleAdminUsers(request, response, url, {
+          users: steamAuthDependencies!.users!,
+          authorization: steamAuthDependencies!.authorization!,
+          sessions: steamAuthDependencies!.sessions!
+        })
+      ) return;
+      if (
+        isPublicBadgeRoute &&
+        await handlePublicBadges(request, response, url, {
+          assignments: steamAuthDependencies!.badgeAssignments!,
+          badges: steamAuthDependencies!.badges!.repository,
+          assets: steamAuthDependencies!.badgeAssets!,
+          sessions: steamAuthDependencies!.sessions!
+        })
+      ) return;
+      if (
+        isAuthorizationRoute &&
+        await handleMeAuthorization(request, response, {
+          authorization: steamAuthDependencies!.authorization!,
+          sessions: steamAuthDependencies!.sessions!
+        })
+      ) return;
+      if (isBadgeRoute && await handleAdminBadges(request, response, url, {
+        badges: steamAuthDependencies!.badges!,
         assets: steamAuthDependencies!.badgeAssets!,
-        sessions: steamAuthDependencies!.sessions!
-      })
-    ) return;
-    if (
-      isAuthorizationRoute &&
-      await handleMeAuthorization(request, response, {
         authorization: steamAuthDependencies!.authorization!,
         sessions: steamAuthDependencies!.sessions!
-      })
-    ) return;
-    if (isBadgeRoute && await handleAdminBadges(request, response, url, {
-      badges: steamAuthDependencies!.badges!,
-      assets: steamAuthDependencies!.badgeAssets!,
-      authorization: steamAuthDependencies!.authorization!,
-      sessions: steamAuthDependencies!.sessions!
-    })) return;
-    if (
-      isAssignmentUserRoute &&
-      await handleAdminAssignmentUsers(request, response, url, {
-        authorization: steamAuthDependencies!.authorization!,
-        sessions: steamAuthDependencies!.sessions!
-      })
-    ) return;
-    if (
-      isBadgeAssignmentRoute &&
-      await handleAdminBadgeAssignments(request, response, url, {
-        assignments: steamAuthDependencies!.badgeAssignments!,
-        authorization: steamAuthDependencies!.authorization!,
-        sessions: steamAuthDependencies!.sessions!
-      })
-    ) return;
-    if (handleSteamAuth && await handleSteamAuth(request, response, url)) return;
-    const body = JSON.stringify({ error: "not_found" });
-    response.writeHead(404, {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "content-length": Buffer.byteLength(body)
-    });
-    response.end(body);
+      })) return;
+      if (
+        isAssignmentUserRoute &&
+        await handleAdminAssignmentUsers(request, response, url, {
+          authorization: steamAuthDependencies!.authorization!,
+          sessions: steamAuthDependencies!.sessions!
+        })
+      ) return;
+      if (
+        isBadgeAssignmentRoute &&
+        await handleAdminBadgeAssignments(request, response, url, {
+          assignments: steamAuthDependencies!.badgeAssignments!,
+          authorization: steamAuthDependencies!.authorization!,
+          sessions: steamAuthDependencies!.sessions!
+        })
+      ) return;
+      if (handleSteamAuth && await handleSteamAuth(request, response, url)) return;
+      const body = JSON.stringify({ error: "not_found" });
+      response.writeHead(404, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "content-length": Buffer.byteLength(body)
+      });
+      response.end(body);
+    } catch (error) {
+      writeInternalError(
+        response,
+        url.pathname,
+        request.method ?? "UNKNOWN",
+        error,
+        Date.now() - startedAt,
+        steamAuthDependencies?.logger
+      );
+    }
   };
+}
+
+/**
+ * Sanitized last resort for an unexpected throw. The client learns only that the
+ * request failed; the log keeps the route, the method and a coarse code, never the
+ * exception message or stack, either of which can carry connection strings, SQL
+ * fragments or bearer tokens.
+ */
+function writeInternalError(
+  response: ServerResponse,
+  pathname: string,
+  method: string,
+  error: unknown,
+  durationMs: number,
+  logger?: SafeLogger
+) {
+  logger?.write({
+    event: `router_unhandled_error ${method} ${pathname}`,
+    requestId: randomUUID(),
+    endpoint: "router_dispatch",
+    status: "failure",
+    durationMs,
+    errorCode: sanitizeLogCode(
+      error instanceof Error ? error.name.toLowerCase() : typeof error
+    )
+  });
+  // A handler may already have started the response; rewriting the head would
+  // throw a second time from inside the catch.
+  if (response.headersSent) {
+    response.end();
+    return;
+  }
+  const body = JSON.stringify({ error: "internal_error" });
+  response.writeHead(500, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "content-length": Buffer.byteLength(body)
+  });
+  response.end(body);
 }

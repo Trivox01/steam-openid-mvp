@@ -71,8 +71,12 @@ export class PostgresToolReviewRepository {
         "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
         [`${toolId}:${userId}`]
       );
+      // Moderation columns are audit evidence and survive a user deletion.
+      // Clearing them used to let an author erase a moderator's decision by
+      // deleting a hidden review, after which save() saw no moderation and
+      // allowed a rewrite.
       const result = await client.query<ToolReviewRecord>(
-        `UPDATE tool_reviews SET status='removed', moderated_at=NULL, moderated_by=NULL, moderation_reason=NULL
+        `UPDATE tool_reviews SET status='removed'
          WHERE tool_id=$1 AND user_id=$2 AND status<>'removed'
          RETURNING ${REVIEW_COLUMNS}`,
         [toolId, userId]

@@ -60,8 +60,18 @@ export class AuthorizationService {
   }
 
   async canManageUser(actorId: string, targetUserId: string) {
-    if (actorId === targetUserId) return false;
     if (!await this.hasPermission(actorId, "users.manage")) return false;
+    return this.canManageUserHierarchy(actorId, targetUserId);
+  }
+
+  /**
+   * The self / owner / priority half of user management, without the
+   * "users.manage" requirement. Routes that already gate on their own permission
+   * (for example "users.change_status") use this so the hierarchy is enforced
+   * without silently introducing a second required permission.
+   */
+  async canManageUserHierarchy(actorId: string, targetUserId: string) {
+    if (actorId === targetUserId) return false;
     const [actorPriority, targetPriority, targetRoles] = await Promise.all([
       this.highestPriority(actorId),
       this.highestPriority(targetUserId),
@@ -119,6 +129,10 @@ export class AuthorizationService {
       roleId,
       revokedAt: new Date(this.now()).toISOString()
     });
+    // Losing a role reduces privileges, and existing bearer tokens carry no
+    // permission claims of their own, so the sessions are invalidated to force a
+    // re-read of the reduced authority.
+    await this.repository.revokeSessions(targetUserId);
     await this.repository.writeAuditEvent({
       actorUserId: actorId,
       action: "authorization.role_revoked",
@@ -149,6 +163,11 @@ export class AuthorizationService {
       assignedByUserId: input.actorId,
       ...(input.reason ? { reason: input.reason } : {})
     });
+    // Only privilege reductions revoke. A deny override takes authority away, so
+    // live sessions must be re-evaluated; granting does not need revocation.
+    if (input.effect === "deny") {
+      await this.repository.revokeSessions(input.targetUserId);
+    }
     await this.repository.writeAuditEvent({
       actorUserId: input.actorId,
       action: "authorization.permission_override_added",

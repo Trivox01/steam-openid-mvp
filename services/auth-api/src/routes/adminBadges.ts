@@ -223,7 +223,7 @@ function writeApiError(response: ServerResponse, error: unknown) {
       ? "BADGE_ASSET_IN_USE"
     : isUniqueViolation(error) ? "BADGE_SLUG_CONFLICT" : "BADGE_OPERATION_FAILED";
   const status = code === "AUTHENTICATION_REQUIRED" ? 401
-    : code === "PERMISSION_DENIED" ? 403
+    : code === "PERMISSION_DENIED" || code === "ACCOUNT_NOT_ACTIVE" ? 403
     : code.endsWith("_NOT_FOUND") ? 404
     : code === "BADGE_SLUG_CONFLICT" ? 409
     : code === "PAYLOAD_TOO_LARGE" ? 413

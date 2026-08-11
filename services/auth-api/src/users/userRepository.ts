@@ -1,4 +1,7 @@
-import type { AuthorizationRepository } from "../authorization/authorizationRepository.ts";
+import type {
+  AuthorizationRepository,
+  AuthorizationUser
+} from "../authorization/authorizationRepository.ts";
 import type { BadgeAssignmentRepository } from "../badgeAssignments/badgeAssignmentRepository.ts";
 import type { UserDetails, UserQuery, UserSummary } from "./contracts.ts";
 
@@ -17,7 +20,6 @@ export interface UserRepository {
 export class InMemoryUserRepository implements UserRepository {
   private readonly authorization: AuthorizationRepository;
   private readonly assignments: BadgeAssignmentRepository;
-  private readonly statuses = new Map<string, UserDetails["status"]>();
   constructor(
     authorization: AuthorizationRepository,
     assignments: BadgeAssignmentRepository
@@ -29,16 +31,14 @@ export class InMemoryUserRepository implements UserRepository {
   async list(query: UserQuery) {
     const search = query.search?.toLowerCase();
     let items = await Promise.all(
-      [...(this.authorization as { users?: Map<string, { id: string; steamId64: string }> }).users?.values() ?? []]
-        .map((user) => this.toSummary(user))
+      [...this.users()?.values() ?? []].map((user) => this.toSummary(user))
     );
     items = items.filter((item) =>
       !search ||
       item.id.toLowerCase().includes(search) ||
       item.displayName?.toLowerCase().includes(search) ||
       item.steamNickname?.toLowerCase().includes(search) ||
-      (this.authorization as { users?: Map<string, { id: string; steamId64: string }> })
-        .users?.get(item.id)?.steamId64.includes(search)
+      this.users()?.get(item.id)?.steamId64.includes(search)
     );
     items.sort(userComparator(query.sort));
     const total = items.length;
@@ -59,12 +59,18 @@ export class InMemoryUserRepository implements UserRepository {
     };
   }
   async count() {
-    return (this.authorization as { users?: Map<string, unknown> }).users?.size ?? 0;
+    return this.users()?.size ?? 0;
   }
   async changeStatus(id: string, status: UserDetails["status"]) {
-    this.statuses.set(id, status);
+    // The account status lives on the authorization user, which is what
+    // authentication reads. Keeping a second copy here would let a suspended
+    // account keep authenticating.
+    await this.authorization.setAccountStatus({ userId: id, status });
   }
   async updateSteamProfile() {}
+  private users() {
+    return (this.authorization as { users?: Map<string, AuthorizationUser> }).users;
+  }
   private async toSummary(user: { id: string }): Promise<UserSummary> {
     const assignments = await this.assignments.list({
       page: 1, pageSize: 100, status: "active", userId: user.id,
@@ -76,7 +82,7 @@ export class InMemoryUserRepository implements UserRepository {
       displayName: `User ${user.id.slice(0, 8)}`,
       createdAt: new Date(0).toISOString(),
       lastLoginAt: new Date(0).toISOString(),
-      status: this.statuses.get(user.id) ?? "active",
+      status: this.users()?.get(user.id)?.accountStatus ?? "active",
       badgeCount: assignments.total,
       roleCount: roles.length
     };

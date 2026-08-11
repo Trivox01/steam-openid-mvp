@@ -47,7 +47,14 @@ export async function handleSteamData(
     }
   } catch (error) {
     if (error instanceof AuthorizationError) {
-      writeJson(response, 401, { error: "session_expired" });
+      // A non-active account has a perfectly valid session, so it must not be
+      // reported as expired: clients treat 401 as "re-login", which would loop
+      // forever for a suspended account.
+      if (error.code === "ACCOUNT_NOT_ACTIVE") {
+        writeJson(response, 403, { error: "account_not_active" });
+      } else {
+        writeJson(response, 401, { error: "session_expired" });
+      }
     } else if (error instanceof PollingRateLimitError) {
       response.setHeader("retry-after", Math.max(1, Math.ceil(error.retryAfterMs / 1000)));
       writeJson(response, 429, { error: "rate_limited" });

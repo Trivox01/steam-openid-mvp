@@ -3,6 +3,7 @@ import { AuthTransactionService } from "./auth/authTransactionService.ts";
 import { loadAuthApiConfig } from "./config.ts";
 import { createRouter } from "./router.ts";
 import { PollingRateLimiter } from "./security/pollingRateLimiter.ts";
+import { sanitizeLogCode } from "./security/redaction.ts";
 import { jsonSafeLogger } from "./security/safeLogger.ts";
 import { SteamOpenIdVerifier } from "./steam/openIdVerifier.ts";
 import { SteamOpenIdHttpClient } from "./steam/steamOpenIdHttpClient.ts";
@@ -146,6 +147,14 @@ async function main() {
     })
   );
 
+  // Bounded so a slow or stalled peer cannot hold a connection open forever.
+  // Sized above the largest legitimate request: a 2 MB asset upload and a full
+  // Steam OpenID round trip both finish well inside the request timeout.
+  // Node requires headersTimeout > keepAliveTimeout.
+  server.keepAliveTimeout = 61_000;
+  server.headersTimeout = 65_000;
+  server.requestTimeout = 120_000;
+
   server.listen(config.port, "0.0.0.0", () => {
     process.stdout.write(
       JSON.stringify({
@@ -169,4 +178,33 @@ async function main() {
 
   process.once("SIGINT", () => void shutdown());
   process.once("SIGTERM", () => void shutdown());
+
+  // Safety net only. The router's try/catch is the primary protection for request
+  // handling; anything reaching this level means the process state is no longer
+  // trustworthy, so it is logged sanitized and the process stops rather than
+  // continuing to serve traffic in an unknown state.
+  process.once("uncaughtException", (error: unknown) => {
+    void fatal("uncaught_exception", error);
+  });
+  process.once("unhandledRejection", (reason: unknown) => {
+    void fatal("unhandled_rejection", reason);
+  });
+
+  async function fatal(event: string, error: unknown) {
+    jsonSafeLogger.write({
+      event,
+      requestId: "process",
+      endpoint: "process_safety_net",
+      status: "failure",
+      durationMs: 0,
+      errorCode: sanitizeLogCode(
+        error instanceof Error ? error.name.toLowerCase() : typeof error
+      )
+    });
+    try {
+      await shutdown();
+    } finally {
+      process.exit(1);
+    }
+  }
 }

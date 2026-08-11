@@ -6,6 +6,7 @@ import {
   type BadgeAssetStorage
 } from "../badges/badgeAssetStorage.ts";
 import type { SessionTokenService } from "../authorization/sessionTokenService.ts";
+import { AuthorizationError } from "../authorization/contracts.ts";
 
 export const ME_PUBLIC_BADGES_PATH = "/api/me/public-badges";
 const ICON_PREFIX = "/api/public/badge-icons/";
@@ -41,8 +42,15 @@ export async function handlePublicBadges(
       writeJson(response, 200, {
         items: readable.filter((item) => item.exists).map((item) => item.badge)
       });
-    } catch {
-      writeJson(response, 401, { error: "AUTHENTICATION_REQUIRED" });
+    } catch (error) {
+      // A suspended account is authenticated but not permitted to act, which is
+      // 403; only a missing or invalid session is 401.
+      if (error instanceof AuthorizationError &&
+          error.code === "ACCOUNT_NOT_ACTIVE") {
+        writeJson(response, 403, { error: "ACCOUNT_NOT_ACTIVE" });
+      } else {
+        writeJson(response, 401, { error: "AUTHENTICATION_REQUIRED" });
+      }
     }
     return true;
   }

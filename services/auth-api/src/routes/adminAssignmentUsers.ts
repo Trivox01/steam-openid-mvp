@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthorizationService } from "../authorization/authorizationService.ts";
+import { AuthorizationError } from "../authorization/contracts.ts";
 import type { SessionTokenService } from "../authorization/sessionTokenService.ts";
 
 export const ASSIGNMENT_USERS_PATH = "/api/admin/badge-assignment-users";
@@ -32,10 +33,13 @@ export async function handleAdminAssignmentUsers(
     });
     return writeJson(response, 200, { ...result, page, pageSize });
   } catch (error) {
-    const code = typeof error === "object" && error && "code" in error
-      ? String(error.code) : "USER_SEARCH_FAILED";
+    // Only the closed authorization union is echoed; anything else collapses so a
+    // storage driver code can never surface as an API error code.
+    const code = error instanceof AuthorizationError
+      ? error.code : "USER_SEARCH_FAILED";
     return writeJson(response, code === "AUTHENTICATION_REQUIRED" ? 401
-      : code === "PERMISSION_DENIED" ? 403 : 500, { error: code });
+      : code === "PERMISSION_DENIED" || code === "ACCOUNT_NOT_ACTIVE" ? 403
+        : 500, { error: code });
   }
 }
 
