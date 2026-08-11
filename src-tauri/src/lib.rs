@@ -102,11 +102,22 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
+/// Registers every Tauri plugin the desktop app depends on.
+///
+/// Declaring the crate in `Cargo.toml` and granting ACL permissions is not enough:
+/// a plugin that is never handed to the builder has no state and no IPC commands,
+/// so `check()` fails at runtime. Keeping registration in one function lets the
+/// test suite prove the updater is wired without duplicating the builder chain.
+pub fn register_plugins<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    register_plugins(tauri::Builder::default())
         .setup(|app| {
             let state = database::open_database(app.handle()).map_err(std::io::Error::other)?;
             app.manage(state);
