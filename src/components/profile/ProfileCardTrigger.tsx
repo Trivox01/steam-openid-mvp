@@ -102,7 +102,7 @@ export function ProfileCardTrigger({
           {status === "error" && (
             <div className="profile-card__error" role="alert">
               <p>{t("profile.loadError")}</p>
-              <button type="button" onClick={() => void requestOpen()}>{t("common.retry")}</button>
+              <button type="button" onClick={() => void requestOpen()}>{t("state.retry")}</button>
             </div>
           )}
           {status === "ready" && summary && <ProfileCard summary={summary} onAction={onAction ? () => { setOpen(false); onAction(); } : undefined} />}

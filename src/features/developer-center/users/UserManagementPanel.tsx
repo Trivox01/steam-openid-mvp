@@ -104,7 +104,7 @@ export function UserManagementPanel({
       {notice && <p className="user-status-notice" role="status">{notice}</p>}
       {state === "loading" ? <Surface className="badge-state">{t("developer.users.loading")}</Surface>
         : state === "error" ? <Surface className="badge-state" role="alert">
-          <p>{t("developer.users.error")}</p><button type="button" onClick={() => void load()}>{t("common.retry")}</button>
+          <p>{t("developer.users.error")}</p><button type="button" onClick={() => void load()}>{t("state.retry")}</button>
         </Surface>
           : !items.length ? <Surface className="badge-state"><Users/><p>{t("developer.users.empty")}</p></Surface>
             : <Surface className="user-table-wrap"><table className="user-table">
@@ -199,7 +199,7 @@ function UserDetailsDrawer({
         <button ref={closeButton} type="button" onClick={onClose} aria-label={t("common.close")}><X/></button></header>
       {state === "loading" ? <UserDetailsSkeleton label={t("developer.users.loadingDetails")}/>
         : state === "error" || !user ? <div className="badge-state" role="alert"><p>{t("developer.users.detailsError")}</p>
-          <button type="button" onClick={() => { setState("loading"); setRevision((value) => value + 1); }}>{t("common.retry")}</button></div>
+          <button type="button" onClick={() => { setState("loading"); setRevision((value) => value + 1); }}>{t("state.retry")}</button></div>
           : <div className="user-details-content">
             <ProfileAvatar src={user.avatarUrl} name={user.displayName ?? user.steamNickname ?? user.id}/>
             <h4 dir="auto">{user.displayName ?? user.steamNickname ?? t("developer.users.unknown")}</h4>
