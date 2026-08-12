@@ -77,7 +77,7 @@ export function StatisticsPage({
 
   if (state.status === "loading") return <LoadingView />;
   if (state.status === "error") {
-    return <ErrorView message={t("statistics.loadError")} onRetry={() => location.reload()} />;
+    return <ErrorView message={t("statistics.loadError")} onRetry={state.retry} />;
   }
   if (state.status !== "success" || state.data.games.length === 0) {
     return <EmptyView title={t("statistics.empty")} description={t("statistics.emptyDescription")} />;

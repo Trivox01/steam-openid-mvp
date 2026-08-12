@@ -85,8 +85,8 @@ export function GameDetailsPage({
   if (gameState.status === "loading" || achievementsState.status === "loading") {
     return <LoadingView size="md" label={t("gameDetails.allAchievements")} delay={120} />;
   }
-  if (gameState.status === "error") return <ErrorView message={t("gameDetails.loadError")} onRetry={() => location.reload()} />;
-  if (achievementsState.status === "error") return <ErrorView message={t("gameDetails.sync.error")} onRetry={() => location.reload()} />;
+  if (gameState.status === "error") return <ErrorView message={t("gameDetails.loadError")} onRetry={gameState.retry} />;
+  if (achievementsState.status === "error") return <ErrorView message={t("gameDetails.sync.error")} onRetry={achievementsState.retry} />;
   if (!game || !experience) {
     return <EmptyView title={t("gameDetails.gameNotFound")} description={t("gameDetails.gameNotFoundDescription")} />;
   }

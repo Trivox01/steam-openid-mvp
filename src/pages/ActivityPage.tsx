@@ -1,6 +1,7 @@
 import { useMemo, useState, type ComponentType } from "react";
 import { CheckCircle2, Flag, Gamepad2, Medal, TrendingUp } from "lucide-react";
 import { EmptyView, ErrorView, LoadingView } from "../components/ui/StateViews";
+import { asyncErrorMessageKey } from "../components/ui/asyncErrorMessage";
 import { FilterToolbar, SegmentedFilter } from "../components/ui/FilterBar";
 import { PageHeader } from "../components/ui/PageHeader";
 import type { ActivityType, PlayerActivity } from "../types";
@@ -26,8 +27,8 @@ export function ActivityPage() {
   const activities = useMemo(() => source.filter((item) => filter === "all" || item.type === filter), [source, filter]);
   const groups = groupActivities(activities, language, t("activity.today"));
   if (state.status === "loading" || gamesState.status === "loading") return <LoadingView />;
-  if (state.status === "error") return <ErrorView message={state.error} onRetry={() => location.reload()} />;
-  if (gamesState.status === "error") return <ErrorView message={gamesState.error} onRetry={() => location.reload()} />;
+  if (state.status === "error") return <ErrorView message={t(asyncErrorMessageKey(state.error))} onRetry={state.retry} />;
+  if (gamesState.status === "error") return <ErrorView message={t(asyncErrorMessageKey(gamesState.error))} onRetry={gamesState.retry} />;
   return (
     <section className="content-page">
       <PageHeader eyebrow={t("activity.eyebrow")} title={t("activity.title")} description={t("activity.description")} />

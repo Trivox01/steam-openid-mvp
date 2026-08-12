@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { AchievementListCard } from "../components/achievements/AchievementListCard";
 import { EmptyView, ErrorView, LoadingView } from "../components/ui/StateViews";
+import { asyncErrorMessageKey } from "../components/ui/asyncErrorMessage";
 import { FilterToolbar, SearchField, SegmentedFilter, SelectControl } from "../components/ui/FilterBar";
 import { PageHeader } from "../components/ui/PageHeader";
 import type { AchievementId, GameId } from "../types";
@@ -29,8 +30,8 @@ export function AchievementsPage({ onOpenAchievement }: { onOpenAchievement: (id
     .filter((achievement) => filter === "all" || (filter === "unlocked" ? isAchievementUnlocked(achievement) : filter === "locked" ? achievement.unlockStateKnown !== false && !isAchievementUnlocked(achievement) : filter === "rare" ? (knownAchievementRarity(achievement) ?? 101) < 10 : !!achievement.isHidden))
     .sort((a, b) => sortAchievements(a, b, sort)), [source, games, query, filter, sort]);
   if (state.status === "loading" || gamesState.status === "loading") return <LoadingView />;
-  if (state.status === "error") return <ErrorView message={state.error} onRetry={() => location.reload()} />;
-  if (gamesState.status === "error") return <ErrorView message={gamesState.error} onRetry={() => location.reload()} />;
+  if (state.status === "error") return <ErrorView message={t(asyncErrorMessageKey(state.error))} onRetry={state.retry} />;
+  if (gamesState.status === "error") return <ErrorView message={t(asyncErrorMessageKey(gamesState.error))} onRetry={gamesState.retry} />;
 
   return (
     <section className="content-page">

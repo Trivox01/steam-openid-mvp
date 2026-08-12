@@ -18,6 +18,9 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   const { language, t } = useTranslation();
   const [tool, setTool] = useState<NexusTool>();
   const [error, setError] = useState(false);
+  // Retry re-runs this page's own load. A full reload would throw away the Steam
+  // session state and every other loaded page.
+  const [loadRevision, setLoadRevision] = useState(0);
   const [target, setTarget] = useState<{ url: string; domain: string }>();
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState(false);
@@ -46,9 +49,9 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
   const signedIn = Boolean(services.steamOpenId?.getActiveSession());
   useEffect(() => {
     const controller = new AbortController();
-    services.tools?.get(slug, controller.signal).then((value) => { setTool(value); setSummary(value.ratingSummary); }).catch(() => setError(true));
+    services.tools?.get(slug, controller.signal).then((value) => { setError(false); setTool(value); setSummary(value.ratingSummary); }).catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => controller.abort();
-  }, [slug]);
+  }, [slug, loadRevision]);
   useEffect(() => {
     if (!tool) return;
     const controller = new AbortController();
@@ -194,7 +197,7 @@ export function ToolDetailsPage({ slug, onBack }: { slug: string; onBack: () => 
       setFavBusy(false);
     }
   };
-  if (error) return <ErrorView message={t("tools.loadError")} onRetry={() => location.reload()} />;
+  if (error) return <ErrorView message={t("tools.loadError")} onRetry={() => setLoadRevision((value) => value + 1)} />;
   if (!tool) return <LoadingView label={t("state.loading")} />;
   const sortedBadges = [...tool.badges].sort((left, right) => left.displayOrder - right.displayOrder);
   const badgeSlots = tool.category ? 2 : 3;
