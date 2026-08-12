@@ -41,6 +41,11 @@ import { InMemoryToolAnalyticsRepository, type ToolAnalyticsRepository } from ".
 import { PostgresToolAnalyticsRepository } from "./postgres/postgresToolAnalyticsRepository.ts";
 import { InMemoryToolFavoriteRepository, type ToolFavoriteRepository } from "../tools/toolFavoriteRepository.ts";
 import { PostgresToolFavoriteRepository } from "./postgres/postgresToolFavoriteRepository.ts";
+import {
+  InMemoryDesktopSessionRepository,
+  PostgresDesktopSessionRepository,
+  type DesktopSessionRepository
+} from "../desktopSessions/desktopSessionRepository.ts";
 
 export interface InitializedStorage {
   repository: AuthTransactionRepository;
@@ -58,6 +63,7 @@ export interface InitializedStorage {
   toolReviewReplyRepository: ToolReviewDeveloperReplyRepository;
   toolAnalyticsRepository: ToolAnalyticsRepository;
   toolFavoriteRepository: ToolFavoriteRepository;
+  desktopSessionRepository: DesktopSessionRepository;
   close(): Promise<void>;
 }
 
@@ -95,6 +101,8 @@ export async function initializeStorage(
     const toolReviewReplyRepository = new InMemoryToolReviewDeveloperReplyRepository();
     const toolAnalyticsRepository = new InMemoryToolAnalyticsRepository();
     const toolFavoriteRepository = new InMemoryToolFavoriteRepository();
+    const desktopSessionRepository = new InMemoryDesktopSessionRepository();
+    await desktopSessionRepository.validateSchema();
     toolReviewRepository.attachReportSource(toolReviewReportRepository);
     toolReviewRepository.attachHelpfulSource(toolReviewHelpfulRepository);
     toolReviewRepository.attachReplySource(toolReviewReplyRepository);
@@ -114,6 +122,7 @@ export async function initializeStorage(
       toolReviewReplyRepository,
       toolAnalyticsRepository,
       toolFavoriteRepository,
+      desktopSessionRepository,
       async close() {}
     };
   }
@@ -157,6 +166,8 @@ export async function initializeStorage(
     await toolAnalyticsRepository.validateSchema();
     const toolFavoriteRepository = new PostgresToolFavoriteRepository(pool);
     await toolFavoriteRepository.validateSchema();
+    const desktopSessionRepository = new PostgresDesktopSessionRepository(pool);
+    await desktopSessionRepository.validateSchema();
     return {
       repository,
       authorizationRepository,
@@ -173,6 +184,7 @@ export async function initializeStorage(
       toolReviewReplyRepository,
       toolAnalyticsRepository,
       toolFavoriteRepository,
+      desktopSessionRepository,
       async close() {
         await pool.end();
       }

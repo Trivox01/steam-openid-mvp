@@ -51,6 +51,8 @@ import type { ToolAssetStorages } from "./tools/toolAssetStorage.ts";
 import type { ToolRatingService } from "./tools/toolRatingService.ts";
 import type { ToolReviewModerationService, ToolReviewInteractionService, ToolReviewService } from "./tools/toolReviewService.ts";
 import type { ToolAnalyticsService } from "./tools/toolAnalyticsService.ts";
+import { handleDesktopSessions } from "./routes/desktopSessions.ts";
+import type { DesktopSessionService } from "./desktopSessions/desktopSessionService.ts";
 
 type RouterDependencies = SteamAuthRouteDependencies & {
   badges?: BadgeService;
@@ -73,6 +75,8 @@ type RouterDependencies = SteamAuthRouteDependencies & {
   toolAnalytics?: ToolAnalyticsService;
   toolEventRateLimiter?: PollingRateLimiter;
   toolFavoriteRateLimiter?: PollingRateLimiter;
+  desktopSessions?: DesktopSessionService;
+  desktopSessionRateLimiter?: PollingRateLimiter;
 };
 
 export function createRouter(
@@ -100,6 +104,10 @@ export function createRouter(
     }
     const isSteamAuthRoute =
       Boolean(handleSteamAuth) && url.pathname.startsWith("/v1/auth/steam/");
+    const isDesktopSessionRoute =
+      Boolean(steamAuthDependencies?.desktopSessions) &&
+      Boolean(steamAuthDependencies?.desktopSessionRateLimiter) &&
+      url.pathname.startsWith("/v1/auth/desktop/");
     const isAuthorizationRoute =
       url.pathname === ME_AUTHORIZATION_PATH &&
       Boolean(steamAuthDependencies?.authorization) &&
@@ -138,6 +146,7 @@ export function createRouter(
       Boolean(steamAuthDependencies?.authorization) && Boolean(steamAuthDependencies?.sessions);
     if (
       isSteamAuthRoute ||
+      isDesktopSessionRoute ||
       isAuthorizationRoute ||
       isBadgeRoute ||
       isBadgeAssignmentRoute ||
@@ -188,6 +197,14 @@ export function createRouter(
     // response and the failure was invisible.
     const startedAt = Date.now();
     try {
+      if (
+        isDesktopSessionRoute &&
+        await handleDesktopSessions(request, response, url, {
+          sessions: steamAuthDependencies!.desktopSessions!,
+          rateLimiter: steamAuthDependencies!.desktopSessionRateLimiter!,
+          config: steamAuthDependencies!.config
+        })
+      ) return;
       if (
         isToolsRoute &&
         await handleTools(request, response, url, {

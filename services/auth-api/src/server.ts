@@ -23,6 +23,7 @@ import { createToolAssetStorages } from "./tools/toolAssetStorage.ts";
 import { ToolRatingService } from "./tools/toolRatingService.ts";
 import { ToolReviewService, ToolReviewModerationService, ToolReviewInteractionService } from "./tools/toolReviewService.ts";
 import { ToolAnalyticsService } from "./tools/toolAnalyticsService.ts";
+import { DesktopSessionService } from "./desktopSessions/desktopSessionService.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -75,6 +76,12 @@ async function main() {
         }
       : undefined
   );
+  const desktopSessions = new DesktopSessionService(
+    config.sessionSecret,
+    storage.desktopSessionRepository,
+    storage.authorizationRepository,
+    sessions
+  );
   const badges = new BadgeService(storage.badgeRepository);
   const badgeAssignments = new BadgeAssignmentService(
     storage.badgeAssignmentRepository
@@ -124,6 +131,8 @@ async function main() {
       logger: jsonSafeLogger,
       authorization,
       sessions,
+      desktopSessions,
+      desktopSessionRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 500, windowMs: 60_000, maxRequests: 30 }),
       badges,
       badgeAssignments,
       badgeAssets,

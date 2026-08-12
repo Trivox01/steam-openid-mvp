@@ -41,6 +41,17 @@ export class SessionTokenService {
     // the login path would hand out a credential that every request then rejects.
     assertActive(user);
     await this.enrichProfile?.(steamId64).catch(() => undefined);
+    return this.issueForUser(user);
+  }
+
+  async issueForUserId(userId: string) {
+    const user = await this.repository.findUserById(userId);
+    if (!user) throw new AuthorizationError("AUTHENTICATION_REQUIRED");
+    assertActive(user);
+    return this.issueForUser(user);
+  }
+
+  private issueForUser(user: AuthorizationUser) {
     const issuedAt = Math.floor(this.now() / 1000);
     const expiresAt = issuedAt + Math.floor(SESSION_TTL_MS / 1000);
     const claims: SessionClaims = {
@@ -53,7 +64,9 @@ export class SessionTokenService {
     const payload = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
     return {
       token: `${payload}.${this.sign(payload)}`,
-      expiresAt: new Date(expiresAt * 1000).toISOString()
+      expiresAt: new Date(expiresAt * 1000).toISOString(),
+      userId: user.id,
+      sessionEpoch: user.sessionEpoch
     };
   }
 

@@ -18,6 +18,11 @@ import {
   type SteamAssertionCheckResult
 } from "../src/steam/openIdTypes.ts";
 import { InMemoryAuthTransactionRepository } from "../src/storage/authRepository.ts";
+import { InMemoryAuthorizationRepository } from "../src/authorization/authorizationRepository.ts";
+import { AuthorizationService } from "../src/authorization/authorizationService.ts";
+import { SessionTokenService } from "../src/authorization/sessionTokenService.ts";
+import { DesktopSessionService } from "../src/desktopSessions/desktopSessionService.ts";
+import { InMemoryDesktopSessionRepository } from "../src/desktopSessions/desktopSessionRepository.ts";
 
 const NOW = Date.parse("2026-07-28T12:00:00Z");
 const STEAM_ID = "76561198000000000";
@@ -230,7 +235,7 @@ test("start returns correct Steam fields without leaking the poll secret", async
   try {
     const { response, body } = await start(harness);
     assert.equal(response.status, 201);
-    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
     assert.equal(body.pollingInterval, 3000);
     assert.match(body.pollSecret, /^[A-Za-z0-9_-]{43}$/);
     const login = new URL(body.steamLoginUrl);
@@ -243,6 +248,59 @@ test("start returns correct Steam fields without leaking the poll secret", async
     const stored = await harness.repository.find(body.authRequestId);
     assert.ok(stored);
     assert.notEqual(stored.pollSecretHash, body.pollSecret);
+  } finally {
+    await closeHarness(harness);
+  }
+});
+
+test("verified Steam login creates a hash-only persistent desktop session", async () => {
+  let now = NOW;
+  const repository = new InMemoryAuthTransactionRepository();
+  const transactions = new AuthTransactionService(repository, { now: () => now });
+  const authorizationRepository = new InMemoryAuthorizationRepository();
+  const authorization = new AuthorizationService(authorizationRepository, () => now);
+  const access = new SessionTokenService(CONFIG.sessionSecret, authorizationRepository, () => now);
+  const desktopRepository = new InMemoryDesktopSessionRepository();
+  const desktopSessions = new DesktopSessionService(
+    CONFIG.sessionSecret, desktopRepository, authorizationRepository, access, () => now
+  );
+  const checker = new FakeChecker();
+  const server = createServer(createRouter({
+    config: CONFIG,
+    transactions,
+    verifier: new SteamOpenIdVerifier(checker, { realm: CONFIG.openIdRealm, now: () => now }),
+    rateLimiter: new PollingRateLimiter({ now: () => now }),
+    desktopSessionRateLimiter: new PollingRateLimiter({ minimumIntervalMs: 0, now: () => now }),
+    logger: new CapturingLogger(),
+    authorization,
+    sessions: access,
+    desktopSessions,
+    now: () => now
+  }));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const harness = {
+    server,
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    repository,
+    transactions,
+    checker,
+    logger: new CapturingLogger(),
+    setNow(value: number) { now = value; }
+  } satisfies Harness;
+  try {
+    const started = (await start(harness)).body;
+    await transactions.markVerified(started.authRequestId, STEAM_ID, "2026-07-28T12:00:00Zpersistent");
+    const response = await poll(harness, started);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    const payload = await response.json() as Record<string, unknown>;
+    assert.equal(typeof payload.sessionToken, "string");
+    assert.equal(typeof payload.refreshCredential, "string");
+    assert.equal(typeof payload.refreshExpiresAt, "string");
+    assert.equal(desktopRepository.sessions.size, 1);
+    assert.equal(JSON.stringify([...desktopRepository.sessions.values()]).includes(String(payload.refreshCredential)), false);
   } finally {
     await closeHarness(harness);
   }

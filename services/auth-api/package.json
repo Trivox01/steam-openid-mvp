@@ -12,6 +12,7 @@
     "test:storage": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/storage.test.ts",
     "test:postgres": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.integration.test.ts",
     "test:authorization": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/authorization.test.ts",
+    "test:persistent-sessions": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/desktopSessions.test.ts",
     "test:release-channel": "node --test tests/releaseChannel.test.mjs"
   },
   "devDependencies": {

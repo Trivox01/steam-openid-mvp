@@ -28,6 +28,9 @@ import { ToolAnalyticsService } from "../src/tools/toolAnalyticsService.ts";
 import { ToolService } from "../src/tools/toolService.ts";
 import { ToolRatingService } from "../src/tools/toolRatingService.ts";
 import { ToolReviewService, ToolReviewModerationService, ToolReviewInteractionService } from "../src/tools/toolReviewService.ts";
+import { PostgresDesktopSessionRepository } from "../src/desktopSessions/desktopSessionRepository.ts";
+import { DesktopSessionError, DesktopSessionService } from "../src/desktopSessions/desktopSessionService.ts";
+import { SessionTokenService } from "../src/authorization/sessionTokenService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -52,6 +55,75 @@ test("PostgreSQL repository integration and concurrency", {
     const user = await authorizationRepository.ensureAuthenticatedUser(
       "76561198000000000",
       "2026-07-28T12:00:00.000Z"
+    );
+    const desktopSessionRepository = new PostgresDesktopSessionRepository(pool);
+    await desktopSessionRepository.validateSchema();
+    let sessionNow = Date.parse("2026-08-12T12:00:00.000Z");
+    const accessTokens = new SessionTokenService(
+      "postgres-integration-access-secret-with-32-bytes",
+      authorizationRepository,
+      () => sessionNow
+    );
+    const desktopSessions = new DesktopSessionService(
+      "postgres-integration-refresh-secret-with-32-bytes",
+      desktopSessionRepository,
+      authorizationRepository,
+      accessTokens,
+      () => sessionNow
+    );
+    const persistentLogin = await desktopSessions.issueForSteamIdentity(
+      "76561198000000000",
+      "2026-07-28T12:00:00.000Z"
+    );
+    const rotations = await Promise.all(Array.from(
+      { length: 8 },
+      () => desktopSessions.refresh(persistentLogin.refreshCredential)
+    ));
+    assert.equal(new Set(rotations.map((item) => item.refreshCredential)).size, 1);
+    const storedSession = await pool.query<{ token_hash: string }>(
+      "SELECT token_hash FROM desktop_sessions WHERE user_id=$1",
+      [user.id]
+    );
+    assert.equal(storedSession.rows.length, 2);
+    assert.ok(storedSession.rows.every((row) => /^[a-f0-9]{64}$/.test(row.token_hash)));
+    assert.equal(JSON.stringify(storedSession.rows).includes(persistentLogin.refreshCredential), false);
+
+    const lostResponseLogin = await desktopSessions.issueForSteamIdentity(
+      "76561198000000000",
+      new Date(sessionNow).toISOString()
+    );
+    const credentialA = lostResponseLogin.refreshCredential;
+    const lostResponse = await desktopSessions.refresh(credentialA);
+    const credentialB = lostResponse.refreshCredential;
+    sessionNow += 4_000;
+
+    // A new service instance represents a process restart or another backend
+    // instance sharing PostgreSQL and the same server-side signing secret.
+    const restartedDesktopSessions = new DesktopSessionService(
+      "postgres-integration-refresh-secret-with-32-bytes",
+      new PostgresDesktopSessionRepository(pool),
+      authorizationRepository,
+      accessTokens,
+      () => sessionNow
+    );
+    const recovered = await restartedDesktopSessions.refresh(credentialA);
+    assert.equal(recovered.refreshCredential, credentialB);
+    const familyAfterRecovery = await pool.query<{ generation: number; revoked_at: string | null }>(
+      "SELECT generation, revoked_at FROM desktop_sessions WHERE token_family_id=$1 ORDER BY generation",
+      [credentialA.slice(0, 36)]
+    );
+    assert.deepEqual(familyAfterRecovery.rows.map((row) => Number(row.generation)), [0, 1]);
+    assert.equal(familyAfterRecovery.rows.filter((row) => row.revoked_at === null).length, 2);
+
+    const credentialC = (await restartedDesktopSessions.refresh(credentialB)).refreshCredential;
+    sessionNow += 4_001;
+    await assert.rejects(
+      restartedDesktopSessions.refresh(credentialA),
+      (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REUSED"
+    );
+    await assert.rejects(
+      restartedDesktopSessions.refresh(credentialC),
+      (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REVOKED"
     );
     assert.equal(await authorization.bootstrapOwner("76561198000000000"), "assigned");
     assert.equal(await authorization.bootstrapOwner("76561198000000000"), "owner_exists");
@@ -443,7 +515,10 @@ test("PostgreSQL repository integration and concurrency", {
     );
     const names = columns.rows.map((row) => row.column_name);
     assert.equal(names.includes("poll_secret"), false);
-    assert.equal(names.some((name) => /assertion|api_key|token/.test(name)), false);
+    assert.equal(names.some((name) =>
+      /assertion|api_key|session_token|access_token|refresh_token|refresh_credential/.test(name) ||
+      /(^|_)token$/.test(name)
+    ), false);
 
     const migrations = await loadPostgresMigrations();
     await assert.rejects(runPostgresMigrations(pool, [

@@ -18,6 +18,9 @@ import { StorageError } from "../storage/authRepository.ts";
 import type { AuthorizationService } from "../authorization/authorizationService.ts";
 import type { SessionTokenService } from "../authorization/sessionTokenService.ts";
 import { getClientAddress } from "../security/requestSecurity.ts";
+import type { DesktopSessionService } from "../desktopSessions/desktopSessionService.ts";
+import { DesktopSessionError } from "../desktopSessions/desktopSessionService.ts";
+import { AuthorizationError } from "../authorization/contracts.ts";
 
 const MAX_JSON_BODY_BYTES = 4_096;
 const POLLING_INTERVAL_MS = 3_000;
@@ -34,6 +37,7 @@ export interface SteamAuthRouteDependencies {
   logger: SafeLogger;
   authorization?: AuthorizationService;
   sessions?: SessionTokenService;
+  desktopSessions?: DesktopSessionService;
   now?: () => number;
 }
 
@@ -204,11 +208,10 @@ async function handleStatus(
       status.steamId &&
       status.authenticatedAt &&
       dependencies.authorization &&
-      dependencies.sessions
-      ? await dependencies.sessions.issueForSteamIdentity(
-          status.steamId,
-          status.authenticatedAt
-        )
+      (dependencies.desktopSessions || dependencies.sessions)
+      ? dependencies.desktopSessions
+        ? await dependencies.desktopSessions.issueForSteamIdentity(status.steamId, status.authenticatedAt)
+        : await dependencies.sessions!.issueForSteamIdentity(status.steamId, status.authenticatedAt)
       : undefined;
     if (session && dependencies.config.bootstrapOwnerSteamId64) {
       await dependencies.authorization!.bootstrapOwner(
@@ -219,8 +222,12 @@ async function handleStatus(
       ...status,
       ...(session
         ? {
-            sessionToken: session.token,
-            sessionExpiresAt: session.expiresAt
+            sessionToken: "sessionToken" in session ? session.sessionToken : session.token,
+            sessionExpiresAt: "sessionExpiresAt" in session ? session.sessionExpiresAt : session.expiresAt,
+            ...("refreshCredential" in session ? {
+              refreshCredential: session.refreshCredential,
+              refreshExpiresAt: session.refreshExpiresAt
+            } : {})
           }
         : {})
     });
@@ -286,7 +293,7 @@ function writeJson(
   const body = JSON.stringify(payload);
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
+    "cache-control": "private, no-store",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
     "content-length": Buffer.byteLength(body)
@@ -345,7 +352,9 @@ function safeErrorCode(error: unknown) {
     error instanceof AuthTransactionError ||
     error instanceof PollingRateLimitError ||
     error instanceof CallbackError ||
-    error instanceof StorageError
+    error instanceof StorageError ||
+    error instanceof DesktopSessionError ||
+    error instanceof AuthorizationError
   ) {
     return error instanceof PollingRateLimitError
       ? "polling_rate_limited"
@@ -361,6 +370,7 @@ function safeErrorCode(error: unknown) {
 function responseStatus(code: string, fallback: number) {
   if (code === "polling_rate_limited") return 429;
   if (code === "request_body_too_large") return 413;
+  if (code === "ACCOUNT_NOT_ACTIVE") return 403;
   if (code === "database_unavailable" || code === "internal_error") return 503;
   return fallback;
 }
