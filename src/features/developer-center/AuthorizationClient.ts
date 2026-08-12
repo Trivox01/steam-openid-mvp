@@ -24,13 +24,16 @@ export interface AuthorizationApi {
 export class AuthorizationClient implements AuthorizationApi {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly sessions?: { authenticatedFetch(url: string, init?: RequestInit): Promise<Response> };
 
   constructor(
     baseUrl: string,
-    timeoutMs = 15_000
+    timeoutMs = 15_000,
+    sessions?: { authenticatedFetch(url: string, init?: RequestInit): Promise<Response> }
   ) {
     this.baseUrl = baseUrl;
     this.timeoutMs = timeoutMs;
+    this.sessions = sessions;
   }
 
   async loadSnapshot(token: string, signal?: AbortSignal) {
@@ -40,9 +43,10 @@ export class AuthorizationClient implements AuthorizationApi {
       : timeoutSignal;
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}/api/me/authorization`, {
+      const request = this.sessions?.authenticatedFetch.bind(this.sessions) ?? fetch;
+      response = await request(`${this.baseUrl}/api/me/authorization`, {
         method: "GET",
-        headers: { authorization: `Bearer ${token}` },
+        ...(!this.sessions ? { headers: { authorization: `Bearer ${token}` } } : {}),
         signal: requestSignal
       });
     } catch {

@@ -15,12 +15,9 @@ export class PublicBadgeClient {
   ) {}
 
   async list(signal?: AbortSignal): Promise<PublicBadge[]> {
-    const session = this.sessions.getActiveSession();
-    if (!session) throw new PublicBadgeClientError("unauthorized");
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}/api/me/public-badges`, {
-        headers: { authorization: `Bearer ${session.token}` },
+      response = await this.sessions.authenticatedFetch(`${this.baseUrl}/api/me/public-badges`, {
         signal
       });
     } catch (error) {
@@ -28,7 +25,6 @@ export class PublicBadgeClient {
       throw new PublicBadgeClientError("network");
     }
     if (response.status === 401) {
-      this.sessions.expireSession();
       throw new PublicBadgeClientError("unauthorized");
     }
     if (!response.ok) throw new PublicBadgeClientError("server");

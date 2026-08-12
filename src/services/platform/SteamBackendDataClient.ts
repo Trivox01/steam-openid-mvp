@@ -1,6 +1,7 @@
 import type { SteamGameAchievementsDto, SteamOwnedGamesResult } from "../../types/index.ts";
 import { SteamIntegrationError } from "../../integrations/steam/SteamIntegrationError.ts";
 import type { SteamBackendSession } from "../../types/steamOpenId.ts";
+import { DesktopSessionBridgeError } from "./TauriDesktopSessionBridge.ts";
 
 export interface SteamDataGateway {
   readonly available: boolean;
@@ -11,6 +12,7 @@ export interface SteamDataGateway {
 export interface SteamSessionProvider {
   getActiveSession(): SteamBackendSession | undefined;
   expireSession(): void;
+  authenticatedFetch(url: string, init?: RequestInit): Promise<Response>;
 }
 
 export class SteamBackendDataClient implements SteamDataGateway {
@@ -51,21 +53,23 @@ export class SteamBackendDataClient implements SteamDataGateway {
     validate: (value: unknown) => value is T,
     signal?: AbortSignal
   ): Promise<T> {
-    const session = this.sessions.getActiveSession();
-    if (!session) throw new SteamIntegrationError("The Nexus session has expired.", "session_expired");
     const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
     const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await this.sessions.authenticatedFetch(`${this.baseUrl}${path}`, {
         method,
         headers: {
-          authorization: `Bearer ${session.token}`,
           ...(method === "POST" ? { "content-type": "application/json" } : {})
         },
         signal: requestSignal
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof DesktopSessionBridgeError &&
+          ["none", "invalid", "account_not_active"].includes(error.kind)) {
+        throw new SteamIntegrationError("The Nexus session has expired.",
+          error.kind === "account_not_active" ? "ACCOUNT_NOT_ACTIVE" : "session_expired");
+      }
       throw new SteamIntegrationError(
         "The Steam data service could not be reached.",
         signal?.aborted ? "cancelled" : timeoutSignal.aborted ? "timeout" : "network"
@@ -81,7 +85,6 @@ export class SteamBackendDataClient implements SteamDataGateway {
       const code = isRecord(payload) && typeof payload.error === "string"
         ? payload.error
         : response.status === 401 ? "session_expired" : "steam_api_unavailable";
-      if (response.status === 401) this.sessions.expireSession();
       throw new SteamIntegrationError("Steam synchronization failed.", code);
     }
     if (!validate(payload)) {

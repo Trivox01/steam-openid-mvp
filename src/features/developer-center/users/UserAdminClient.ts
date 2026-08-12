@@ -98,16 +98,11 @@ export class UserAdminClient {
     signal?: AbortSignal,
     init: RequestInit = {}
   ) {
-    const session = this.sessions.getActiveSession();
-    if (!session) throw new UserAdminClientError("AUTHENTICATION_REQUIRED", 401);
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await this.sessions.authenticatedFetch(`${this.baseUrl}${path}`, {
         ...init,
-        headers: {
-          ...init.headers,
-          authorization: `Bearer ${session.token}`
-        },
+        headers: { ...init.headers },
         signal
       });
     } catch (error) {
@@ -116,7 +111,6 @@ export class UserAdminClient {
       }
       throw new UserAdminClientError("NETWORK_ERROR");
     }
-    if (response.status === 401) this.sessions.expireSession();
     const payload: unknown = await response.json().catch(() => undefined);
     if (!response.ok) {
       const code = payload && typeof payload === "object" && "error" in payload

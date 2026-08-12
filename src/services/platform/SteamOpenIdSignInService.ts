@@ -6,6 +6,10 @@ import type {
   SteamOpenIdStatus
 } from "../../types/steamOpenId";
 import type { SteamOpenIdApi } from "./SteamOpenIdClient";
+import {
+  DesktopSessionBridgeError,
+  type DesktopSessionBridge
+} from "./TauriDesktopSessionBridge.ts";
 
 export interface SteamOpenIdStateStore {
   getState(): Promise<SteamOpenIdDesktopState>;
@@ -26,8 +30,12 @@ export class SteamOpenIdSignInService {
   private readonly store: SteamOpenIdStateStore;
   private readonly opener: ExternalUrlOpener;
   private readonly wait: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  private readonly desktopSessions: DesktopSessionBridge;
+  private readonly baseUrl: string;
+  private readonly request: typeof fetch;
   private activeSignIn?: AbortController;
   private activeSession?: SteamBackendSession;
+  private refreshFlight?: Promise<SteamBackendSession | undefined>;
   private readonly sessionListeners = new Set<
     (session: SteamBackendSession | undefined) => void
   >();
@@ -36,13 +44,19 @@ export class SteamOpenIdSignInService {
     api: SteamOpenIdApi,
     store: SteamOpenIdStateStore,
     opener: ExternalUrlOpener,
+    desktopSessions: DesktopSessionBridge,
+    baseUrl: string,
     wait: (milliseconds: number, signal: AbortSignal) => Promise<void> =
-      abortableWait
+      abortableWait,
+    request: typeof fetch = fetch
   ) {
     this.api = api;
     this.store = store;
     this.opener = opener;
+    this.desktopSessions = desktopSessions;
+    this.baseUrl = baseUrl;
     this.wait = wait;
+    this.request = request;
   }
 
   getSavedIdentity() {
@@ -54,7 +68,6 @@ export class SteamOpenIdSignInService {
       this.activeSession &&
       Date.parse(this.activeSession.expiresAt) > Date.now()
     ) return this.activeSession;
-    this.clearActiveSession();
     return undefined;
   }
 
@@ -69,10 +82,87 @@ export class SteamOpenIdSignInService {
     this.clearActiveSession();
   }
 
+  async restoreSession() {
+    try {
+      await this.refreshSession();
+      return this.activeSession ? "restored" as const : "signed_out" as const;
+    } catch (error) {
+      if (error instanceof DesktopSessionBridgeError && error.kind === "network") {
+        return "offline" as const;
+      }
+      if (error instanceof DesktopSessionBridgeError &&
+          ["invalid", "account_not_active", "none"].includes(error.kind)) {
+        await this.store.clearAuthenticatedSteamIdentity().catch(() => undefined);
+      }
+      return error instanceof DesktopSessionBridgeError && error.kind === "account_not_active"
+        ? "account_not_active" as const : "signed_out" as const;
+    }
+  }
+
+  async refreshSession() {
+    if (!this.refreshFlight) {
+      this.refreshFlight = this.desktopSessions.refresh(this.baseUrl)
+        .then((session) => {
+          this.activeSession = session;
+          this.notifySession();
+          return session;
+        })
+        .catch((error) => {
+          if (error instanceof DesktopSessionBridgeError &&
+              (error.kind === "invalid" || error.kind === "account_not_active" || error.kind === "none")) {
+            this.clearActiveSession();
+            void this.store.clearAuthenticatedSteamIdentity().catch(() => undefined);
+          }
+          throw error;
+        })
+        .finally(() => { this.refreshFlight = undefined; });
+    }
+    return this.refreshFlight;
+  }
+
+  async authenticatedFetch(url: string, init: RequestInit = {}, optional = false) {
+    let session = this.getActiveSession();
+    if (!session && !optional) {
+      try { session = await this.refreshSession(); }
+      catch (error) {
+        if (error instanceof DesktopSessionBridgeError && error.kind === "account_not_active") {
+          return Response.json({ error: "ACCOUNT_NOT_ACTIVE" }, { status: 403 });
+        }
+        if (error instanceof DesktopSessionBridgeError &&
+            ["none", "invalid"].includes(error.kind)) {
+          return Response.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
+        }
+        throw error;
+      }
+    }
+    const execute = (current?: SteamBackendSession) => this.request(url, {
+      ...init,
+      headers: { ...init.headers, ...(current ? { authorization: `Bearer ${current.token}` } : {}) }
+    });
+    let response = await execute(session);
+    if (response.status !== 401 || !session) return response;
+    let refreshed: SteamBackendSession | undefined;
+    try { refreshed = await this.refreshSession(); }
+    catch (error) {
+      if (error instanceof DesktopSessionBridgeError && error.kind === "account_not_active") {
+        return Response.json({ error: "ACCOUNT_NOT_ACTIVE" }, { status: 403 });
+      }
+      if (error instanceof DesktopSessionBridgeError &&
+          ["none", "invalid"].includes(error.kind)) {
+        return Response.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
+      }
+      throw error;
+    }
+    response = await execute(refreshed);
+    if (response.status === 401) this.clearActiveSession();
+    return response;
+  }
+
   async signOut() {
     this.activeSignIn?.abort();
-    await this.store.clearAuthenticatedSteamIdentity();
-    this.clearActiveSession();
+    try { await this.desktopSessions.logout(this.baseUrl); } catch { /* local Rust command deletes first */ }
+    try { await this.store.clearAuthenticatedSteamIdentity(); }
+    finally { this.clearActiveSession(); }
   }
 
   async signIn(signal: AbortSignal): Promise<SteamOpenIdSignInResult> {
@@ -120,7 +210,12 @@ export class SteamOpenIdSignInService {
         authenticatedAt: status.authenticatedAt,
         authMethod: "steam_openid"
       };
-      await this.store.saveIdentity(identity);
+      await this.desktopSessions.store(status.refreshCredential);
+      try { await this.store.saveIdentity(identity); }
+      catch (error) {
+        await this.desktopSessions.logout(this.baseUrl).catch(() => undefined);
+        throw error;
+      }
       this.activeSession = {
         token: status.sessionToken,
         expiresAt: status.sessionExpiresAt

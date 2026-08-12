@@ -17,7 +17,9 @@ const verifiedStatus = (identity = VERIFIED_IDENTITY, token = "session-token-1")
   status: "verified",
   ...identity,
   sessionToken: token,
-  sessionExpiresAt: new Date(Date.now() + 60_000).toISOString()
+  sessionExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+  refreshCredential: "desktop-refresh-credential",
+  refreshExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString()
 });
 
 function createHarness(statuses, options = {}) {
@@ -69,8 +71,13 @@ function createHarness(statuses, options = {}) {
   };
   const wait = options.wait ??
     (async (_milliseconds, signal) => signal.throwIfAborted());
+  const desktopSessions = options.desktopSessions ?? {
+    async store(value) { state.secureCredentialPresent = Boolean(value); },
+    async refresh() { throw new Error("no_credential"); },
+    async logout() { state.secureCredentialPresent = false; }
+  };
   return {
-    service: new SteamOpenIdSignInService(api, store, opener, wait),
+    service: new SteamOpenIdSignInService(api, store, opener, desktopSessions, "https://api.example.com", wait),
     calls,
     saved,
     opened,
@@ -171,7 +178,9 @@ test("a restarted service remains signed out and sees the same device id", async
       }
     },
     harness.store,
-    { async open() {} }
+    { async open() {} },
+    { async store() {}, async refresh() { throw new Error("no_credential"); }, async logout() {} },
+    "https://api.example.com"
   );
   assert.equal(await restarted.getSavedIdentity(), undefined);
   assert.equal((await harness.store.getState()).deviceId, DEVICE_ID);

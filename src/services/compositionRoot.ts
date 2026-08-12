@@ -49,6 +49,7 @@ import { AchievementToastSoundController } from "../features/achievement-toasts/
 import achievementUnlockSound from "../assets/audio/achievement-unlocked.mp3";
 import { GameSessionSummaryStore } from "./GameSessionSummaryStore";
 import { LiveAchievementDetectionService } from "./LiveAchievementDetectionService";
+import { TauriDesktopSessionBridge } from "./platform/TauriDesktopSessionBridge";
 
 const persistent = isTauriRuntime();
 const games = persistent ? new SqliteGameRepository() : new EphemeralGameRepository();
@@ -60,7 +61,7 @@ const sync = persistent ? new SqliteSyncMetadataRepository() : new EphemeralSync
 const steamOpenId = createSteamOpenIdService();
 const authorization = steamOpenId
   ? new AuthorizationStore(
-      new AuthorizationClient(getSteamAuthApiBaseUrl()),
+      new AuthorizationClient(getSteamAuthApiBaseUrl(), 15_000, steamOpenId),
       steamOpenId
     )
   : undefined;
@@ -87,10 +88,13 @@ if (userAdmin) {
 function createSteamOpenIdService() {
   if (!persistent) return undefined;
   try {
+    const baseUrl = getSteamAuthApiBaseUrl();
     return new SteamOpenIdSignInService(
-      new SteamOpenIdClient(getSteamAuthApiBaseUrl()),
+      new SteamOpenIdClient(baseUrl),
       new SteamOpenIdDesktopRepository(),
-      new TauriExternalUrlOpener()
+      new TauriExternalUrlOpener(),
+      new TauriDesktopSessionBridge(),
+      baseUrl
     );
   } catch {
     return undefined;
@@ -105,7 +109,8 @@ const steamData = steamOpenId
     };
 const steamSessions = steamOpenId ?? {
   getActiveSession: () => undefined,
-  expireSession: () => undefined
+  expireSession: () => undefined,
+  authenticatedFetch: async (url: string, init?: RequestInit) => fetch(url, init)
 };
 export const steamProvider = new SteamProvider(steamData, steamSessions);
 const steamInstallationProbe = new TauriSteamInstallationProbe();

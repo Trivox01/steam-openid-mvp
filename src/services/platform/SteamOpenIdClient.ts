@@ -134,7 +134,11 @@ function isSteamOpenIdStatus(value: unknown): value is SteamOpenIdStatus {
     typeof value.sessionToken === "string" &&
     value.sessionToken.length > 0 &&
     typeof value.sessionExpiresAt === "string" &&
-    Number.isFinite(Date.parse(value.sessionExpiresAt));
+    Number.isFinite(Date.parse(value.sessionExpiresAt)) &&
+    typeof value.refreshCredential === "string" &&
+    value.refreshCredential.length > 0 &&
+    typeof value.refreshExpiresAt === "string" &&
+    Number.isFinite(Date.parse(value.refreshExpiresAt));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

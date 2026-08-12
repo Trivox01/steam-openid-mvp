@@ -4,6 +4,7 @@ export { defaultPreferences } from "./settingsPreferences";
 export interface InitializationResult { preferences: UserPreferences; profile: UserProfile; storageMode: "sqlite"|"ephemeral" }
 
 export async function initializeApplication(): Promise<InitializationResult> {
+  await services.steamOpenId?.restoreSession();
   const preferences = await services.settings.get();
   const localProfile = await repositories.profile.getProfile() ?? {
     id: "local-player",

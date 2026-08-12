@@ -12,6 +12,8 @@ export type SteamOpenIdStatus =
       authenticatedAt: string;
       sessionToken: string;
       sessionExpiresAt: string;
+      refreshCredential: string;
+      refreshExpiresAt: string;
     }
   | { status: "expired" | "cancelled" }
   | { status: "failed"; errorCode?: string };

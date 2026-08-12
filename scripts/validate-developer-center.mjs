@@ -318,7 +318,7 @@ test("401 expires the memory session and network failure remains closed", async 
   networkStore.stop();
 });
 
-test("session expiration clears the authorization snapshot", async () => {
+test("session expiration silently refreshes and keeps the authorization snapshot", async () => {
   const sessions = new FakeSessionSource(SESSION);
   let expire;
   const store = new AuthorizationStore({
@@ -334,8 +334,8 @@ test("session expiration clears the authorization snapshot", async () => {
   assert.equal(store.getState().status, "authenticated");
   expire();
   await settle();
-  assert.equal(sessions.expired, true);
-  assert.equal(store.getState().status, "unauthorized");
+  assert.equal(sessions.expired, false);
+  assert.equal(store.getState().status, "authenticated");
   store.stop();
 });
 
@@ -460,6 +460,27 @@ class FakeSessionSource {
   expireSession() {
     this.expired = true;
     this.emit(undefined);
+  }
+
+  async refreshSession() {
+    if (!this.session) return undefined;
+    const refreshed = { ...this.session, expiresAt: new Date(Date.now() + 60_000).toISOString() };
+    this.emit(refreshed);
+    return refreshed;
+  }
+
+  async authenticatedFetch(url, init = {}) {
+    const execute = () => globalThis.fetch(url, {
+      ...init,
+      headers: { ...init.headers, ...(this.session ? { authorization: `Bearer ${this.session.token}` } : {}) }
+    });
+    let response = await execute();
+    if (response.status === 401 && this.session) {
+      await this.refreshSession();
+      response = await execute();
+      if (response.status === 401) this.expireSession();
+    }
+    return response;
   }
 
   emit(session) {

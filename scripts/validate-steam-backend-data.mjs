@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SteamBackendDataClient } from "../src/services/platform/SteamBackendDataClient.ts";
 import { SteamIntegrationError } from "../src/integrations/steam/SteamIntegrationError.ts";
+import { DesktopSessionBridgeError } from "../src/services/platform/TauriDesktopSessionBridge.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -46,7 +47,8 @@ test("Desktop stops before the network when the Nexus session expired", async ()
   try {
     const client = new SteamBackendDataClient("https://backend.example", {
       getActiveSession() { return undefined; },
-      expireSession() {}
+      expireSession() {},
+      async authenticatedFetch() { throw new DesktopSessionBridgeError("none"); }
     });
     await assert.rejects(
       client.getGameAchievements(2807960),
@@ -67,7 +69,12 @@ test("Desktop preserves precise backend errors and expires a rejected session", 
       getActiveSession() {
         return { token: "session-token", expiresAt: "2099-01-01T00:00:00Z" };
       },
-      expireSession() { expired = true; }
+      expireSession() { expired = true; },
+      async authenticatedFetch(url, init) {
+        let response = await globalThis.fetch(url, init);
+        if (response.status === 401) { this.expireSession(); response = await globalThis.fetch(url, init); }
+        return response;
+      }
     });
     await assert.rejects(
       client.getOwnedGames(),
@@ -97,6 +104,13 @@ function activeSession() {
     getActiveSession() {
       return { token: "session-token", expiresAt: "2099-01-01T00:00:00Z" };
     },
-    expireSession() {}
+    expireSession() {},
+    async authenticatedFetch(url, init = {}) {
+      const session = this.getActiveSession();
+      return globalThis.fetch(url, {
+        ...init,
+        headers: { ...init.headers, authorization: `Bearer ${session.token}` }
+      });
+    }
   };
 }

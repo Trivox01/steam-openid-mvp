@@ -61,28 +61,22 @@ export class BadgeAssignmentClient {
     );
   }
   async loadAsset(id: string, signal?: AbortSignal) {
-    const session = this.sessions.getActiveSession();
-    if (!session) throw new BadgeAssignmentClientError("AUTHENTICATION_REQUIRED", 401);
-    const response = await fetch(
+    const response = await this.sessions.authenticatedFetch(
       `${this.baseUrl}/api/admin/badge-assets/${id}/content`,
-      { headers: { authorization: `Bearer ${session.token}` }, signal }
+      { signal }
     );
-    if (response.status === 401) this.sessions.expireSession();
     if (!response.ok) throw new BadgeAssignmentClientError("ASSET_LOAD_FAILED", response.status);
     return response.blob();
   }
 
   private async request<T>(path: string, init: RequestInit = {}) {
-    const session = this.sessions.getActiveSession();
-    if (!session) throw new BadgeAssignmentClientError("AUTHENTICATION_REQUIRED", 401);
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await this.sessions.authenticatedFetch(`${this.baseUrl}${path}`, {
         ...init,
         headers: {
           ...(init.body ? { "content-type": "application/json" } : {}),
-          ...init.headers,
-          authorization: `Bearer ${session.token}`
+          ...init.headers
         }
       });
     } catch (error) {
@@ -91,7 +85,6 @@ export class BadgeAssignmentClient {
       }
       throw new BadgeAssignmentClientError("NETWORK_ERROR");
     }
-    if (response.status === 401) this.sessions.expireSession();
     let payload: unknown;
     try { payload = await response.json(); }
     catch { throw new BadgeAssignmentClientError("MALFORMED_RESPONSE", response.status); }

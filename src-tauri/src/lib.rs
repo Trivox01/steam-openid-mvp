@@ -5,6 +5,7 @@ mod discord_presence;
 mod game_session;
 mod models;
 mod steam_installation;
+mod secure_credential;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{
@@ -128,6 +129,9 @@ pub fn run() {
                 ..Default::default()
             });
             app.manage(steam_installation::SteamInstallationProbe::default());
+            app.manage(secure_credential::DesktopCredentialState(Box::new(
+                secure_credential::WindowsCredentialStore::default(),
+            )));
             let probe = app.state::<steam_installation::SteamInstallationProbe>().inner().clone();
             let handle = app.handle().clone();
             if let Ok(watcher) = steam_installation::SteamManifestWatcher::start(probe, move |change| {
@@ -273,6 +277,9 @@ pub fn run() {
             ,discord_presence::discord_presence_configure
             ,discord_presence::discord_presence_refresh
             ,discord_presence::discord_presence_status
+            ,secure_credential::store_desktop_session_credential
+            ,secure_credential::restore_desktop_session
+            ,secure_credential::logout_desktop_session
         ])
         .build(tauri::generate_context!())
         .expect("error while building Achievement Nexus")

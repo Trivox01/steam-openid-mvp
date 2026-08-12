@@ -9,6 +9,8 @@ export interface BackendSessionSource {
   getActiveSession(): SteamBackendSession | undefined;
   subscribeSession(listener: (session: SteamBackendSession | undefined) => void): () => void;
   expireSession(): void;
+  refreshSession(): Promise<SteamBackendSession | undefined>;
+  authenticatedFetch(url: string, init?: RequestInit, optional?: boolean): Promise<Response>;
 }
 
 type StateListener = (state: AuthorizationLoadState) => void;
@@ -72,11 +74,18 @@ export class AuthorizationStore {
     this.cancelExpiration = undefined;
     const generation = ++this.generation;
     if (!session || Date.parse(session.expiresAt) <= Date.now()) {
-      this.setState({ status: "unauthorized" });
+      this.setState({ status: "loading" });
+      void this.sessions.refreshSession()
+        .then((restored) => {
+          if (generation === this.generation && !restored) this.setState({ status: "unauthorized" });
+        })
+        .catch(() => {
+          if (generation === this.generation) this.setState({ status: "unauthorized" });
+        });
       return;
     }
     this.cancelExpiration = this.scheduleExpiration(
-      () => this.sessions.expireSession(),
+      () => { void this.sessions.refreshSession().catch(() => undefined); },
       Math.max(0, Date.parse(session.expiresAt) - Date.now())
     );
     const request = new AbortController();

@@ -150,11 +150,13 @@ export class ToolClient {
   }
 
   private async send(path: string, init: RequestInit, auth: boolean, allowEmpty: boolean): Promise<unknown> {
-    const session = auth ? this.sessions?.getActiveSession() : undefined;
-    if (auth && !session) throw this.fail("unauthorized", path);
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, { ...init, headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers, ...(session ? { authorization: `Bearer ${session.token}` } : {}) } });
+      const request = auth && this.sessions
+        ? (url: string, requestInit: RequestInit) => this.sessions!.authenticatedFetch(url, requestInit)
+        : fetch;
+      if (auth && !this.sessions) throw this.fail("unauthorized", path);
+      response = await request(`${this.baseUrl}${path}`, { ...init, headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers } });
     } catch (error) {
       // An abort is the caller changing its mind, not a failure worth reporting.
       if (error instanceof Error && error.name === "AbortError") throw error;
@@ -163,7 +165,6 @@ export class ToolClient {
     // Only a genuine 401 ends the session. A suspended account answers 403 and a
     // malformed body answers neither, so neither can start a sign-out loop.
     if (response.status === 401) {
-      this.sessions?.expireSession();
       throw this.fail("unauthorized", path, { status: 401 });
     }
     const text = await this.readBody(path, response);

@@ -24,14 +24,32 @@ const SESSION = { token: "memory-only-session", expiresAt: new Date(Date.now() +
 
 function sessions(overrides = {}) {
   const record = { expired: 0 };
+  const source = {
+    getActiveSession: () => SESSION,
+    subscribeSession: () => () => {},
+    expireSession: () => { record.expired += 1; },
+    refreshSession: async () => source.getActiveSession(),
+    async authenticatedFetch(url, init = {}, optional = false) {
+      let session = source.getActiveSession();
+      if (!session && !optional) session = await source.refreshSession();
+      if (!session && !optional) return Response.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
+      const execute = () => globalThis.fetch(url, {
+        ...init,
+        headers: { ...init.headers, ...(session ? { authorization: `Bearer ${session.token}` } : {}) }
+      });
+      let response = await execute();
+      if (response.status === 401 && session) {
+        session = await source.refreshSession();
+        response = await execute();
+        if (response.status === 401) source.expireSession();
+      }
+      return response;
+    }
+  };
+  Object.assign(source, overrides);
   return {
     record,
-    source: {
-      getActiveSession: () => SESSION,
-      subscribeSession: () => () => {},
-      expireSession: () => { record.expired += 1; },
-      ...overrides
-    }
+    source
   };
 }
 
@@ -515,11 +533,10 @@ test("Every validated tool endpoint goes through a parser, not an unchecked cast
     assert.match(line, /this\.request\(/, `${method} must use the validated request`);
     assert.match(line, /parse[A-Z]\w+/, `${method} must name a parser`);
   }
-  // expireSession may only appear on the 401 branch.
+  // Session expiration and refresh live only in the central coordinator.
   const expireLines = source.split("\n").filter((line) => line.includes("expireSession"));
-  assert.equal(expireLines.length, 1);
-  assert.equal(source.split("\n").findIndex((line) => line.includes("expireSession")) - 1,
-    source.split("\n").findIndex((line) => line.includes("if (response.status === 401)")));
+  assert.equal(expireLines.length, 0);
+  assert.match(source, /authenticatedFetch/);
 });
 
 test("No debug or fault-injection seam ships in the application source", async () => {
