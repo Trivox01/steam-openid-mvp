@@ -16,7 +16,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 const TAURI_CONFIG: &str = include_str!("../tauri.conf.json");
 
-fn app() -> tauri::App<MockRuntime> {
+fn context() -> tauri::Context<MockRuntime> {
     let config: serde_json::Value =
         serde_json::from_str(TAURI_CONFIG).expect("tauri.conf.json must be valid JSON");
     let plugins = config
@@ -30,8 +30,12 @@ fn app() -> tauri::App<MockRuntime> {
         context.config_mut().plugins.0.insert(name, value);
     }
 
+    context
+}
+
+fn app() -> tauri::App<MockRuntime> {
     register_plugins(mock_builder())
-        .build(context)
+        .build(context())
         .expect("every registered plugin must initialize with the shipped configuration")
 }
 
@@ -48,6 +52,23 @@ fn updater_plugin_is_registered_in_the_builder() {
         Err(tauri_plugin_updater::Error::EmptyEndpoints) => {}
         Err(error) => panic!("updater plugin is registered but unusable: {error}"),
     }
+}
+
+#[test]
+fn negative_control_detects_a_missing_updater_registration() {
+    let app_without_updater = mock_builder()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
+        .build(context())
+        .expect("negative-control app should build without the updater plugin");
+
+    let missing_state = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = app_without_updater.updater();
+    }));
+    assert!(
+        missing_state.is_err(),
+        "the control must fail when updater-managed state is absent"
+    );
 }
 
 #[test]
