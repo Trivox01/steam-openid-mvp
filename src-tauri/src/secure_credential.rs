@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 
 const TARGET: &str = "AchievementNexus/DesktopSession";
+const DESKTOP_CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
+const DESKTOP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const HEALTH_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const HEALTH_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub trait SecureCredentialStore: Send + Sync {
     fn save(&self, credential: &str) -> Result<(), SecureCredentialError>;
@@ -119,6 +124,14 @@ struct RefreshResponse {
     refresh_expires_at: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopSessionDiagnosticContext {
+    boot_id: String,
+    auth_operation_id: String,
+    trigger: String,
+}
+
 #[tauri::command]
 pub fn store_desktop_session_credential(
     credential: String,
@@ -128,11 +141,37 @@ pub fn store_desktop_session_credential(
 }
 
 #[tauri::command]
+pub fn has_desktop_session_credential(
+    state: tauri::State<'_, DesktopCredentialState>,
+) -> Result<bool, DesktopSessionCommandError> {
+    state.0.load().map(|credential| credential.is_some()).map_err(map_store_error)
+}
+
+#[tauri::command]
+pub async fn probe_desktop_session_backend_health(
+    base_url: String,
+) -> Result<bool, DesktopSessionCommandError> {
+    let url = endpoint(&base_url, "/health")?;
+    let client = secure_http_client_with_timeouts(
+        HEALTH_CONNECT_TIMEOUT,
+        HEALTH_REQUEST_TIMEOUT,
+    )?;
+    Ok(client
+        .get(url)
+        .header("cache-control", "no-cache")
+        .send()
+        .await
+        .map(|response| response.status() == reqwest::StatusCode::OK)
+        .unwrap_or(false))
+}
+
+#[tauri::command]
 pub async fn restore_desktop_session(
     base_url: String,
+    diagnostic: Option<DesktopSessionDiagnosticContext>,
     state: tauri::State<'_, DesktopCredentialState>,
 ) -> Result<RefreshedDesktopSession, DesktopSessionCommandError> {
-    refresh_inner(&base_url, state.inner()).await
+    refresh_inner(&base_url, state.inner(), diagnostic.as_ref()).await
 }
 
 #[tauri::command]
@@ -159,18 +198,57 @@ pub async fn logout_desktop_session(
 async fn refresh_inner(
     base_url: &str,
     state: &DesktopCredentialState,
+    diagnostic: Option<&DesktopSessionDiagnosticContext>,
 ) -> Result<RefreshedDesktopSession, DesktopSessionCommandError> {
-    let credential = state.0.load().map_err(map_store_error)?
-        .ok_or(DesktopSessionCommandError::NoCredential)?;
+    log_transport_event(diagnostic, "desktop_credential_read_started", 0, None);
+    let credential = match state.0.load() {
+        Ok(Some(credential)) => {
+            log_transport_event(diagnostic, "desktop_credential_read_succeeded", 0, None);
+            credential
+        }
+        Ok(None) => {
+            log_transport_event(diagnostic, "desktop_credential_read_absent", 0, None);
+            return Err(DesktopSessionCommandError::NoCredential);
+        }
+        Err(error) => {
+            log_transport_event(diagnostic, "desktop_credential_read_failed", 0, None);
+            return Err(map_store_error(error));
+        }
+    };
     let url = endpoint(base_url, "/v1/auth/desktop/refresh")?;
-    let response = secure_http_client()?
+    let client = secure_http_client()?;
+    let started = Instant::now();
+    log_transport_event(
+        diagnostic,
+        "desktop_refresh_transport_started",
+        0,
+        None,
+    );
+    let response = match client
         .post(url)
         .header("cache-control", "no-store")
         .json(&serde_json::json!({ "credential": credential }))
         .send()
         .await
-        .map_err(|_| DesktopSessionCommandError::Network)?;
+    {
+        Ok(response) => response,
+        Err(error) => {
+            log_transport_event(
+                diagnostic,
+                classify_transport_error(&error),
+                started.elapsed().as_millis(),
+                None,
+            );
+            return Err(DesktopSessionCommandError::Network);
+        }
+    };
     let status = response.status();
+    log_transport_event(
+        diagnostic,
+        if status.is_success() { "response_received" } else { "http_status" },
+        started.elapsed().as_millis(),
+        Some(status.as_u16()),
+    );
     if status.as_u16() == 403 {
         state.0.delete().map_err(map_store_error)?;
         return Err(DesktopSessionCommandError::AccountNotActive);
@@ -180,14 +258,36 @@ async fn refresh_inner(
         return Err(DesktopSessionCommandError::Invalid);
     }
     if !status.is_success() { return Err(DesktopSessionCommandError::Server); }
-    let refreshed: RefreshResponse = response.json().await.map_err(|_| DesktopSessionCommandError::Server)?;
+    let refreshed: RefreshResponse = match response.json().await {
+        Ok(refreshed) => refreshed,
+        Err(_) => {
+            log_transport_event(
+                diagnostic,
+                "response_decode_failed",
+                started.elapsed().as_millis(),
+                Some(status.as_u16()),
+            );
+            return Err(DesktopSessionCommandError::Server);
+        }
+    };
     if refreshed.refresh_credential.is_empty() || refreshed.refresh_credential.len() > 512 ||
        !refreshed.refresh_credential.is_ascii() || refreshed.session_token.is_empty() ||
        refreshed.session_token.len() > 2_048 || refreshed.session_expires_at.len() > 64 ||
        refreshed.refresh_expires_at.len() > 64 {
+        log_transport_event(
+            diagnostic,
+            "response_validation_failed",
+            started.elapsed().as_millis(),
+            Some(status.as_u16()),
+        );
         return Err(DesktopSessionCommandError::Server);
     }
-    state.0.save(&refreshed.refresh_credential).map_err(map_store_error)?;
+    log_credential_write(diagnostic, "desktop_credential_write_started");
+    if let Err(error) = state.0.save(&refreshed.refresh_credential) {
+        log_credential_write(diagnostic, "desktop_credential_write_failed");
+        return Err(map_store_error(error));
+    }
+    log_credential_write(diagnostic, "desktop_credential_write_succeeded");
     Ok(RefreshedDesktopSession {
         session_token: refreshed.session_token,
         session_expires_at: refreshed.session_expires_at,
@@ -195,11 +295,145 @@ async fn refresh_inner(
     })
 }
 
+#[cfg(debug_assertions)]
+fn log_credential_write(context: Option<&DesktopSessionDiagnosticContext>, event: &str) {
+    let Some(context) = context else { return; };
+    if !valid_diagnostic_id(&context.boot_id)
+        || !valid_diagnostic_id(&context.auth_operation_id)
+        || !matches!(
+            context.trigger.as_str(),
+            "boot_restore" | "access_token_expired"
+                | "authenticated_request_missing_session" | "authenticated_request_401"
+                | "manual_retry" | "other"
+        )
+    {
+        return;
+    }
+    eprintln!(
+        "[desktop-session] {{\"timestampMs\":{},\"bootId\":\"{}\",\"authOperationId\":\"{}\",\"processId\":{},\"event\":\"{}\",\"trigger\":\"{}\"}}",
+        unix_timestamp_millis(), context.boot_id, context.auth_operation_id,
+        std::process::id(), event, context.trigger
+    );
+}
+
+#[cfg(not(debug_assertions))]
+fn log_credential_write(_: Option<&DesktopSessionDiagnosticContext>, _: &str) {}
+
+#[cfg(debug_assertions)]
+fn valid_diagnostic_id(value: &str) -> bool {
+    value.len() == 36 && value.bytes().all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+}
+
+#[cfg(debug_assertions)]
+fn unix_timestamp_millis() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
+}
+
+#[cfg(debug_assertions)]
+fn log_transport_event(
+    context: Option<&DesktopSessionDiagnosticContext>,
+    event: &str,
+    elapsed_ms: u128,
+    http_status: Option<u16>,
+) {
+    let Some(context) = context else { return; };
+    if !valid_diagnostic_id(&context.boot_id)
+        || !valid_diagnostic_id(&context.auth_operation_id)
+        || !matches!(
+            context.trigger.as_str(),
+            "boot_restore" | "access_token_expired"
+                | "authenticated_request_missing_session" | "authenticated_request_401"
+                | "manual_retry" | "other"
+        )
+        || !matches!(
+            event,
+            "desktop_credential_read_started"
+                | "desktop_credential_read_succeeded"
+                | "desktop_credential_read_absent"
+                | "desktop_credential_read_failed"
+                | "desktop_refresh_transport_started"
+                | "connect_timeout"
+                | "request_timeout"
+                | "dns_error"
+                | "tls_error"
+                | "connection_error"
+                | "http_status"
+                | "response_received"
+                | "response_decode_failed"
+                | "response_validation_failed"
+        )
+    {
+        return;
+    }
+    let status = http_status
+        .map(|value| format!(",\"httpStatus\":{value}"))
+        .unwrap_or_default();
+    eprintln!(
+        "[desktop-session] {{\"timestampMs\":{},\"bootId\":\"{}\",\"authOperationId\":\"{}\",\"processId\":{},\"event\":\"{}\",\"trigger\":\"{}\",\"elapsedMs\":{}{} }}",
+        unix_timestamp_millis(), context.boot_id, context.auth_operation_id,
+        std::process::id(), event, context.trigger, elapsed_ms, status
+    );
+}
+
+#[cfg(not(debug_assertions))]
+fn log_transport_event(
+    _: Option<&DesktopSessionDiagnosticContext>,
+    _: &str,
+    _: u128,
+    _: Option<u16>,
+) {}
+
+fn classify_transport_error(error: &reqwest::Error) -> &'static str {
+    if error.is_timeout() {
+        return if error.is_connect() {
+            "connect_timeout"
+        } else {
+            "request_timeout"
+        };
+    }
+    if error.is_connect() {
+        let chain = error_chain(error);
+        if ["dns", "lookup address", "name or service not known", "nodename nor servname"]
+            .iter()
+            .any(|marker| chain.contains(marker))
+        {
+            return "dns_error";
+        }
+        if ["tls", "certificate", "handshake", "unknown issuer", "invalid peer"]
+            .iter()
+            .any(|marker| chain.contains(marker))
+        {
+            return "tls_error";
+        }
+    }
+    "connection_error"
+}
+
+fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut messages = Vec::new();
+    let mut current = Some(error);
+    while let Some(value) = current {
+        messages.push(value.to_string().to_lowercase());
+        current = value.source();
+    }
+    messages.join(" ")
+}
+
 fn secure_http_client() -> Result<reqwest::Client, DesktopSessionCommandError> {
+    secure_http_client_with_timeouts(DESKTOP_CONNECT_TIMEOUT, DESKTOP_REQUEST_TIMEOUT)
+}
+
+fn secure_http_client_with_timeouts(
+    connect_timeout: Duration,
+    request_timeout: Duration,
+) -> Result<reqwest::Client, DesktopSessionCommandError> {
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(std::time::Duration::from_secs(8))
-        .timeout(std::time::Duration::from_secs(15))
+        .connect_timeout(connect_timeout)
+        .timeout(request_timeout)
         .build()
         .map_err(|_| DesktopSessionCommandError::Server)
 }
@@ -221,7 +455,13 @@ fn map_store_error(_: SecureCredentialError) -> DesktopSessionCommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::{
+        future::Future,
+        io::{Read, Write},
+        net::{TcpListener, TcpStream},
+        sync::Mutex,
+        thread,
+    };
 
     #[derive(Default)]
     struct MemoryStore(Mutex<Option<String>>);
@@ -246,6 +486,244 @@ mod tests {
         assert!(endpoint("http://127.0.0.1:8787", "/refresh").is_ok());
         assert!(endpoint("http://example.com", "/refresh").is_err());
         assert!(endpoint("file:///tmp/x", "/refresh").is_err());
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn diagnostic_context_accepts_only_uuid_shaped_ids() {
+        assert!(valid_diagnostic_id("00000000-0000-4000-8000-000000000001"));
+        assert!(!valid_diagnostic_id("credential-A"));
+        assert!(!valid_diagnostic_id("00000000-0000-4000-8000-000000000001-extra"));
+    }
+
+    #[test]
+    fn production_transport_timeouts_remain_eight_and_fifteen_seconds() {
+        assert_eq!(DESKTOP_CONNECT_TIMEOUT, Duration::from_secs(8));
+        assert_eq!(DESKTOP_REQUEST_TIMEOUT, Duration::from_secs(15));
+        assert_eq!(HEALTH_CONNECT_TIMEOUT, Duration::from_secs(3));
+        assert_eq!(HEALTH_REQUEST_TIMEOUT, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn health_probe_is_get_only_and_sends_no_credential() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let join = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+            let mut buffer = [0_u8; 2_048];
+            let read = stream.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..read]);
+            assert!(request.starts_with("GET /health HTTP/1.1\r\n"));
+            assert!(!request.to_lowercase().contains("credential"));
+            let body = r#"{"status":"ok"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        let healthy = run_async(async move {
+            probe_desktop_session_backend_health(format!("http://{address}"))
+                .await
+        }).unwrap();
+        assert!(healthy);
+        join.join().unwrap();
+    }
+
+    #[test]
+    fn fast_refresh_transport_succeeds() {
+        let server = spawn_http_server(Duration::ZERO, 200, "{}");
+        let url = server.url.clone();
+        let response = run_async(async move {
+            secure_http_client_with_timeouts(
+                Duration::from_millis(100),
+                Duration::from_millis(250),
+            ).unwrap().post(url)
+                .json(&serde_json::json!({ "credential": "opaque-test" }))
+                .send().await
+        }).unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        server.join.join().unwrap();
+    }
+
+    #[test]
+    fn stalled_proxy_connect_is_classified_as_connect_timeout() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let join = thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            thread::sleep(Duration::from_millis(300));
+        });
+        let started = Instant::now();
+        let error = run_async(async move {
+            reqwest::Client::builder()
+                .proxy(reqwest::Proxy::all(format!("http://{address}")).unwrap())
+                .connect_timeout(Duration::from_millis(80))
+                .timeout(Duration::from_millis(500))
+                .build().unwrap()
+                .post("https://api.example.test/v1/auth/desktop/refresh")
+                .json(&serde_json::json!({ "credential": "opaque-test" }))
+                .send().await
+        }).unwrap_err();
+        let elapsed = started.elapsed();
+        assert_eq!(classify_transport_error(&error), "connect_timeout");
+        assert!(elapsed >= Duration::from_millis(60), "elapsed={elapsed:?}");
+        assert!(elapsed < Duration::from_millis(250), "elapsed={elapsed:?}");
+        join.join().unwrap();
+    }
+
+    #[test]
+    fn established_connection_with_response_beyond_total_timeout_is_request_timeout() {
+        let server = spawn_http_server(Duration::from_millis(180), 200, "{}");
+        let url = server.url.clone();
+        let started = Instant::now();
+        let error = run_async(async move {
+            secure_http_client_with_timeouts(
+                Duration::from_millis(80),
+                Duration::from_millis(100),
+            ).unwrap().post(url)
+                .json(&serde_json::json!({ "credential": "opaque-test" }))
+                .send().await
+        }).unwrap_err();
+        let elapsed = started.elapsed();
+        assert_eq!(classify_transport_error(&error), "request_timeout");
+        assert!(elapsed >= Duration::from_millis(80), "elapsed={elapsed:?}");
+        assert!(elapsed < Duration::from_millis(170), "elapsed={elapsed:?}");
+        server.join.join().unwrap();
+    }
+
+    #[test]
+    fn established_connection_with_response_inside_total_timeout_succeeds() {
+        let server = spawn_http_server(Duration::from_millis(110), 200, "{}");
+        let url = server.url.clone();
+        let started = Instant::now();
+        let response = run_async(async move {
+            secure_http_client_with_timeouts(
+                Duration::from_millis(80),
+                Duration::from_millis(220),
+            ).unwrap().post(url)
+                .json(&serde_json::json!({ "credential": "opaque-test" }))
+                .send().await
+        }).unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert!(started.elapsed() >= Duration::from_millis(90));
+        server.join.join().unwrap();
+    }
+
+    // These four ignored tests use the production timeout values and wall-clock
+    // delays. Run them explicitly for release diagnostics; keeping them ignored
+    // prevents every ordinary cargo test invocation from taking roughly 40s.
+    #[test]
+    #[ignore = "controlled production-timeout transport probe"]
+    fn production_case_a_fast_server_succeeds() {
+        let server = spawn_http_server(Duration::ZERO, 200, "{}");
+        let started = Instant::now();
+        let url = server.url.clone();
+        let response = run_async(async move {
+            secure_http_client().unwrap().post(url).send().await
+        }).unwrap();
+        eprintln!("production case A elapsed_ms={}", started.elapsed().as_millis());
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        server.join.join().unwrap();
+    }
+
+    #[test]
+    #[ignore = "controlled production-timeout transport probe"]
+    fn production_case_b_unavailable_connect_times_out_near_eight_seconds() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let join = thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            thread::sleep(Duration::from_secs(10));
+        });
+        let started = Instant::now();
+        let error = run_async(async move {
+            reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .proxy(reqwest::Proxy::all(format!("http://{address}")).unwrap())
+                .connect_timeout(DESKTOP_CONNECT_TIMEOUT)
+                .timeout(DESKTOP_REQUEST_TIMEOUT)
+                .build().unwrap()
+                .post("https://api.example.test/v1/auth/desktop/refresh")
+                .send().await
+        }).unwrap_err();
+        let elapsed = started.elapsed();
+        eprintln!("production case B elapsed_ms={}", elapsed.as_millis());
+        assert_eq!(classify_transport_error(&error), "connect_timeout");
+        assert!(elapsed >= Duration::from_millis(7_500), "elapsed={elapsed:?}");
+        assert!(elapsed < Duration::from_millis(9_500), "elapsed={elapsed:?}");
+        join.join().unwrap();
+    }
+
+    #[test]
+    #[ignore = "controlled production-timeout transport probe"]
+    fn production_case_c_established_connection_times_out_near_fifteen_seconds() {
+        let server = spawn_http_server(Duration::from_secs(16), 200, "{}");
+        let url = server.url.clone();
+        let started = Instant::now();
+        let error = run_async(async move {
+            secure_http_client().unwrap().post(url).send().await
+        }).unwrap_err();
+        let elapsed = started.elapsed();
+        eprintln!("production case C elapsed_ms={}", elapsed.as_millis());
+        assert_eq!(classify_transport_error(&error), "request_timeout");
+        assert!(elapsed >= Duration::from_millis(14_500), "elapsed={elapsed:?}");
+        assert!(elapsed < Duration::from_millis(16_000), "elapsed={elapsed:?}");
+        server.join.join().unwrap();
+    }
+
+    #[test]
+    #[ignore = "controlled production-timeout transport probe"]
+    fn production_case_d_established_connection_at_eleven_seconds_succeeds() {
+        let server = spawn_http_server(Duration::from_secs(11), 200, "{}");
+        let url = server.url.clone();
+        let started = Instant::now();
+        let response = run_async(async move {
+            secure_http_client().unwrap().post(url).send().await
+        }).unwrap();
+        let elapsed = started.elapsed();
+        eprintln!("production case D elapsed_ms={}", elapsed.as_millis());
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert!(elapsed >= Duration::from_millis(10_500), "elapsed={elapsed:?}");
+        assert!(elapsed < DESKTOP_REQUEST_TIMEOUT, "elapsed={elapsed:?}");
+        server.join.join().unwrap();
+    }
+
+    struct TestServer {
+        url: String,
+        join: thread::JoinHandle<()>,
+    }
+
+    fn run_async<F>(future: F) -> F::Output
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        tauri::async_runtime::block_on(tauri::async_runtime::spawn(future)).unwrap()
+    }
+
+    fn spawn_http_server(delay: Duration, status: u16, body: &'static str) -> TestServer {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let join = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            drain_request(&mut stream);
+            thread::sleep(delay);
+            let reason = if status == 200 { "OK" } else { "Service Unavailable" };
+            let response = format!(
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+        });
+        TestServer { url: format!("http://{address}/v1/auth/desktop/refresh"), join }
+    }
+
+    fn drain_request(stream: &mut TcpStream) {
+        stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+        let mut buffer = [0_u8; 2_048];
+        let _ = stream.read(&mut buffer);
     }
 
     #[cfg(windows)]

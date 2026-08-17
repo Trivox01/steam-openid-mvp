@@ -32,7 +32,8 @@ reqwest = { version = "0.13.4", features = ["json"] }
 # serialized to SQLite, a config file, or frontend storage.
 windows-sys = { version = "0.61.2", features = [
   "Win32_Foundation",
-  "Win32_Security_Credentials"
+  "Win32_Security_Credentials",
+  "Win32_System_Threading"
 ] }
 
 [dev-dependencies]

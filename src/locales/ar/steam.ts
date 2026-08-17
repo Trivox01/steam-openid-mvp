@@ -31,6 +31,8 @@ export const steam = {
   "steam.openId.retry": "إعادة المحاولة",
   "steam.openId.connected": "تم ربط حساب Steam",
   "steam.openId.connectedDescription": "تم حفظ هوية Steam الموثقة محليًا.",
+  "steam.openId.offline": "غير متصل",
+  "steam.openId.offlineDescription": "سيُعاد ربط حساب Steam تلقائيًا عند عودة الاتصال بالإنترنت.",
   "steam.openId.authenticatedAt": "وقت الاتصال",
   "steam.openId.signOut": "تسجيل الخروج",
   "steam.openId.changeAccount": "تغيير الحساب",

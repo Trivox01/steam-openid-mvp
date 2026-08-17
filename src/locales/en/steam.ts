@@ -31,6 +31,8 @@ export const steam = {
   "steam.openId.retry": "Try again",
   "steam.openId.connected": "Steam account connected",
   "steam.openId.connectedDescription": "Your verified Steam identity is stored locally.",
+  "steam.openId.offline": "Offline",
+  "steam.openId.offlineDescription": "Your Steam account will reconnect automatically when you're back online.",
   "steam.openId.authenticatedAt": "Connected",
   "steam.openId.signOut": "Sign out",
   "steam.openId.changeAccount": "Change account",

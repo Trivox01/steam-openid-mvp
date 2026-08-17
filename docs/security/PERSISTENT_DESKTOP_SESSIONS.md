@@ -39,6 +39,20 @@ passes the raw value through JavaScript before it is handed to the OS store.
 Network failures preserve the credential. A definitive 401 or 403 deletes it.
 Logout deletes it before the best-effort server revoke request.
 
+## Safe local diagnostics
+
+Development and explicitly marked functional E2E builds emit structured session
+events with a random boot id, operation id, process id, timestamp, event, and an
+allow-listed trigger or logout reason. The schema has no free-text field and
+cannot contain credentials, fingerprints, token hashes, access tokens,
+authorization headers, cookies, database URLs, or service secrets. A confirmed
+Change Account action is recorded as `change_account`, so it cannot be mistaken
+for a second automatic restore.
+
+The silent-restore acceptance procedure is documented in
+`docs/testing/DESKTOP_SILENT_RESTORE_E2E.md`. Any logout, Change Account, or new
+sign-in invalidates that run instead of being classified as double restore.
+
 ## Deployment order
 
 Do not deploy the backend code before its schema exists. The storage factory's

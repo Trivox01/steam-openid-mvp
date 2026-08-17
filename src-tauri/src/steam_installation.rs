@@ -5,12 +5,18 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::{mpsc, Arc, Mutex},
+    sync::{mpsc, Arc, Mutex, OnceLock},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
 const CACHE_TTL: Duration = Duration::from_secs(15);
+const STEAM_CANDIDATES_TTL: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +30,32 @@ struct CachedIndex {
     created: Instant,
     value: SteamInstallationIndex,
 }
+
+struct CachedCandidates { created: Instant, value: Vec<PathBuf> }
+
+#[derive(Default)]
+struct SteamCandidatesCache { value: Mutex<Option<CachedCandidates>> }
+
+impl SteamCandidatesCache {
+    fn get_or_discover<F>(&self, force_refresh: bool, discover: F) -> Vec<PathBuf>
+    where F: FnOnce() -> Vec<PathBuf> {
+        // Keep the lock through discovery so concurrent startup callers share the
+        // same three registry queries instead of running duplicate scans.
+        let mut cached=self.value.lock().unwrap_or_else(|error|error.into_inner());
+        if !force_refresh {
+            if let Some(entry)=cached.as_ref().filter(|entry|entry.created.elapsed()<STEAM_CANDIDATES_TTL) {
+                return entry.value.clone();
+            }
+        }
+        let value=discover();
+        *cached=Some(CachedCandidates{created:Instant::now(),value:value.clone()});
+        value
+    }
+    fn invalidate(&self) { *self.value.lock().unwrap_or_else(|error|error.into_inner())=None; }
+}
+
+static STEAM_CANDIDATES: OnceLock<SteamCandidatesCache> = OnceLock::new();
+fn steam_candidates_cache()->&'static SteamCandidatesCache{STEAM_CANDIDATES.get_or_init(SteamCandidatesCache::default)}
 
 #[derive(Clone, Default)]
 pub struct SteamInstallationProbe {
@@ -45,12 +77,18 @@ impl SteamManifestWatcher {
     pub fn start<F>(probe: SteamInstallationProbe, emit: F) -> notify::Result<Self>
     where F: Fn(SteamManifestChange) + Send + 'static {
         let (sender, receiver) = mpsc::channel();
-        let callback_sender = sender.clone();
-        let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| {
-            if let Ok(mut event) = result { event.paths.retain(|path|is_watched_file(path));if !event.paths.is_empty(){let _ = callback_sender.send(WatcherCommand::Event(event));} }
-        })?;
-        let mut watched=BTreeSet::new();configure_watcher(&mut watcher,&mut watched);
+        let watcher_sender = sender.clone();
         thread::Builder::new().name("steam-manifest-watcher".into()).spawn(move || {
+            let callback_sender=watcher_sender.clone();
+            let Ok(mut watcher)=notify::recommended_watcher(move |result:notify::Result<Event>|{
+                if let Ok(mut event)=result{event.paths.retain(|path|is_watched_file(path));if !event.paths.is_empty(){let _=callback_sender.send(WatcherCommand::Event(event));}}
+            }) else {
+                if cfg!(debug_assertions){eprintln!("[steam-installation] manifest watcher unavailable");}
+                return;
+            };
+            // Registry/filesystem discovery belongs to this worker so Tauri setup
+            // can return and make the application window usable immediately.
+            let mut watched=BTreeSet::new();configure_watcher(&mut watcher,&mut watched);
             watcher_loop(watcher, watched, receiver, probe, emit);
         }).map_err(notify::Error::io)?;
         Ok(Self { sender })
@@ -106,7 +144,7 @@ impl SteamInstallationProbe {
                 return entry.value.clone();
             }
         }
-        let value = build_index(&steam_candidates());
+        let value = build_index(&steam_candidates_with_refresh(force_refresh));
         *cache = Some(CachedIndex {
             created: Instant::now(),
             value: value.clone(),
@@ -116,6 +154,7 @@ impl SteamInstallationProbe {
 
     pub fn invalidate(&self) {
         *self.cache.lock().unwrap_or_else(|error| error.into_inner()) = None;
+        steam_candidates_cache().invalidate();
     }
 }
 
@@ -234,6 +273,12 @@ pub fn app_install_directories_for(candidates: &[PathBuf]) -> Vec<SteamAppInstal
 }
 
 fn steam_candidates() -> Vec<PathBuf> {
+    steam_candidates_with_refresh(false)
+}
+fn steam_candidates_with_refresh(force_refresh:bool)->Vec<PathBuf>{
+    steam_candidates_cache().get_or_discover(force_refresh,discover_steam_candidates)
+}
+fn discover_steam_candidates() -> Vec<PathBuf> {
     let mut candidates = BTreeSet::new();
     for key in ["ProgramFiles(x86)", "ProgramFiles"] {
         if let Some(path) = env::var_os(key) {
@@ -264,14 +309,27 @@ fn steam_candidates() -> Vec<PathBuf> {
 }
 
 fn registry_value(hive: &str, key: &str, value: &str) -> Option<PathBuf> {
-    let output = Command::new("reg.exe")
-        .args(["query", &format!(r"{}\{}", hive, key), "/v", value])
-        .output()
-        .ok()?;
+    registry_path_from_query_result(run_registry_query(hive,key,value))
+}
+fn registry_path_from_query_result(result:std::io::Result<std::process::Output>)->Option<PathBuf>{
+    let output=result.ok()?;
     if !output.status.success() {
         return None;
     }
-    String::from_utf8_lossy(&output.stdout)
+    registry_path_from_output(&output.stdout)
+}
+fn run_registry_query(hive:&str,key:&str,value:&str)->std::io::Result<std::process::Output>{
+    let mut command=Command::new("reg.exe");
+    command.args(["query",&format!(r"{}\{}",hive,key),"/v",value]);
+    configure_registry_subprocess(&mut command);
+    command.output()
+}
+#[cfg(windows)]
+fn configure_registry_subprocess(command:&mut Command){command.creation_flags(CREATE_NO_WINDOW);}
+#[cfg(not(windows))]
+fn configure_registry_subprocess(_command:&mut Command){}
+fn registry_path_from_output(stdout:&[u8])->Option<PathBuf>{
+    String::from_utf8_lossy(stdout)
         .lines()
         .find_map(|line| {
             let (_, tail) = line.split_once("REG_SZ")?;
@@ -365,6 +423,7 @@ fn now_seconds() -> u64 {
 mod tests {
     use super::*;
     use std::fs::{create_dir_all, write};
+    use std::sync::{atomic::{AtomicUsize,Ordering},Barrier};
 
     fn temp(name: &str) -> PathBuf {
         let path = env::temp_dir().join(format!("nexus-steam-probe-{}-{}", name, now_seconds()));
@@ -382,6 +441,27 @@ mod tests {
             parse_library_paths(r#""0" { "path" "D:\\SteamLibrary" }"#),
             vec![PathBuf::from(r"D:\SteamLibrary")]
         );
+    }
+    #[test]
+    fn parses_registry_path_and_rejects_unexpected_output(){
+        assert_eq!(registry_path_from_output(b"    SteamPath    REG_SZ    C:\\Games\\Steam\r\n"),Some(PathBuf::from(r"C:\Games\Steam")));
+        for output in [b"".as_slice(),b"SteamPath REG_DWORD 1",b"SteamPath REG_SZ   "]{assert!(registry_path_from_output(output).is_none());}
+    }
+    #[test]
+    fn registry_command_failure_is_non_fatal(){
+        let failure=std::io::Error::new(std::io::ErrorKind::NotFound,"registry command unavailable");
+        assert!(registry_path_from_query_result(Err(failure)).is_none());
+    }
+    #[cfg(windows)]
+    #[test]
+    fn registry_subprocess_uses_windows_no_window_flag(){
+        assert_eq!(CREATE_NO_WINDOW,0x0800_0000);let mut command=Command::new("reg.exe");configure_registry_subprocess(&mut command);
+    }
+    #[test]
+    fn concurrent_candidate_discovery_is_single_flight(){
+        let cache=Arc::new(SteamCandidatesCache::default());let calls=Arc::new(AtomicUsize::new(0));let barrier=Arc::new(Barrier::new(4));let mut threads=Vec::new();
+        for _ in 0..4{let cache=cache.clone();let calls=calls.clone();let barrier=barrier.clone();threads.push(thread::spawn(move||{barrier.wait();cache.get_or_discover(false,||{calls.fetch_add(1,Ordering::SeqCst);thread::sleep(Duration::from_millis(25));vec![PathBuf::from(r"C:\Steam")]})}));}
+        for task in threads{assert_eq!(task.join().unwrap(),vec![PathBuf::from(r"C:\Steam")]);}assert_eq!(calls.load(Ordering::SeqCst),1);
     }
     #[test]
     fn discovers_multiple_libraries_and_valid_manifests() {

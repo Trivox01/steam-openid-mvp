@@ -1,4 +1,5 @@
 import type { SteamBackendSession } from "../../types/steamOpenId";
+import type { DesktopRefreshTrigger } from "../../services/platform/DesktopSessionDiagnostics.ts";
 import {
   AuthorizationClientError,
   type AuthorizationApi
@@ -9,7 +10,7 @@ export interface BackendSessionSource {
   getActiveSession(): SteamBackendSession | undefined;
   subscribeSession(listener: (session: SteamBackendSession | undefined) => void): () => void;
   expireSession(): void;
-  refreshSession(): Promise<SteamBackendSession | undefined>;
+  refreshSession(trigger?: DesktopRefreshTrigger): Promise<SteamBackendSession | undefined>;
   authenticatedFetch(url: string, init?: RequestInit, optional?: boolean): Promise<Response>;
 }
 
@@ -74,18 +75,14 @@ export class AuthorizationStore {
     this.cancelExpiration = undefined;
     const generation = ++this.generation;
     if (!session || Date.parse(session.expiresAt) <= Date.now()) {
-      this.setState({ status: "loading" });
-      void this.sessions.refreshSession()
-        .then((restored) => {
-          if (generation === this.generation && !restored) this.setState({ status: "unauthorized" });
-        })
-        .catch(() => {
-          if (generation === this.generation) this.setState({ status: "unauthorized" });
-        });
+      // App initialization owns the one automatic boot restore. The provider
+      // stays fail-closed until that owner publishes a session, instead of
+      // starting a second refresh that can run after the first one settles.
+      this.setState({ status: "unauthorized" });
       return;
     }
     this.cancelExpiration = this.scheduleExpiration(
-      () => { void this.sessions.refreshSession().catch(() => undefined); },
+      () => { void this.sessions.refreshSession("access_token_expired").catch(() => undefined); },
       Math.max(0, Date.parse(session.expiresAt) - Date.now())
     );
     const request = new AbortController();

@@ -30,6 +30,8 @@
     "steam-openid:live-test": "npm --prefix services/auth-api run steam-openid:live-test",
     "test:steam-openid-desktop": "node --experimental-strip-types --test scripts/validate-steam-openid-desktop.mjs",
     "test:persistent-sessions": "node --experimental-strip-types --test scripts/validate-persistent-sessions.mjs && npm --prefix services/auth-api run test:persistent-sessions",
+    "test:session-diagnostics": "node --experimental-strip-types --test scripts/validate-desktop-session-diagnostics.mjs",
+    "test:network-recovery": "node --experimental-strip-types --test scripts/validate-auth-network-recovery.mjs",
     "test:csp": "node scripts/validate-tauri-csp.mjs",
     "test:smart-sync": "node --experimental-strip-types --test scripts/validate-smart-sync.mjs",
     "test:smart-library": "node --experimental-strip-types scripts/validate-smart-library.mjs",

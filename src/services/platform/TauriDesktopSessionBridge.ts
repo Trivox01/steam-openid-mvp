@@ -1,5 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { SteamBackendSession } from "../../types/steamOpenId";
+import {
+  desktopSessionDiagnostics,
+  type DesktopRefreshTrigger
+} from "./DesktopSessionDiagnostics.ts";
+
+export interface DesktopSessionDiagnosticContext {
+  bootId: string;
+  authOperationId: string;
+  trigger: DesktopRefreshTrigger;
+}
 
 export type DesktopSessionBridgeErrorKind =
   | "none"
@@ -19,20 +29,43 @@ export class DesktopSessionBridgeError extends Error {
 }
 
 export interface DesktopSessionBridge {
-  store(credential: string): Promise<void>;
-  refresh(baseUrl: string): Promise<SteamBackendSession>;
+  store(credential: string, context?: DesktopSessionDiagnosticContext): Promise<void>;
+  hasCredential(): Promise<boolean>;
+  health(baseUrl: string): Promise<boolean>;
+  refresh(baseUrl: string, context?: DesktopSessionDiagnosticContext): Promise<SteamBackendSession>;
   logout(baseUrl: string): Promise<void>;
 }
 
 export class TauriDesktopSessionBridge implements DesktopSessionBridge {
-  async store(credential: string) {
-    try { await invoke("store_desktop_session_credential", { credential }); }
+  async store(credential: string, context?: DesktopSessionDiagnosticContext) {
+    const operationId = context?.authOperationId ?? desktopSessionDiagnostics.operationId();
+    const trigger = context?.trigger ?? "other";
+    desktopSessionDiagnostics.record("desktop_credential_write_started", operationId, { trigger });
+    try {
+      await invoke("store_desktop_session_credential", { credential });
+      desktopSessionDiagnostics.record("desktop_credential_write_succeeded", operationId, { trigger });
+    } catch (error) {
+      desktopSessionDiagnostics.record("desktop_credential_write_failed", operationId, { trigger });
+      throw bridgeError(error);
+    }
+  }
+
+  async hasCredential() {
+    try { return await invoke<boolean>("has_desktop_session_credential"); }
     catch (error) { throw bridgeError(error); }
   }
 
-  async refresh(baseUrl: string) {
+  async health(baseUrl: string) {
     try {
-      const value = await invoke<unknown>("restore_desktop_session", { baseUrl });
+      return await invoke<boolean>("probe_desktop_session_backend_health", { baseUrl });
+    } catch {
+      return false;
+    }
+  }
+
+  async refresh(baseUrl: string, context?: DesktopSessionDiagnosticContext) {
+    try {
+      const value = await invoke<unknown>("restore_desktop_session", { baseUrl, diagnostic: context });
       if (!isRecord(value) || typeof value.sessionToken !== "string" ||
           typeof value.sessionExpiresAt !== "string" ||
           !Number.isFinite(Date.parse(value.sessionExpiresAt))) {

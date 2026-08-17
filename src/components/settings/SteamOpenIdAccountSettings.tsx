@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, Gamepad2, LogOut, RefreshCw, Repeat2, ShieldAlert, X } from "lucide-react";
+import { CheckCircle2, ExternalLink, Gamepad2, LogOut, RefreshCw, Repeat2, ShieldAlert, WifiOff, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { services } from "../../services/compositionRoot";
 import { SteamOpenIdClientError } from "../../services/platform/SteamOpenIdClient";
@@ -6,7 +6,7 @@ import type { SteamOpenIdIdentity } from "../../types/steamOpenId";
 import { HoloPulseLoader } from "../ui/holo-pulse-loader";
 import { useTranslation } from "../../i18n/TranslationContext";
 
-type ViewState = "loading" | "idle" | "connecting" | "connected" | "cancelled" | "error";
+type ViewState = "loading" | "idle" | "connecting" | "connected" | "offline" | "cancelled" | "error";
 type AccountAction = "signOut" | "changeAccount";
 
 export function SteamOpenIdAccountSettings() {
@@ -31,7 +31,11 @@ export function SteamOpenIdAccountSettings() {
       .then((saved) => {
         if (!active) return;
         setIdentity(saved);
-        setViewState(saved ? "connected" : "idle");
+        const authState = service.getAuthenticationState();
+        setViewState(saved
+          ? authState === "authenticated" ? "connected"
+            : authState === "recoverable" ? "offline" : "idle"
+          : "idle");
       })
       .catch(() => {
         if (!active) return;
@@ -44,6 +48,15 @@ export function SteamOpenIdAccountSettings() {
       abortController.current?.abort();
     };
   }, [service]);
+
+  useEffect(() => service?.subscribeAuthenticationState((authState) => {
+    setViewState((current) => {
+      if (current === "connecting") return current;
+      if (authState === "authenticated" && identity) return "connected";
+      if (authState === "recoverable" && identity) return "offline";
+      return authState === "authentication_required" ? "idle" : current;
+    });
+  }), [identity, service]);
 
   const connect = useCallback(async () => {
     if (!service || viewState === "connecting") return;
@@ -94,7 +107,7 @@ export function SteamOpenIdAccountSettings() {
     setProcessingAccountAction(true);
     setMessageKey(undefined);
     try {
-      await service.signOut();
+      await service.signOut(action === "changeAccount" ? "change_account" : "user_logout");
       setIdentity(undefined);
       setAccountAction(undefined);
       if (action === "changeAccount") {
@@ -133,17 +146,18 @@ export function SteamOpenIdAccountSettings() {
     );
   }
 
-  if (viewState === "connected" && identity) {
+  if ((viewState === "connected" || viewState === "offline") && identity) {
+    const offline = viewState === "offline";
     return (
       <>
         <div className="steam-openid-card">
           <div className="steam-openid-heading">
-            <span className="steam-openid-icon steam-openid-icon-success">
-              <CheckCircle2 aria-hidden="true" />
+            <span className={`steam-openid-icon ${offline ? "steam-openid-icon-offline" : "steam-openid-icon-success"}`}>
+              {offline ? <WifiOff aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
             </span>
             <div>
-              <strong>{t("steam.openId.connected")}</strong>
-              <p>{t("steam.openId.connectedDescription")}</p>
+              <strong>{t(offline ? "steam.openId.offline" : "steam.openId.connected")}</strong>
+              <p>{t(offline ? "steam.openId.offlineDescription" : "steam.openId.connectedDescription")}</p>
             </div>
           </div>
           <dl className="steam-openid-identity">

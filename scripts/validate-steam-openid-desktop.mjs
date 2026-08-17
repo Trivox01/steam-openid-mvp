@@ -73,6 +73,8 @@ function createHarness(statuses, options = {}) {
     (async (_milliseconds, signal) => signal.throwIfAborted());
   const desktopSessions = options.desktopSessions ?? {
     async store(value) { state.secureCredentialPresent = Boolean(value); },
+    async hasCredential() { return Boolean(state.secureCredentialPresent); },
+    async health() { return true; },
     async refresh() { throw new Error("no_credential"); },
     async logout() { state.secureCredentialPresent = false; }
   };

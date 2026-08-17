@@ -34,6 +34,11 @@ fn set_tray_behavior_enabled(enabled: bool, state: tauri::State<'_, DesktopLifec
 }
 
 #[tauri::command]
+fn desktop_session_process_id() -> u32 {
+    std::process::id()
+}
+
+#[tauri::command]
 fn get_steam_installation_index(
     force_refresh: bool,
     state: tauri::State<'_, steam_installation::SteamInstallationProbe>,
@@ -264,6 +269,7 @@ pub fn run() {
             commands::get_sync_metadata,
             commands::save_sync_metadata,
             set_tray_behavior_enabled,
+            desktop_session_process_id,
             get_steam_installation_index,
             invalidate_steam_installation_index
             ,open_external_tool_url
@@ -278,7 +284,9 @@ pub fn run() {
             ,discord_presence::discord_presence_refresh
             ,discord_presence::discord_presence_status
             ,secure_credential::store_desktop_session_credential
+            ,secure_credential::has_desktop_session_credential
             ,secure_credential::restore_desktop_session
+            ,secure_credential::probe_desktop_session_backend_health
             ,secure_credential::logout_desktop_session
         ])
         .build(tauri::generate_context!())

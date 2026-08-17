@@ -25,6 +25,11 @@ import { AchievementToastHost } from "./features/achievement-toasts/AchievementT
 import { discordPresenceBridge } from "./services/DiscordPresenceBridge";
 import { subscribeToLibraryChanges } from "./services/dataEvents";
 import { SessionSummaryHost } from "./features/session-summaries/SessionSummaryHost";
+import {
+  createAppInitializationLifecycle,
+  type AppInitializationLifecycle
+} from "./services/appInitializationLifecycle";
+import { installAuthNetworkRecovery } from "./services/AuthNetworkRecoveryCoordinator";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const GamesPage = lazy(() => import("./pages/GamesPage").then((module) => ({ default: module.GamesPage })));
@@ -43,7 +48,6 @@ export function App() {
   const { state: authorizationState } = useAuthorization();
   const initialPage = initialPageFromLocation();
   const [initialization, setInitialization] = useState<"loading"|"ready"|"error">("loading");
-  const [initializationError, setInitializationError] = useState("");
   const [profile, setProfile] = useState<UserProfile>();
   const [preferences, setPreferences] = useState<UserPreferences>();
   const [activePage, setActivePage] = useState<PageId>(initialPage);
@@ -57,21 +61,32 @@ export function App() {
   const settingsRef = useRef<SettingsPageHandle>(null);
   const mainRef = useRef<HTMLElement>(null);
   const scrollPositions = useRef(new Map<string, number>());
-  const initialize = useCallback(async () => {
+  const initialize = useCallback(async (trigger: "boot_restore" | "manual_retry") => {
     setInitialization("loading");
     try {
-      const result = await initializeApplication();
+      const result = await initializeApplication(trigger);
       setProfile(result.profile);
       setPreferences(result.preferences);
       setTheme(result.preferences.theme);
       setLanguage(result.preferences.language);
       setInitialization("ready");
     } catch {
-      setInitializationError(t("state.storageError"));
       setInitialization("error");
     }
-  }, [setLanguage, setTheme, t]);
-  useEffect(() => { void initialize(); }, [initialize]);
+  }, [setLanguage, setTheme]);
+  const initializationLifecycleRef = useRef<AppInitializationLifecycle<void> | null>(null);
+  if (!initializationLifecycleRef.current) {
+    initializationLifecycleRef.current = createAppInitializationLifecycle(initialize);
+  }
+  const initializationLifecycle = initializationLifecycleRef.current;
+  useEffect(() => {
+    void initializationLifecycle.autoStart();
+  }, [initializationLifecycle]);
+  useEffect(() => {
+    const service = services.steamOpenId;
+    if (!service) return;
+    return installAuthNetworkRecovery(service);
+  }, []);
   useEffect(() => {
     if (initialization !== "ready") return;
     smartSync.start();
@@ -199,8 +214,8 @@ export function App() {
   };
 
   if (initialization === "loading") return <LoadingView fullScreen size="lg" label={t("state.initializing")} />;
-  if (initialization === "error") return <main className="initialization-state"><ErrorView message={initializationError} onRetry={() => void initialize()} /></main>;
-  if (!preferences) return <main className="initialization-state"><ErrorView message={t("state.settingsMissing")} onRetry={() => void initialize()} /></main>;
+  if (initialization === "error") return <main className="initialization-state"><ErrorView message={t("state.storageError")} onRetry={() => void initializationLifecycle.retry()} /></main>;
+  if (!preferences) return <main className="initialization-state"><ErrorView message={t("state.settingsMissing")} onRetry={() => void initializationLifecycle.retry()} /></main>;
   if (!preferences.onboardingCompleted) {
     return <FirstLaunchExperience preferences={preferences} onPreferencesChange={updateOnboardingPreferences} onComplete={completeOnboarding} />;
   }
