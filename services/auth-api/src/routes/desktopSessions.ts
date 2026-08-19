@@ -31,6 +31,11 @@ export async function handleDesktopSessions(
   try {
     const body = await readBody(request);
     const credential = typeof body.credential === "string" ? body.credential : "";
+    // An absent operationId is the pre-c558 desktop contract. A present but
+    // non-string operationId is malformed and is never treated as absent.
+    if ("operationId" in body && typeof body.operationId !== "string") {
+      throw new DesktopSessionError("DESKTOP_SESSION_INVALID");
+    }
     const operationId = typeof body.operationId === "string" ? body.operationId : undefined;
     if (!credential || credential.length > 128) throw new DesktopSessionError("DESKTOP_SESSION_INVALID");
     const clientAddress = getClientAddress(request, deps.config);

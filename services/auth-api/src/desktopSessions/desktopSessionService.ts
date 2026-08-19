@@ -5,6 +5,7 @@ import type {
   DesktopSessionRecord,
   DesktopSessionRepository
 } from "./desktopSessionRepository.ts";
+import { LEGACY_REFRESH_ROTATION_GRACE_MS } from "./legacyRefreshActivation.ts";
 
 const DESKTOP_SESSION_LIFETIME_MS = 30 * 24 * 60 * 60_000;
 const REFRESH_OPERATION_RECOVERY_MS = 10 * 60_000;
@@ -65,6 +66,11 @@ export class DesktopSessionService {
   }
 
   async refresh(credential: string, operationId?: string) {
+    // A malformed operation identity is rejected outright. It must never be
+    // downgraded into a missing operation, which is the only shape eligible for
+    // pre-cutover legacy compatibility.
+    const operationHash = operationId === undefined ? undefined : hashRefreshOperation(operationId);
+    if (operationId !== undefined && !operationHash) throw new DesktopSessionError("DESKTOP_SESSION_INVALID");
     const predecessor = await this.validatedRecord(credential);
     const user = await this.authorization.findUserById(predecessor.userId);
     if (!user) throw new DesktopSessionError("DESKTOP_SESSION_INVALID");
@@ -74,7 +80,6 @@ export class DesktopSessionService {
       throw new DesktopSessionError("DESKTOP_SESSION_REVOKED");
     }
     const now = new Date(this.now()).toISOString();
-    const operationHash = hashRefreshOperation(operationId);
     const replacement = this.record({
       id: randomUUID(),
       userId: predecessor.userId,
@@ -200,5 +205,6 @@ function safeEqual(left: string, right: string) {
 export const desktopSessionPolicy = {
   lifetimeMs: DESKTOP_SESSION_LIFETIME_MS,
   refreshOperationRecoveryMs: REFRESH_OPERATION_RECOVERY_MS,
+  legacyRotationGraceMs: LEGACY_REFRESH_ROTATION_GRACE_MS,
   maximumActiveFamilies: MAXIMUM_ACTIVE_FAMILIES
 } as const;
