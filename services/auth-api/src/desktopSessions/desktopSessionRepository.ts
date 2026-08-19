@@ -1,4 +1,10 @@
 import type { Pool, PoolClient } from "pg";
+import {
+  LEGACY_REFRESH_ROTATION_GRACE_MS,
+  MigrationLegacyRefreshActivation,
+  StaticLegacyRefreshActivation,
+  type LegacyRefreshActivation
+} from "./legacyRefreshActivation.ts";
 
 export interface DesktopSessionRecord {
   id: string;
@@ -40,9 +46,49 @@ export interface DesktopSessionRepository {
   cleanup(now: string, retentionDays: number, limit: number): Promise<number>;
 }
 
+// A predecessor is legacy only by its own persisted state: it was rotated
+// without an operation identity. Never by client version, user agent, or
+// request shape.
+function isLegacyPredecessor(predecessor: DesktopSessionRecord) {
+  return !predecessor.refreshOperationHash && !predecessor.refreshOperationExpiresAt;
+}
+
+// Pre-cutover session compatibility: only sessions created strictly before the
+// activation instant may use the legacy path. Missing activation fails closed.
+function isPreCutoverSession(predecessor: DesktopSessionRecord, activatedAt?: string) {
+  return Boolean(activatedAt && Date.parse(predecessor.createdAt) < Date.parse(activatedAt));
+}
+
+function legacyFirstRotationAllowed(
+  predecessor: DesktopSessionRecord,
+  operationHash: string | undefined,
+  activatedAt: string | undefined
+) {
+  return !operationHash && isPreCutoverSession(predecessor, activatedAt);
+}
+
+function withinLegacyGrace(
+  predecessor: DesktopSessionRecord,
+  operationHash: string | undefined,
+  now: string,
+  activatedAt: string | undefined
+) {
+  if (operationHash || !predecessor.rotatedAt) return false;
+  if (!isLegacyPredecessor(predecessor)) return false;
+  if (!isPreCutoverSession(predecessor, activatedAt)) return false;
+  return Date.parse(now) - Date.parse(predecessor.rotatedAt) <= LEGACY_REFRESH_ROTATION_GRACE_MS;
+}
+
 export class InMemoryDesktopSessionRepository implements DesktopSessionRepository {
   readonly sessions = new Map<string, DesktopSessionRecord>();
   readonly users = new Map<string, { accountStatus: "active" | "suspended" | "disabled"; sessionEpoch: number }>();
+  readonly legacyActivation: LegacyRefreshActivation;
+
+  constructor(legacyActivation?: LegacyRefreshActivation | string) {
+    this.legacyActivation = typeof legacyActivation === "object"
+      ? legacyActivation
+      : new StaticLegacyRefreshActivation(legacyActivation);
+  }
 
   async validateSchema() {}
 
@@ -69,6 +115,7 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
     operationHash?: string;
     recoveryExpiresAt: string;
   }): Promise<DesktopSessionRotationResult> {
+    const legacyActivatedAt = await this.legacyActivation.resolve();
     const predecessor = this.sessions.get(input.predecessorId);
     if (!predecessor || predecessor.tokenHash !== input.predecessorHash) return { status: "invalid" };
     const user = this.users.get(predecessor.userId);
@@ -84,8 +131,9 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
         predecessor.refreshOperationHash === input.operationHash);
       const withinRecovery = Boolean(predecessor.refreshOperationExpiresAt &&
         Date.parse(input.now) <= Date.parse(predecessor.refreshOperationExpiresAt));
+      const legacyRecovery = withinLegacyGrace(predecessor, input.operationHash, input.now, legacyActivatedAt);
       const replacement = this.sessions.get(predecessor.replacementSessionId);
-      if (sameOperation && withinRecovery && replacement &&
+      if (((sameOperation && withinRecovery) || legacyRecovery) && replacement &&
           !replacement.revokedAt && !replacement.rotatedAt &&
           Date.parse(replacement.expiresAt) > Date.parse(input.now)) {
         return { status: "duplicate", session: { ...replacement } };
@@ -93,12 +141,18 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
       await this.revokeFamily(predecessor.tokenFamilyId, input.now);
       return { status: "reuse_detected" };
     }
-    if (!input.operationHash) return { status: "invalid" };
+    if (!input.operationHash && !legacyFirstRotationAllowed(predecessor, input.operationHash, legacyActivatedAt)) {
+      return { status: "invalid" };
+    }
     predecessor.rotatedAt = input.now;
     predecessor.lastUsedAt = input.now;
     predecessor.replacementSessionId = input.replacement.id;
-    predecessor.refreshOperationHash = input.operationHash;
-    predecessor.refreshOperationExpiresAt = input.recoveryExpiresAt;
+    // A legacy rotation keeps both operation columns unset, which is what marks
+    // the predecessor as legacy for the bounded grace policy.
+    if (input.operationHash) {
+      predecessor.refreshOperationHash = input.operationHash;
+      predecessor.refreshOperationExpiresAt = input.recoveryExpiresAt;
+    }
     this.sessions.set(input.replacement.id, { ...input.replacement });
     return { status: "rotated", session: { ...input.replacement } };
   }
@@ -130,7 +184,11 @@ const COLUMNS = `ds.id, ds.user_id AS "userId", ds.token_hash AS "tokenHash",
 
 export class PostgresDesktopSessionRepository implements DesktopSessionRepository {
   private readonly pool: Pool;
-  constructor(pool: Pool) { this.pool = pool; }
+  readonly legacyActivation: LegacyRefreshActivation;
+  constructor(pool: Pool, legacyActivation?: LegacyRefreshActivation) {
+    this.pool = pool;
+    this.legacyActivation = legacyActivation ?? new MigrationLegacyRefreshActivation(pool);
+  }
 
   async validateSchema() {
     const result = await this.pool.query<{ count: string }>(
@@ -142,6 +200,10 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
         "refresh_operation_hash", "refresh_operation_expires_at"]]
     );
     if (Number(result.rows[0]?.count) !== 12) throw new Error("desktop_session_schema_invalid");
+    // The operation-identity schema is present, so its persisted activation
+    // marker must exist. A missing marker is an invalid migration state, not a
+    // reason to invent a cutoff.
+    await this.legacyActivation.assertConsistent();
   }
 
   async create(input: DesktopSessionRecord, maximumActiveFamilies: number) {
@@ -182,6 +244,9 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
     operationHash?: string;
     recoveryExpiresAt: string;
   }): Promise<DesktopSessionRotationResult> {
+    // Resolved from the cached persisted marker, outside the row lock, so no
+    // extra query is issued per refresh.
+    const legacyActivatedAt = await this.legacyActivation.resolve();
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -205,7 +270,8 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
           predecessor.refreshOperationHash === input.operationHash);
         const withinRecovery = Boolean(predecessor.refreshOperationExpiresAt &&
           Date.parse(input.now) <= Date.parse(predecessor.refreshOperationExpiresAt));
-        if (sameOperation && withinRecovery) {
+        const legacyRecovery = withinLegacyGrace(predecessor, input.operationHash, input.now, legacyActivatedAt);
+        if ((sameOperation && withinRecovery) || legacyRecovery) {
           const child = await client.query<DesktopSessionRecord>(
             `SELECT ${COLUMNS} FROM desktop_sessions ds WHERE ds.id = $1`, [predecessor.replacementSessionId]
           );
@@ -221,14 +287,16 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
         await client.query("COMMIT");
         return { status: "reuse_detected" };
       }
-      if (!input.operationHash) return await rollback(client, { status: "invalid" });
+      if (!input.operationHash && !legacyFirstRotationAllowed(predecessor, input.operationHash, legacyActivatedAt)) {
+        return await rollback(client, { status: "invalid" });
+      }
       await insertSession(client, input.replacement);
       await client.query(
         `UPDATE desktop_sessions SET rotated_at = $2, last_used_at = $2,
            replacement_session_id = $3, refresh_operation_hash = $4,
            refresh_operation_expires_at = $5 WHERE id = $1`,
-        [predecessor.id, input.now, input.replacement.id, input.operationHash,
-          input.recoveryExpiresAt]
+        [predecessor.id, input.now, input.replacement.id, input.operationHash ?? null,
+          input.operationHash ? input.recoveryExpiresAt : null]
       );
       await client.query("COMMIT");
       return { status: "rotated", session: input.replacement };
