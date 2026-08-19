@@ -39,6 +39,16 @@ passes the raw value through JavaScript before it is handed to the OS store.
 Network failures preserve the credential. A definitive 401 or 403 deletes it.
 Logout deletes it before the best-effort server revoke request.
 
+Before each refresh, Rust persists a random operation id beside the credential
+in the same Windows Credential Manager record. PostgreSQL stores only its
+SHA-256 hash and a bounded recovery expiry on the rotated predecessor. A lost
+response can therefore recover the same deterministic child across desktop or
+backend restarts only when both the predecessor and the original operation are
+present. A different or missing operation remains reuse and revokes the family.
+Successful replacement persistence clears the pending operation. Neither the
+raw operation nor the raw credential is stored in PostgreSQL, SQLite, browser
+storage, or diagnostics.
+
 ## Safe local diagnostics
 
 Development and explicitly marked functional E2E builds emit structured session

@@ -31,6 +31,7 @@ export async function handleDesktopSessions(
   try {
     const body = await readBody(request);
     const credential = typeof body.credential === "string" ? body.credential : "";
+    const operationId = typeof body.operationId === "string" ? body.operationId : undefined;
     if (!credential || credential.length > 128) throw new DesktopSessionError("DESKTOP_SESSION_INVALID");
     const clientAddress = getClientAddress(request, deps.config);
     // A client-wide bucket cannot be bypassed by normal credential rotation;
@@ -41,7 +42,7 @@ export async function handleDesktopSessions(
       await deps.sessions.logout(credential);
       return writeJson(response, 204);
     }
-    return writeJson(response, 200, await deps.sessions.refresh(credential));
+    return writeJson(response, 200, await deps.sessions.refresh(credential, operationId));
   } catch (error) {
     if (error instanceof PollingRateLimitError) {
       response.setHeader("retry-after", String(Math.max(1, Math.ceil(error.retryAfterMs / 1000))));

@@ -52,7 +52,7 @@ test("cleanup is bounded and removes retained terminal memory records", async ()
 
 test("PostgreSQL migrations are ordered and contain no secret-bearing columns", async () => {
   const migrations = await loadPostgresMigrations();
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
   const sql = migrations.map((item) => item.sql).join("\n").toLowerCase();
   assert.match(sql, /create table tool_definitions/);
   assert.match(sql, /create table tool_badges/);
@@ -86,6 +86,8 @@ test("PostgreSQL migrations are ordered and contain no secret-bearing columns", 
   assert.doesNotMatch(sql, /assertion|api_key|session_token|access_token/);
   assert.match(sql, /create table desktop_sessions/);
   assert.match(sql, /token_hash char\(64\)/);
+  assert.match(sql, /refresh_operation_hash char\(64\)/);
+  assert.match(sql, /refresh_operation_expires_at timestamptz/);
   assert.doesNotMatch(sql, /refresh_(token|credential|secret)/);
   assert.match(sql, /create table roles/);
   assert.match(sql, /create table permissions/);
@@ -95,6 +97,19 @@ test("PostgreSQL migrations are ordered and contain no secret-bearing columns", 
   assert.match(sql, /badge_assignments_active_unique/);
   for (const key of PERMISSION_KEYS) assert.match(sql, new RegExp(`'${key.replace(".", "\\.")}'`));
   for (const role of rolePresets) assert.match(sql, new RegExp(`'${role.slug}'`));
+});
+
+test("desktop refresh operation migration is additive, guarded, and stores hashes only", async () => {
+  const migrations = await loadPostgresMigrations();
+  const operationIdentity = migrations.find((item) => item.version === 18);
+  assert.ok(operationIdentity, "migration 018 is missing");
+  assert.equal(operationIdentity.name, "018_desktop_refresh_operation_identity.sql");
+  const sql = operationIdentity.sql.toLowerCase();
+  assert.match(sql, /add column if not exists refresh_operation_hash char\(64\)/);
+  assert.match(sql, /add column if not exists refresh_operation_expires_at timestamptz/);
+  assert.match(sql, /from pg_constraint/);
+  assert.match(sql, /desktop_sessions_refresh_operation_check/);
+  assert.doesNotMatch(sql, /operation_id|raw_operation|refresh_credential|session_token/);
 });
 
 test("session revocation migration is re-runnable without a plain ADD CONSTRAINT", async () => {

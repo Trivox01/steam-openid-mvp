@@ -1,17 +1,16 @@
 # Desktop session release hardening
 
-These are independent Public Beta gates. Neither issue caused the most recent
-silent-restore run, which contained one refresh followed by an explicit Change
-Account logout.
+These independent Public Beta gates are implemented in the release-hardening
+working tree and must pass the full validation gate before commit.
 
 ## Ambiguous refresh recovery
 
-Current timing is unsafe as a protocol contract: the desktop transport may wait
+The former timing was unsafe as a protocol contract: the desktop transport may wait
 15 seconds, while replaying a rotated predecessor is idempotent for only 8
 seconds. A later caller can therefore reuse the predecessor after the server has
 rotated it but before the replacement reached secure storage.
 
-The recommended fix is a persisted, random refresh-operation id bound to the
+The implemented fix uses a persisted, random refresh-operation id bound to the
 rotation. The desktop writes that id beside its credential before sending the
 request. PostgreSQL stores only its hash on the predecessor. A retry with the
 same predecessor and operation id reconstructs the same deterministic child
@@ -25,25 +24,19 @@ PostgreSQL and replacement credentials are deterministic. The recovery lifetime
 must remain bounded, and successful persistence of the replacement must clear
 the pending operation locally.
 
-This change requires a separately reviewed migration, request-contract update,
-Credential Manager value-versioning, process-restart tests, multi-instance
-backend tests, lost-response tests, and negative tests for a wrong operation id.
-It is intentionally not implemented in the silent-restore verification work.
+Migration 018 adds only `refresh_operation_hash` and
+`refresh_operation_expires_at` to the predecessor. The recovery window is ten
+minutes. The raw operation id remains in the versioned Windows Credential
+Manager record beside the predecessor credential, is sent only to the refresh
+route, and is cleared only after the replacement credential is persisted.
 
 ## Single application instance
 
-The current Tauri application does not register a single-instance guard. Before
-Public Beta, add the official `tauri-plugin-single-instance` desktop dependency
-and register it before every other plugin, as required by the Tauri v2 plugin
-documentation. Its callback should reuse `show_main_window`, restore/unminimize
-the main window, focus it, and emit the existing visibility event. The rejected
-second process must not reach setup, Credential Manager access, or frontend boot
-initialization.
-
-Expected files are `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`,
-`src-tauri/src/lib.rs`, and `src-tauri/tests/plugin_registration.rs`. Tests must
-cover registration ordering, a negative control without the plugin, a second
-launch focusing the existing window, tray-hidden behavior, and proof that only
-one process enters session initialization.
+The application uses the official `tauri-plugin-single-instance` v2 plugin. It
+is applied to the Tauri builder before opener, notification, updater, setup, or
+any managed application state. Its callback reuses `show_main_window` to
+unminimize, show, focus, and emit the existing visibility event. The rejected
+second process therefore cannot reach setup, Credential Manager access, Steam
+discovery, or frontend boot initialization.
 
 Official reference: https://v2.tauri.app/plugin/single-instance/

@@ -11,7 +11,7 @@ use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, WindowEvent,
+    AppHandle, Emitter, Manager, Runtime, WindowEvent,
 };
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
@@ -99,13 +99,22 @@ fn validate_external_tool_url(value: &str) -> Result<url::Url, String> {
     Ok(parsed)
 }
 
-fn show_main_window(app: &tauri::AppHandle) {
+fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
         let _ = window.emit("nexus://app-visibility-changed", true);
     }
+}
+
+/// Registers the process guard before every plugin that may initialize state.
+/// A rejected secondary process therefore never reaches setup, Credential
+/// Manager access, Steam discovery, or frontend session restoration.
+pub fn register_single_instance<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    builder.plugin(tauri_plugin_single_instance::init(|app, _arguments, _working_directory| {
+        show_main_window(app);
+    }))
 }
 
 /// Registers every Tauri plugin the desktop app depends on.
@@ -123,7 +132,7 @@ pub fn register_plugins<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri:
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    register_plugins(tauri::Builder::default())
+    register_plugins(register_single_instance(tauri::Builder::default()))
         .setup(|app| {
             let state = database::open_database(app.handle()).map_err(std::io::Error::other)?;
             app.manage(state);

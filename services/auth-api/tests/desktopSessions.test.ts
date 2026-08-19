@@ -11,18 +11,30 @@ import type { AuthApiConfig } from "../src/config.ts";
 
 const STEAM_ID = "76561198000000000";
 const START = Date.parse("2026-08-12T12:00:00.000Z");
+const REFRESH_SECRET = "test-refresh-secret-with-more-than-32-bytes";
+const OPERATION_X = "00000000-0000-4000-8000-000000000001";
+const OPERATION_Y = "00000000-0000-4000-8000-000000000002";
+const OPERATION_Z = "00000000-0000-4000-8000-000000000003";
 
 async function harness() {
   let now = START;
   const authorization = new InMemoryAuthorizationRepository();
   const sessions = new InMemoryDesktopSessionRepository();
   const access = new SessionTokenService("test-access-secret-with-more-than-32-bytes", authorization, () => now);
-  const service = new DesktopSessionService("test-refresh-secret-with-more-than-32-bytes", sessions, authorization, access, () => now);
+  const service = new DesktopSessionService(REFRESH_SECRET, sessions, authorization, access, () => now);
   const login = await service.issueForSteamIdentity(STEAM_ID, new Date(now).toISOString());
   const user = await authorization.findUserBySteamId(STEAM_ID);
   assert.ok(user);
   sessions.users.set(user.id, { accountStatus: user.accountStatus, sessionEpoch: user.sessionEpoch });
-  return { authorization, sessions, service, login, user, advance(milliseconds: number) { now += milliseconds; } };
+  return {
+    authorization,
+    sessions,
+    service,
+    login,
+    user,
+    advance(milliseconds: number) { now += milliseconds; },
+    clock() { return now; }
+  };
 }
 
 test("login stores only a SHA-256 digest and issues a 30-day desktop credential", async () => {
@@ -37,73 +49,143 @@ test("login stores only a SHA-256 digest and issues a 30-day desktop credential"
 
 test("refresh rotates once and ten concurrent duplicates share one child", async () => {
   const h = await harness();
-  const results = await Promise.all(Array.from({ length: 10 }, () => h.service.refresh(h.login.refreshCredential)));
+  const results = await Promise.all(Array.from(
+    { length: 10 },
+    () => h.service.refresh(h.login.refreshCredential, OPERATION_X)
+  ));
   assert.equal(new Set(results.map((item) => item.refreshCredential)).size, 1);
   assert.equal(h.sessions.sessions.size, 2);
-  const next = await h.service.refresh(results[0].refreshCredential);
+  const next = await h.service.refresh(results[0].refreshCredential, OPERATION_Y);
   assert.notEqual(next.refreshCredential, results[0].refreshCredential);
 });
 
-test("a lost refresh response is recovered with the same valid child inside grace", async () => {
+test("a lost response recovers the same child after the former eight-second grace", async () => {
   const h = await harness();
   const credentialA = h.login.refreshCredential;
 
   // The server committed A -> B, but the client never received this response.
-  const lostResponse = await h.service.refresh(credentialA);
+  const lostResponse = await h.service.refresh(credentialA, OPERATION_X);
   const credentialB = lostResponse.refreshCredential;
-  h.advance(4_000);
+  h.advance(60_000);
 
-  // Retrying A must recover the exact same B rather than minting another child.
-  const recoveredResponse = await h.service.refresh(credentialA);
+  // Retrying A with the persisted operation must recover the exact same B.
+  const recoveredResponse = await h.service.refresh(credentialA, OPERATION_X);
   assert.equal(recoveredResponse.refreshCredential, credentialB);
+  assert.equal(JSON.stringify([...h.sessions.sessions.values()]).includes(OPERATION_X), false);
+  assert.match(
+    [...h.sessions.sessions.values()].find((session) => session.generation === 0)?.refreshOperationHash ?? "",
+    /^[a-f0-9]{64}$/
+  );
   const children = [...h.sessions.sessions.values()].filter((session) => session.generation === 1);
   assert.equal(children.length, 1);
   assert.equal(h.sessions.sessions.size, 2);
 
   // Prove the recovered credential is usable by rotating B -> C.
-  const credentialC = (await h.service.refresh(recoveredResponse.refreshCredential)).refreshCredential;
+  const credentialC = (await h.service.refresh(
+    recoveredResponse.refreshCredential,
+    OPERATION_Y
+  )).refreshCredential;
   assert.notEqual(credentialC, credentialB);
 
-  // Once A is outside its grace window, replay is treated as reuse and revokes
-  // the family, including the otherwise-current C credential.
-  h.advance(4_001);
+  // A different operation cannot use the predecessor and revokes the family.
   await assert.rejects(
-    h.service.refresh(credentialA),
+    h.service.refresh(credentialA, OPERATION_Z),
     (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REUSED"
   );
   await assert.rejects(
-    h.service.refresh(credentialC),
+    h.service.refresh(credentialC, OPERATION_Z),
     (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REVOKED"
   );
 });
 
-test("old credential reuse outside the eight-second grace revokes its family", async () => {
+test("a second backend instance recovers the same replacement from shared storage", async () => {
   const h = await harness();
-  const next = await h.service.refresh(h.login.refreshCredential);
-  h.advance(8_001);
+  const first = await h.service.refresh(h.login.refreshCredential, OPERATION_X);
+  h.advance(60_000);
+  const secondAccess = new SessionTokenService(
+    "test-access-secret-with-more-than-32-bytes",
+    h.authorization,
+    h.clock
+  );
+  const secondInstance = new DesktopSessionService(
+    REFRESH_SECRET,
+    h.sessions,
+    h.authorization,
+    secondAccess,
+    h.clock
+  );
+  const recovered = await secondInstance.refresh(h.login.refreshCredential, OPERATION_X);
+  assert.equal(recovered.refreshCredential, first.refreshCredential);
+  assert.equal([...h.sessions.sessions.values()].filter((row) => row.generation === 1).length, 1);
+});
+
+test("missing operation on a rotated predecessor revokes its family", async () => {
+  const h = await harness();
+  const next = await h.service.refresh(h.login.refreshCredential, OPERATION_X);
   await assert.rejects(h.service.refresh(h.login.refreshCredential), (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REUSED");
-  await assert.rejects(h.service.refresh(next.refreshCredential), (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REVOKED");
+  await assert.rejects(h.service.refresh(next.refreshCredential, OPERATION_Y), (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REVOKED");
+});
+
+test("missing operation cannot rotate a fresh credential", async () => {
+  const h = await harness();
+  await assert.rejects(
+    h.service.refresh(h.login.refreshCredential),
+    (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_INVALID"
+  );
+  assert.equal(h.sessions.sessions.size, 1);
+  assert.ok(await h.service.refresh(h.login.refreshCredential, OPERATION_X));
+});
+
+test("the same operation cannot recover a predecessor after the bounded window", async () => {
+  const h = await harness();
+  const next = await h.service.refresh(h.login.refreshCredential, OPERATION_X);
+  h.advance(10 * 60_000 + 1);
+  await assert.rejects(
+    h.service.refresh(h.login.refreshCredential, OPERATION_X),
+    (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REUSED"
+  );
+  await assert.rejects(
+    h.service.refresh(next.refreshCredential, OPERATION_Y),
+    (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REVOKED"
+  );
+});
+
+test("the original operation cannot resurrect a replacement that was already rotated", async () => {
+  const h = await harness();
+  const credentialB = (await h.service.refresh(
+    h.login.refreshCredential,
+    OPERATION_X
+  )).refreshCredential;
+  const credentialC = (await h.service.refresh(credentialB, OPERATION_Y)).refreshCredential;
+  await assert.rejects(
+    h.service.refresh(h.login.refreshCredential, OPERATION_X),
+    (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REUSED"
+  );
+  await assert.rejects(
+    h.service.refresh(credentialC, OPERATION_Z),
+    (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REVOKED"
+  );
 });
 
 test("expiration, account status, and session epoch are authoritative", async () => {
   const expired = await harness();
   expired.advance(30 * 24 * 60 * 60_000 + 1);
-  await assert.rejects(expired.service.refresh(expired.login.refreshCredential), /DESKTOP_SESSION_EXPIRED/);
+  await assert.rejects(expired.service.refresh(expired.login.refreshCredential, OPERATION_X), /DESKTOP_SESSION_EXPIRED/);
   for (const status of ["suspended", "disabled"] as const) {
     const blocked = await harness();
     await blocked.authorization.setAccountStatus({ userId: blocked.user.id, status });
-    await assert.rejects(blocked.service.refresh(blocked.login.refreshCredential), (error: unknown) => error instanceof DesktopSessionError && error.code === "ACCOUNT_NOT_ACTIVE");
+    await assert.rejects(blocked.service.refresh(blocked.login.refreshCredential, OPERATION_X), (error: unknown) => error instanceof DesktopSessionError && error.code === "ACCOUNT_NOT_ACTIVE");
   }
   const revoked = await harness();
   await revoked.authorization.revokeSessions(revoked.user.id);
-  await assert.rejects(revoked.service.refresh(revoked.login.refreshCredential), /DESKTOP_SESSION_REVOKED/);
+  await assert.rejects(revoked.service.refresh(revoked.login.refreshCredential, OPERATION_X), /DESKTOP_SESSION_REVOKED/);
 });
 
 test("logout is idempotent and prevents future refresh", async () => {
   const h = await harness();
   await h.service.logout(h.login.refreshCredential);
   await h.service.logout(h.login.refreshCredential);
-  await assert.rejects(h.service.refresh(h.login.refreshCredential), /DESKTOP_SESSION_REVOKED/);
+  await assert.rejects(h.service.refresh(h.login.refreshCredential, OPERATION_X), /DESKTOP_SESSION_REVOKED/);
 });
 
 test("a sixth login revokes the oldest family", async () => {
@@ -113,8 +195,8 @@ test("a sixth login revokes the oldest family", async () => {
     h.advance(1_000);
     credentials.push((await h.service.issueForSteamIdentity(STEAM_ID, new Date(START).toISOString())).refreshCredential);
   }
-  await assert.rejects(h.service.refresh(credentials[0]), /DESKTOP_SESSION_REVOKED/);
-  assert.ok(await h.service.refresh(credentials[5]));
+  await assert.rejects(h.service.refresh(credentials[0], OPERATION_X), /DESKTOP_SESSION_REVOKED/);
+  assert.ok(await h.service.refresh(credentials[5], OPERATION_X));
 });
 
 test("HTTP refresh is POST-only, private no-store, rate-limited, and never echoes credentials", async () => {
@@ -134,15 +216,16 @@ test("HTTP refresh is POST-only, private no-store, rate-limited, and never echoe
   try {
     const refreshed = await fetch(url, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ credential: h.login.refreshCredential })
+      body: JSON.stringify({ credential: h.login.refreshCredential, operationId: OPERATION_X })
     });
     assert.equal(refreshed.status, 200);
     assert.equal(refreshed.headers.get("cache-control"), "private, no-store");
     const text = await refreshed.text();
     assert.equal(text.includes(h.login.refreshCredential), false);
+    assert.equal(text.includes(OPERATION_X), false);
     const limited = await fetch(url, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ credential: h.login.refreshCredential })
+      body: JSON.stringify({ credential: h.login.refreshCredential, operationId: OPERATION_X })
     });
     assert.equal(limited.status, 429);
     assert.ok(limited.headers.get("retry-after"));
@@ -171,12 +254,12 @@ test("malformed, unknown, and database failures use bounded safe errors", async 
   assert.ok(address && typeof address === "object");
   const url = `http://127.0.0.1:${address.port}/v1/auth/desktop/refresh`;
   try {
-    for (const body of ["not-json", JSON.stringify({ credential: "unknown" })]) {
+    for (const body of ["not-json", JSON.stringify({ credential: "unknown", operationId: OPERATION_X })]) {
       const response = await fetch(url, { method: "POST", body });
       assert.equal(response.status, 401);
       assert.equal(await response.text(), '{"error":"DESKTOP_SESSION_INVALID"}');
     }
-    const failed = await fetch(url, { method: "POST", body: JSON.stringify({ credential: "database-failure" }) });
+    const failed = await fetch(url, { method: "POST", body: JSON.stringify({ credential: "database-failure", operationId: OPERATION_X }) });
     assert.equal(failed.status, 503);
     const text = await failed.text();
     assert.equal(text, '{"error":"SESSION_REFRESH_FAILED"}');

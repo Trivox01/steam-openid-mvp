@@ -33,6 +33,9 @@ import { DesktopSessionError, DesktopSessionService } from "../src/desktopSessio
 import { SessionTokenService } from "../src/authorization/sessionTokenService.ts";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
+const REFRESH_OPERATION_X = "00000000-0000-4000-8000-000000000011";
+const REFRESH_OPERATION_Y = "00000000-0000-4000-8000-000000000012";
+const REFRESH_OPERATION_Z = "00000000-0000-4000-8000-000000000013";
 
 test("PostgreSQL repository integration and concurrency", {
   skip: databaseUrl ? false : "TEST_DATABASE_URL is not configured"
@@ -46,8 +49,19 @@ test("PostgreSQL repository integration and concurrency", {
     options: `-c search_path=${schema}`
   });
   try {
+    const migrations = await loadPostgresMigrations();
+    await runPostgresMigrations(pool, migrations.filter((migration) => migration.version <= 17));
+    await runPostgresMigrations(pool, migrations);
     await runPostgresMigrations(pool);
-    await runPostgresMigrations(pool);
+    const appliedSessionMigrations = await pool.query<{
+      version: number;
+      checksum: string;
+    }>("SELECT version, checksum FROM auth_schema_migrations WHERE version IN (17, 18) ORDER BY version");
+    assert.deepEqual(appliedSessionMigrations.rows.map((row) => Number(row.version)), [17, 18]);
+    assert.deepEqual(
+      appliedSessionMigrations.rows.map((row) => row.checksum),
+      migrations.filter((migration) => migration.version >= 17).map((migration) => migration.checksum)
+    );
     const repository = new PostgresAuthTransactionRepository(pool);
     await repository.validateSchema();
     const authorizationRepository = new PostgresAuthorizationRepository(pool);
@@ -77,25 +91,27 @@ test("PostgreSQL repository integration and concurrency", {
     );
     const rotations = await Promise.all(Array.from(
       { length: 8 },
-      () => desktopSessions.refresh(persistentLogin.refreshCredential)
+      () => desktopSessions.refresh(persistentLogin.refreshCredential, REFRESH_OPERATION_X)
     ));
     assert.equal(new Set(rotations.map((item) => item.refreshCredential)).size, 1);
-    const storedSession = await pool.query<{ token_hash: string }>(
-      "SELECT token_hash FROM desktop_sessions WHERE user_id=$1",
+    const storedSession = await pool.query<{ token_hash: string; refresh_operation_hash: string | null }>(
+      "SELECT token_hash, refresh_operation_hash FROM desktop_sessions WHERE user_id=$1",
       [user.id]
     );
     assert.equal(storedSession.rows.length, 2);
     assert.ok(storedSession.rows.every((row) => /^[a-f0-9]{64}$/.test(row.token_hash)));
     assert.equal(JSON.stringify(storedSession.rows).includes(persistentLogin.refreshCredential), false);
+    assert.equal(JSON.stringify(storedSession.rows).includes(REFRESH_OPERATION_X), false);
+    assert.ok(storedSession.rows.some((row) => /^[a-f0-9]{64}$/.test(row.refresh_operation_hash ?? "")));
 
     const lostResponseLogin = await desktopSessions.issueForSteamIdentity(
       "76561198000000000",
       new Date(sessionNow).toISOString()
     );
     const credentialA = lostResponseLogin.refreshCredential;
-    const lostResponse = await desktopSessions.refresh(credentialA);
+    const lostResponse = await desktopSessions.refresh(credentialA, REFRESH_OPERATION_X);
     const credentialB = lostResponse.refreshCredential;
-    sessionNow += 4_000;
+    sessionNow += 60_000;
 
     // A new service instance represents a process restart or another backend
     // instance sharing PostgreSQL and the same server-side signing secret.
@@ -106,7 +122,7 @@ test("PostgreSQL repository integration and concurrency", {
       accessTokens,
       () => sessionNow
     );
-    const recovered = await restartedDesktopSessions.refresh(credentialA);
+    const recovered = await restartedDesktopSessions.refresh(credentialA, REFRESH_OPERATION_X);
     assert.equal(recovered.refreshCredential, credentialB);
     const familyAfterRecovery = await pool.query<{ generation: number; revoked_at: string | null }>(
       "SELECT generation, revoked_at FROM desktop_sessions WHERE token_family_id=$1 ORDER BY generation",
@@ -115,14 +131,16 @@ test("PostgreSQL repository integration and concurrency", {
     assert.deepEqual(familyAfterRecovery.rows.map((row) => Number(row.generation)), [0, 1]);
     assert.equal(familyAfterRecovery.rows.filter((row) => row.revoked_at === null).length, 2);
 
-    const credentialC = (await restartedDesktopSessions.refresh(credentialB)).refreshCredential;
-    sessionNow += 4_001;
+    const credentialC = (await restartedDesktopSessions.refresh(
+      credentialB,
+      REFRESH_OPERATION_Y
+    )).refreshCredential;
     await assert.rejects(
-      restartedDesktopSessions.refresh(credentialA),
+      restartedDesktopSessions.refresh(credentialA, REFRESH_OPERATION_Z),
       (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REUSED"
     );
     await assert.rejects(
-      restartedDesktopSessions.refresh(credentialC),
+      restartedDesktopSessions.refresh(credentialC, REFRESH_OPERATION_Z),
       (error: unknown) => error instanceof DesktopSessionError && error.code === "DESKTOP_SESSION_REVOKED"
     );
     assert.equal(await authorization.bootstrapOwner("76561198000000000"), "assigned");
@@ -520,9 +538,9 @@ test("PostgreSQL repository integration and concurrency", {
       /(^|_)token$/.test(name)
     ), false);
 
-    const migrations = await loadPostgresMigrations();
+    const allMigrations = await loadPostgresMigrations();
     await assert.rejects(runPostgresMigrations(pool, [
-      ...migrations,
+      ...allMigrations,
       {
         version: 99,
         name: "099_rollback_test.sql",

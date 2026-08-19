@@ -518,3 +518,21 @@ test("boot health command contract cannot carry a desktop credential", async () 
   assert.match(command, /\.get\(url\)/);
   assert.doesNotMatch(command, /credential|authorization|\.post\(/i);
 });
+
+test("refresh operation metadata stays in versioned secure storage and out of diagnostics", async () => {
+  const [rust, bridge, diagnostics] = await Promise.all([
+    readFile(new URL("../src-tauri/src/secure_credential.rs", import.meta.url), "utf8"),
+    readFile(new URL("../src/services/platform/TauriDesktopSessionBridge.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/services/platform/DesktopSessionDiagnostics.ts", import.meta.url), "utf8")
+  ]);
+  assert.match(rust, /struct SecureDesktopSessionRecord/);
+  assert.match(rust, /pending_refresh_operation_id/);
+  assert.match(rust, /Uuid::new_v4\(\)/);
+  assert.match(rust, /"operationId": operation_id/);
+  assert.match(rust, /pending_refresh_operation_id: None/);
+  assert.doesNotMatch(bridge, /pendingRefreshOperation|refreshOperationId/);
+  assert.doesNotMatch(diagnostics, /pendingRefreshOperation|refreshOperationId/);
+  const send = rust.indexOf('"operationId": operation_id');
+  const persist = rust.lastIndexOf("save_session_record(state, &stored)", send);
+  assert.ok(persist >= 0 && persist < send, "pending operation must be persisted before transport");
+});

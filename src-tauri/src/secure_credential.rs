@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 const TARGET: &str = "AchievementNexus/DesktopSession";
 const DESKTOP_CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 const DESKTOP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const HEALTH_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const HEALTH_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const SECURE_SESSION_RECORD_VERSION: u8 = 1;
 
 pub trait SecureCredentialStore: Send + Sync {
     fn save(&self, credential: &str) -> Result<(), SecureCredentialError>;
@@ -31,7 +33,7 @@ impl SecureCredentialStore for WindowsCredentialStore {
         use windows_sys::Win32::Security::Credentials::{
             CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
         };
-        if credential.is_empty() || credential.len() > 512 {
+        if credential.is_empty() || credential.len() > 1_024 {
             return Err(SecureCredentialError::Invalid);
         }
         let mut target = wide(&self.target);
@@ -96,6 +98,15 @@ fn wide(value: &str) -> Vec<u16> {
 
 pub struct DesktopCredentialState(pub Box<dyn SecureCredentialStore>);
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SecureDesktopSessionRecord {
+    version: u8,
+    credential: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pending_refresh_operation_id: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshedDesktopSession {
@@ -137,14 +148,18 @@ pub fn store_desktop_session_credential(
     credential: String,
     state: tauri::State<'_, DesktopCredentialState>,
 ) -> Result<(), DesktopSessionCommandError> {
-    state.0.save(&credential).map_err(map_store_error)
+    save_session_record(state.inner(), &SecureDesktopSessionRecord {
+        version: SECURE_SESSION_RECORD_VERSION,
+        credential,
+        pending_refresh_operation_id: None,
+    })
 }
 
 #[tauri::command]
 pub fn has_desktop_session_credential(
     state: tauri::State<'_, DesktopCredentialState>,
 ) -> Result<bool, DesktopSessionCommandError> {
-    state.0.load().map(|credential| credential.is_some()).map_err(map_store_error)
+    load_session_record(state.inner()).map(|record| record.is_some())
 }
 
 #[tauri::command]
@@ -179,7 +194,7 @@ pub async fn logout_desktop_session(
     base_url: String,
     state: tauri::State<'_, DesktopCredentialState>,
 ) -> Result<(), DesktopSessionCommandError> {
-    let credential = state.0.load().map_err(map_store_error)?;
+    let credential = load_session_record(state.inner())?.map(|record| record.credential);
     // Local deletion is authoritative for logout and happens even when the
     // server cannot be reached. The credential is never restored afterward.
     state.0.delete().map_err(map_store_error)?;
@@ -201,10 +216,10 @@ async fn refresh_inner(
     diagnostic: Option<&DesktopSessionDiagnosticContext>,
 ) -> Result<RefreshedDesktopSession, DesktopSessionCommandError> {
     log_transport_event(diagnostic, "desktop_credential_read_started", 0, None);
-    let credential = match state.0.load() {
-        Ok(Some(credential)) => {
+    let mut stored = match load_session_record(state) {
+        Ok(Some(record)) => {
             log_transport_event(diagnostic, "desktop_credential_read_succeeded", 0, None);
-            credential
+            record
         }
         Ok(None) => {
             log_transport_event(diagnostic, "desktop_credential_read_absent", 0, None);
@@ -212,9 +227,24 @@ async fn refresh_inner(
         }
         Err(error) => {
             log_transport_event(diagnostic, "desktop_credential_read_failed", 0, None);
-            return Err(map_store_error(error));
+            return Err(error);
         }
     };
+    let operation_id = match stored.pending_refresh_operation_id.clone() {
+        Some(operation_id) => operation_id,
+        None => {
+            let operation_id = Uuid::new_v4().to_string();
+            stored.pending_refresh_operation_id = Some(operation_id.clone());
+            log_credential_write(diagnostic, "desktop_credential_write_started");
+            if let Err(error) = save_session_record(state, &stored) {
+                log_credential_write(diagnostic, "desktop_credential_write_failed");
+                return Err(error);
+            }
+            log_credential_write(diagnostic, "desktop_credential_write_succeeded");
+            operation_id
+        }
+    };
+    let credential = stored.credential.clone();
     let url = endpoint(base_url, "/v1/auth/desktop/refresh")?;
     let client = secure_http_client()?;
     let started = Instant::now();
@@ -227,7 +257,10 @@ async fn refresh_inner(
     let response = match client
         .post(url)
         .header("cache-control", "no-store")
-        .json(&serde_json::json!({ "credential": credential }))
+        .json(&serde_json::json!({
+            "credential": credential,
+            "operationId": operation_id
+        }))
         .send()
         .await
     {
@@ -283,9 +316,13 @@ async fn refresh_inner(
         return Err(DesktopSessionCommandError::Server);
     }
     log_credential_write(diagnostic, "desktop_credential_write_started");
-    if let Err(error) = state.0.save(&refreshed.refresh_credential) {
+    if let Err(error) = save_session_record(state, &SecureDesktopSessionRecord {
+        version: SECURE_SESSION_RECORD_VERSION,
+        credential: refreshed.refresh_credential,
+        pending_refresh_operation_id: None,
+    }) {
         log_credential_write(diagnostic, "desktop_credential_write_failed");
-        return Err(map_store_error(error));
+        return Err(error);
     }
     log_credential_write(diagnostic, "desktop_credential_write_succeeded");
     Ok(RefreshedDesktopSession {
@@ -293,6 +330,57 @@ async fn refresh_inner(
         session_expires_at: refreshed.session_expires_at,
         refresh_expires_at: refreshed.refresh_expires_at,
     })
+}
+
+fn load_session_record(
+    state: &DesktopCredentialState,
+) -> Result<Option<SecureDesktopSessionRecord>, DesktopSessionCommandError> {
+    let Some(value) = state.0.load().map_err(map_store_error)? else { return Ok(None); };
+    decode_session_record(&value).map(Some).map_err(map_store_error)
+}
+
+fn save_session_record(
+    state: &DesktopCredentialState,
+    record: &SecureDesktopSessionRecord,
+) -> Result<(), DesktopSessionCommandError> {
+    validate_session_record(record).map_err(map_store_error)?;
+    let encoded = serde_json::to_string(record).map_err(|_| DesktopSessionCommandError::SecureStorageUnavailable)?;
+    if encoded.len() > 1_024 {
+        return Err(DesktopSessionCommandError::SecureStorageUnavailable);
+    }
+    state.0.save(&encoded).map_err(map_store_error)
+}
+
+fn decode_session_record(value: &str) -> Result<SecureDesktopSessionRecord, SecureCredentialError> {
+    let record = if value.starts_with('{') {
+        serde_json::from_str(value).map_err(|_| SecureCredentialError::Invalid)?
+    } else {
+        // Legacy raw credentials are upgraded in place before the next request.
+        SecureDesktopSessionRecord {
+            version: SECURE_SESSION_RECORD_VERSION,
+            credential: value.to_string(),
+            pending_refresh_operation_id: None,
+        }
+    };
+    validate_session_record(&record)?;
+    Ok(record)
+}
+
+fn validate_session_record(record: &SecureDesktopSessionRecord) -> Result<(), SecureCredentialError> {
+    if record.version != SECURE_SESSION_RECORD_VERSION
+        || record.credential.is_empty()
+        || record.credential.len() > 512
+        || !record.credential.is_ascii()
+    {
+        return Err(SecureCredentialError::Invalid);
+    }
+    if let Some(operation_id) = record.pending_refresh_operation_id.as_deref() {
+        let parsed = Uuid::parse_str(operation_id).map_err(|_| SecureCredentialError::Invalid)?;
+        if parsed.get_version_num() != 4 {
+            return Err(SecureCredentialError::Invalid);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(debug_assertions)]
@@ -459,7 +547,10 @@ mod tests {
         future::Future,
         io::{Read, Write},
         net::{TcpListener, TcpStream},
-        sync::Mutex,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        },
         thread,
     };
 
@@ -471,6 +562,43 @@ mod tests {
         fn delete(&self) -> Result<(), SecureCredentialError> { *self.0.lock().unwrap() = None; Ok(()) }
     }
 
+    #[derive(Clone, Default)]
+    struct SharedMemoryStore(Arc<Mutex<Option<String>>>);
+    impl SecureCredentialStore for SharedMemoryStore {
+        fn save(&self, value: &str) -> Result<(), SecureCredentialError> {
+            *self.0.lock().unwrap() = Some(value.into());
+            Ok(())
+        }
+        fn load(&self) -> Result<Option<String>, SecureCredentialError> {
+            Ok(self.0.lock().unwrap().clone())
+        }
+        fn delete(&self) -> Result<(), SecureCredentialError> {
+            *self.0.lock().unwrap() = None;
+            Ok(())
+        }
+    }
+
+    struct FailReplacementWriteStore {
+        value: Arc<Mutex<Option<String>>>,
+        writes: Arc<AtomicUsize>,
+    }
+    impl SecureCredentialStore for FailReplacementWriteStore {
+        fn save(&self, value: &str) -> Result<(), SecureCredentialError> {
+            if self.writes.fetch_add(1, Ordering::SeqCst) == 1 {
+                return Err(SecureCredentialError::Unavailable);
+            }
+            *self.value.lock().unwrap() = Some(value.into());
+            Ok(())
+        }
+        fn load(&self) -> Result<Option<String>, SecureCredentialError> {
+            Ok(self.value.lock().unwrap().clone())
+        }
+        fn delete(&self) -> Result<(), SecureCredentialError> {
+            *self.value.lock().unwrap() = None;
+            Ok(())
+        }
+    }
+
     #[test]
     fn secure_store_contract_saves_loads_and_deletes_without_sqlite() {
         let store = MemoryStore::default();
@@ -478,6 +606,20 @@ mod tests {
         assert_eq!(store.load().unwrap().as_deref(), Some("opaque-secret"));
         store.delete().unwrap();
         assert_eq!(store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn secure_record_upgrades_legacy_credentials_and_rejects_invalid_pending_metadata() {
+        let legacy = decode_session_record("opaque-legacy-credential").unwrap();
+        assert_eq!(legacy.credential, "opaque-legacy-credential");
+        assert_eq!(legacy.pending_refresh_operation_id, None);
+
+        let invalid = SecureDesktopSessionRecord {
+            version: SECURE_SESSION_RECORD_VERSION,
+            credential: "opaque-credential".into(),
+            pending_refresh_operation_id: Some("not-an-operation-id".into()),
+        };
+        assert_eq!(validate_session_record(&invalid), Err(SecureCredentialError::Invalid));
     }
 
     #[test]
@@ -529,6 +671,67 @@ mod tests {
         }).unwrap();
         assert!(healthy);
         join.join().unwrap();
+    }
+
+    #[test]
+    fn lost_response_and_process_restart_reuse_pending_operation_then_clear_it() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let join = thread::spawn(move || {
+            let (mut first, _) = listener.accept().unwrap();
+            let first_body = read_request_json(&mut first);
+            assert_eq!(first_body["credential"], "credential-A");
+            let operation = first_body["operationId"].as_str().unwrap().to_string();
+            assert_eq!(Uuid::parse_str(&operation).unwrap().get_version_num(), 4);
+            drop(first);
+
+            let (mut second, _) = listener.accept().unwrap();
+            let second_body = read_request_json(&mut second);
+            assert_eq!(second_body["credential"], "credential-A");
+            assert_eq!(second_body["operationId"], operation);
+            write_refresh_response(&mut second, "credential-B");
+        });
+
+        let shared = SharedMemoryStore::default();
+        *shared.0.lock().unwrap() = Some("credential-A".into());
+        let first_state = DesktopCredentialState(Box::new(shared.clone()));
+        let base_url = format!("http://{address}");
+        let first = tauri::async_runtime::block_on(refresh_inner(&base_url, &first_state, None));
+        assert!(matches!(first, Err(DesktopSessionCommandError::Network)));
+        let pending = decode_session_record(shared.0.lock().unwrap().as_deref().unwrap()).unwrap();
+        assert_eq!(pending.credential, "credential-A");
+        assert!(pending.pending_refresh_operation_id.is_some());
+
+        // A new state value represents a fresh desktop process reading the same
+        // Windows Credential Manager target.
+        let restarted_state = DesktopCredentialState(Box::new(shared.clone()));
+        let recovered = tauri::async_runtime::block_on(refresh_inner(
+            &base_url,
+            &restarted_state,
+            None,
+        )).unwrap();
+        assert_eq!(recovered.session_token, "access-token");
+        let stored = decode_session_record(shared.0.lock().unwrap().as_deref().unwrap()).unwrap();
+        assert_eq!(stored.credential, "credential-B");
+        assert_eq!(stored.pending_refresh_operation_id, None);
+        join.join().unwrap();
+    }
+
+    #[test]
+    fn replacement_write_failure_preserves_predecessor_and_pending_operation() {
+        let server = spawn_refresh_server("credential-B");
+        let value = Arc::new(Mutex::new(Some("credential-A".into())));
+        let writes = Arc::new(AtomicUsize::new(0));
+        let state = DesktopCredentialState(Box::new(FailReplacementWriteStore {
+            value: value.clone(),
+            writes,
+        }));
+        let result = tauri::async_runtime::block_on(refresh_inner(&server.url, &state, None));
+        assert!(matches!(result, Err(DesktopSessionCommandError::SecureStorageUnavailable)));
+        let stored = decode_session_record(value.lock().unwrap().as_deref().unwrap()).unwrap();
+        assert_eq!(stored.credential, "credential-A");
+        assert!(stored.pending_refresh_operation_id.is_some());
+        server.join.join().unwrap();
     }
 
     #[test]
@@ -718,6 +921,59 @@ mod tests {
             let _ = stream.write_all(response.as_bytes());
         });
         TestServer { url: format!("http://{address}/v1/auth/desktop/refresh"), join }
+    }
+
+    fn spawn_refresh_server(replacement: &'static str) -> TestServer {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let join = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_request_json(&mut stream);
+            assert_eq!(request["credential"], "credential-A");
+            assert!(request["operationId"].as_str().is_some());
+            write_refresh_response(&mut stream, replacement);
+        });
+        TestServer { url: format!("http://{address}"), join }
+    }
+
+    fn read_request_json(stream: &mut TcpStream) -> serde_json::Value {
+        stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let mut bytes = Vec::new();
+        let mut buffer = [0_u8; 2_048];
+        loop {
+            let read = stream.read(&mut buffer).unwrap();
+            if read == 0 { break; }
+            bytes.extend_from_slice(&buffer[..read]);
+            let Some(header_end) = bytes.windows(4).position(|window| window == b"\r\n\r\n") else {
+                continue;
+            };
+            let headers = String::from_utf8_lossy(&bytes[..header_end]);
+            let content_length = headers.lines().find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok()).flatten()
+            }).unwrap_or_default();
+            if bytes.len() >= header_end + 4 + content_length {
+                return serde_json::from_slice(
+                    &bytes[header_end + 4..header_end + 4 + content_length],
+                ).unwrap();
+            }
+        }
+        panic!("request body was incomplete")
+    }
+
+    fn write_refresh_response(stream: &mut TcpStream, replacement: &str) {
+        let body = serde_json::json!({
+            "sessionToken": "access-token",
+            "sessionExpiresAt": "2026-08-17T12:15:00.000Z",
+            "refreshCredential": replacement,
+            "refreshExpiresAt": "2026-09-16T12:00:00.000Z"
+        }).to_string();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).unwrap();
     }
 
     fn drain_request(stream: &mut TcpStream) {

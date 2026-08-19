@@ -15,6 +15,7 @@ use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
 const TAURI_CONFIG: &str = include_str!("../tauri.conf.json");
+const LIB_SOURCE: &str = include_str!("../src/lib.rs");
 
 fn context() -> tauri::Context<MockRuntime> {
     let config: serde_json::Value =
@@ -95,4 +96,34 @@ fn opener_and_notification_plugins_stay_registered() {
     let app = app();
     let _ = app.opener();
     let _ = app.notification();
+}
+
+fn single_instance_is_first(source: &str) -> bool {
+    let Some(run) = source.find(
+        "register_plugins(register_single_instance(tauri::Builder::default()))",
+    ) else {
+        return false;
+    };
+    let Some(definition) = source.find("pub fn register_single_instance") else {
+        return false;
+    };
+    let Some(plugin) = source[definition..].find("tauri_plugin_single_instance::init") else {
+        return false;
+    };
+    definition + plugin < run
+}
+
+#[test]
+fn single_instance_guard_is_registered_before_stateful_plugins() {
+    assert!(single_instance_is_first(LIB_SOURCE));
+    assert!(LIB_SOURCE.contains("show_main_window(app);"));
+}
+
+#[test]
+fn negative_control_detects_missing_single_instance_guard() {
+    let without_guard = LIB_SOURCE.replace(
+        "register_plugins(register_single_instance(tauri::Builder::default()))",
+        "register_plugins(tauri::Builder::default())",
+    );
+    assert!(!single_instance_is_first(&without_guard));
 }

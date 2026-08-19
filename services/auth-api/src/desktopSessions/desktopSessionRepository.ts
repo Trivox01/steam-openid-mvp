@@ -13,6 +13,8 @@ export interface DesktopSessionRecord {
   revokedAt?: string;
   rotatedAt?: string;
   replacementSessionId?: string;
+  refreshOperationHash?: string;
+  refreshOperationExpiresAt?: string;
 }
 
 export type DesktopSessionRotationResult =
@@ -31,7 +33,8 @@ export interface DesktopSessionRepository {
     predecessorHash: string;
     replacement: DesktopSessionRecord;
     now: string;
-    graceMs: number;
+    operationHash?: string;
+    recoveryExpiresAt: string;
   }): Promise<DesktopSessionRotationResult>;
   revokeFamily(familyId: string, now: string): Promise<void>;
   cleanup(now: string, retentionDays: number, limit: number): Promise<number>;
@@ -63,7 +66,8 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
     predecessorHash: string;
     replacement: DesktopSessionRecord;
     now: string;
-    graceMs: number;
+    operationHash?: string;
+    recoveryExpiresAt: string;
   }): Promise<DesktopSessionRotationResult> {
     const predecessor = this.sessions.get(input.predecessorId);
     if (!predecessor || predecessor.tokenHash !== input.predecessorHash) return { status: "invalid" };
@@ -76,15 +80,25 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
     if (predecessor.revokedAt) return { status: "revoked" };
     if (Date.parse(predecessor.expiresAt) <= Date.parse(input.now)) return { status: "expired" };
     if (predecessor.rotatedAt && predecessor.replacementSessionId) {
-      const withinGrace = Date.parse(input.now) - Date.parse(predecessor.rotatedAt) <= input.graceMs;
+      const sameOperation = Boolean(input.operationHash &&
+        predecessor.refreshOperationHash === input.operationHash);
+      const withinRecovery = Boolean(predecessor.refreshOperationExpiresAt &&
+        Date.parse(input.now) <= Date.parse(predecessor.refreshOperationExpiresAt));
       const replacement = this.sessions.get(predecessor.replacementSessionId);
-      if (withinGrace && replacement) return { status: "duplicate", session: { ...replacement } };
+      if (sameOperation && withinRecovery && replacement &&
+          !replacement.revokedAt && !replacement.rotatedAt &&
+          Date.parse(replacement.expiresAt) > Date.parse(input.now)) {
+        return { status: "duplicate", session: { ...replacement } };
+      }
       await this.revokeFamily(predecessor.tokenFamilyId, input.now);
       return { status: "reuse_detected" };
     }
+    if (!input.operationHash) return { status: "invalid" };
     predecessor.rotatedAt = input.now;
     predecessor.lastUsedAt = input.now;
     predecessor.replacementSessionId = input.replacement.id;
+    predecessor.refreshOperationHash = input.operationHash;
+    predecessor.refreshOperationExpiresAt = input.recoveryExpiresAt;
     this.sessions.set(input.replacement.id, { ...input.replacement });
     return { status: "rotated", session: { ...input.replacement } };
   }
@@ -110,7 +124,9 @@ const COLUMNS = `ds.id, ds.user_id AS "userId", ds.token_hash AS "tokenHash",
   ds.session_epoch_at_issue AS "sessionEpochAtIssue",
   ds.created_at AS "createdAt", ds.last_used_at AS "lastUsedAt",
   ds.expires_at AS "expiresAt", ds.revoked_at AS "revokedAt",
-  ds.rotated_at AS "rotatedAt", ds.replacement_session_id AS "replacementSessionId"`;
+  ds.rotated_at AS "rotatedAt", ds.replacement_session_id AS "replacementSessionId",
+  ds.refresh_operation_hash AS "refreshOperationHash",
+  ds.refresh_operation_expires_at AS "refreshOperationExpiresAt"`;
 
 export class PostgresDesktopSessionRepository implements DesktopSessionRepository {
   private readonly pool: Pool;
@@ -122,9 +138,10 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
        WHERE table_schema = current_schema() AND table_name = 'desktop_sessions'
          AND column_name = ANY($1::text[])`,
       [["id", "user_id", "token_hash", "token_family_id", "generation", "session_epoch_at_issue",
-        "expires_at", "revoked_at", "rotated_at", "replacement_session_id"]]
+        "expires_at", "revoked_at", "rotated_at", "replacement_session_id",
+        "refresh_operation_hash", "refresh_operation_expires_at"]]
     );
-    if (Number(result.rows[0]?.count) !== 10) throw new Error("desktop_session_schema_invalid");
+    if (Number(result.rows[0]?.count) !== 12) throw new Error("desktop_session_schema_invalid");
   }
 
   async create(input: DesktopSessionRecord, maximumActiveFamilies: number) {
@@ -162,7 +179,8 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
     predecessorHash: string;
     replacement: DesktopSessionRecord;
     now: string;
-    graceMs: number;
+    operationHash?: string;
+    recoveryExpiresAt: string;
   }): Promise<DesktopSessionRotationResult> {
     const client = await this.pool.connect();
     try {
@@ -183,22 +201,34 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
       if (predecessor.revokedAt) return await rollback(client, { status: "revoked" });
       if (Date.parse(predecessor.expiresAt) <= Date.parse(input.now)) return await rollback(client, { status: "expired" });
       if (predecessor.rotatedAt && predecessor.replacementSessionId) {
-        const withinGrace = Date.parse(input.now) - Date.parse(predecessor.rotatedAt) <= input.graceMs;
-        if (withinGrace) {
+        const sameOperation = Boolean(input.operationHash &&
+          predecessor.refreshOperationHash === input.operationHash);
+        const withinRecovery = Boolean(predecessor.refreshOperationExpiresAt &&
+          Date.parse(input.now) <= Date.parse(predecessor.refreshOperationExpiresAt));
+        if (sameOperation && withinRecovery) {
           const child = await client.query<DesktopSessionRecord>(
             `SELECT ${COLUMNS} FROM desktop_sessions ds WHERE ds.id = $1`, [predecessor.replacementSessionId]
           );
-          if (child.rows[0]) return await rollback(client, { status: "duplicate", session: normalize(child.rows[0]) });
+          if (child.rows[0]) {
+            const replacement = normalize(child.rows[0]);
+            if (!replacement.revokedAt && !replacement.rotatedAt &&
+                Date.parse(replacement.expiresAt) > Date.parse(input.now)) {
+              return await rollback(client, { status: "duplicate", session: replacement });
+            }
+          }
         }
         await revokeFamilyWithClient(client, predecessor.tokenFamilyId, input.now);
         await client.query("COMMIT");
         return { status: "reuse_detected" };
       }
+      if (!input.operationHash) return await rollback(client, { status: "invalid" });
       await insertSession(client, input.replacement);
       await client.query(
         `UPDATE desktop_sessions SET rotated_at = $2, last_used_at = $2,
-           replacement_session_id = $3 WHERE id = $1`,
-        [predecessor.id, input.now, input.replacement.id]
+           replacement_session_id = $3, refresh_operation_hash = $4,
+           refresh_operation_expires_at = $5 WHERE id = $1`,
+        [predecessor.id, input.now, input.replacement.id, input.operationHash,
+          input.recoveryExpiresAt]
       );
       await client.query("COMMIT");
       return { status: "rotated", session: input.replacement };
@@ -254,7 +284,10 @@ async function rollback<T extends DesktopSessionRotationResult>(client: PoolClie
 
 function normalize(record: DesktopSessionRecord): DesktopSessionRecord {
   const { revokedAt: _revokedAt, rotatedAt: _rotatedAt,
-    replacementSessionId: _replacementSessionId, ...required } = record;
+    replacementSessionId: _replacementSessionId,
+    refreshOperationHash: _refreshOperationHash,
+    refreshOperationExpiresAt: _refreshOperationExpiresAt,
+    ...required } = record;
   return {
     ...required,
     generation: Number(record.generation),
@@ -264,6 +297,10 @@ function normalize(record: DesktopSessionRecord): DesktopSessionRecord {
     expiresAt: new Date(record.expiresAt).toISOString(),
     ...(record.revokedAt ? { revokedAt: new Date(record.revokedAt).toISOString() } : {}),
     ...(record.rotatedAt ? { rotatedAt: new Date(record.rotatedAt).toISOString() } : {}),
-    ...(record.replacementSessionId ? { replacementSessionId: record.replacementSessionId } : {})
+    ...(record.replacementSessionId ? { replacementSessionId: record.replacementSessionId } : {}),
+    ...(record.refreshOperationHash ? { refreshOperationHash: record.refreshOperationHash } : {}),
+    ...(record.refreshOperationExpiresAt
+      ? { refreshOperationExpiresAt: new Date(record.refreshOperationExpiresAt).toISOString() }
+      : {})
   };
 }

@@ -7,7 +7,7 @@ import type {
 } from "./desktopSessionRepository.ts";
 
 const DESKTOP_SESSION_LIFETIME_MS = 30 * 24 * 60 * 60_000;
-const ROTATION_GRACE_MS = 8_000;
+const REFRESH_OPERATION_RECOVERY_MS = 10 * 60_000;
 const MAXIMUM_ACTIVE_FAMILIES = 5;
 const CLEANUP_RETENTION_DAYS = 7;
 
@@ -64,7 +64,7 @@ export class DesktopSessionService {
     return this.response(access.token, access.expiresAt, record);
   }
 
-  async refresh(credential: string) {
+  async refresh(credential: string, operationId?: string) {
     const predecessor = await this.validatedRecord(credential);
     const user = await this.authorization.findUserById(predecessor.userId);
     if (!user) throw new DesktopSessionError("DESKTOP_SESSION_INVALID");
@@ -74,6 +74,7 @@ export class DesktopSessionService {
       throw new DesktopSessionError("DESKTOP_SESSION_REVOKED");
     }
     const now = new Date(this.now()).toISOString();
+    const operationHash = hashRefreshOperation(operationId);
     const replacement = this.record({
       id: randomUUID(),
       userId: predecessor.userId,
@@ -88,7 +89,8 @@ export class DesktopSessionService {
       predecessorHash: hashCredential(credential),
       replacement,
       now,
-      graceMs: ROTATION_GRACE_MS
+      operationHash,
+      recoveryExpiresAt: new Date(this.now() + REFRESH_OPERATION_RECOVERY_MS).toISOString()
     });
     if (rotated.status === "account_not_active") throw new DesktopSessionError("ACCOUNT_NOT_ACTIVE");
     if (rotated.status === "expired") throw new DesktopSessionError("DESKTOP_SESSION_EXPIRED");
@@ -182,6 +184,13 @@ function hashCredential(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+function hashRefreshOperation(value?: string) {
+  if (!value || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    return undefined;
+  }
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
 function safeEqual(left: string, right: string) {
   const leftBytes = Buffer.from(left);
   const rightBytes = Buffer.from(right);
@@ -190,6 +199,6 @@ function safeEqual(left: string, right: string) {
 
 export const desktopSessionPolicy = {
   lifetimeMs: DESKTOP_SESSION_LIFETIME_MS,
-  rotationGraceMs: ROTATION_GRACE_MS,
+  refreshOperationRecoveryMs: REFRESH_OPERATION_RECOVERY_MS,
   maximumActiveFamilies: MAXIMUM_ACTIVE_FAMILIES
 } as const;
