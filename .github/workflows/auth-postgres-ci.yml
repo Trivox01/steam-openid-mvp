@@ -1,0 +1,90 @@
+name: Auth PostgreSQL CI
+
+on:
+  push:
+    branches:
+      - fix/legacy-desktop-refresh-compat
+
+  pull_request:
+    paths:
+      - "services/auth-api/**"
+      - ".github/workflows/auth-postgres-ci.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-postgres-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-gate:
+    name: PostgreSQL Compatibility Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/auth-api/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install auth-api dependencies
+        run: npm ci --prefix services/auth-api
+
+      - name: Backend TypeScript
+        run: npm run typecheck:backend
+
+      - name: Persistent desktop sessions
+        run: npm run test:persistent-sessions
+
+      - name: Legacy compatibility contract
+        run: >
+          node --experimental-strip-types --test
+          services/auth-api/tests/desktopSessionsLegacyCompat.test.ts
+
+      - name: Existing PostgreSQL integration
+        run: npm run test:backend-postgres
+
+      - name: Migration 019 and refresh protocol PostgreSQL gate
+        run: >
+          node --experimental-strip-types --test
+          services/auth-api/tests/postgres.refreshProtocol.integration.test.ts
+
+      - name: PR diff validation
+        shell: bash
+        run: |
+          git fetch origin feature/steam-openid-mvp --no-tags
+          git diff --check origin/feature/steam-openid-mvp...HEAD
