@@ -5,6 +5,11 @@ import type {
   DesktopSessionRecord,
   DesktopSessionRepository
 } from "./desktopSessionRepository.ts";
+import {
+  LEGACY_REFRESH_ROTATION_GRACE_MS,
+  MODERN_REFRESH_PROTOCOL_VERSION,
+  type RefreshProtocolVersion
+} from "./refreshProtocol.ts";
 
 const DESKTOP_SESSION_LIFETIME_MS = 30 * 24 * 60 * 60_000;
 const REFRESH_OPERATION_RECOVERY_MS = 10 * 60_000;
@@ -57,7 +62,10 @@ export class DesktopSessionService {
       familyId: id,
       generation: 0,
       sessionEpoch: access.sessionEpoch,
-      createdAt
+      createdAt,
+      // Every session issued by this backend is explicitly modern; the column
+      // default is never relied on for new issuance.
+      protocolVersion: MODERN_REFRESH_PROTOCOL_VERSION
     });
     await this.repository.create(record, MAXIMUM_ACTIVE_FAMILIES);
     void this.repository.cleanup(createdAt, CLEANUP_RETENTION_DAYS, 100).catch(() => undefined);
@@ -65,6 +73,11 @@ export class DesktopSessionService {
   }
 
   async refresh(credential: string, operationId?: string) {
+    // A malformed operation identity is rejected outright. It must never be
+    // downgraded into a missing operation, which is the only shape eligible for
+    // legacy compatibility.
+    const operationHash = operationId === undefined ? undefined : hashRefreshOperation(operationId);
+    if (operationId !== undefined && !operationHash) throw new DesktopSessionError("DESKTOP_SESSION_INVALID");
     const predecessor = await this.validatedRecord(credential);
     const user = await this.authorization.findUserById(predecessor.userId);
     if (!user) throw new DesktopSessionError("DESKTOP_SESSION_INVALID");
@@ -74,7 +87,6 @@ export class DesktopSessionService {
       throw new DesktopSessionError("DESKTOP_SESSION_REVOKED");
     }
     const now = new Date(this.now()).toISOString();
-    const operationHash = hashRefreshOperation(operationId);
     const replacement = this.record({
       id: randomUUID(),
       userId: predecessor.userId,
@@ -82,7 +94,11 @@ export class DesktopSessionService {
       generation: predecessor.generation + 1,
       sessionEpoch: predecessor.sessionEpochAtIssue,
       createdAt: now,
-      expiresAt: predecessor.expiresAt
+      expiresAt: predecessor.expiresAt,
+      // Authoritatively re-decided by the repository from the predecessor's
+      // persisted protocol: a legacy rotation keeps the family legacy, an
+      // operation-identity rotation upgrades it.
+      protocolVersion: operationHash ? MODERN_REFRESH_PROTOCOL_VERSION : undefined
     });
     const rotated = await this.repository.rotate({
       predecessorId: predecessor.id,
@@ -140,6 +156,7 @@ export class DesktopSessionService {
     sessionEpoch: number;
     createdAt: string;
     expiresAt?: string;
+    protocolVersion?: RefreshProtocolVersion;
   }): DesktopSessionRecord {
     const unsigned = {
       id: input.id,
@@ -149,7 +166,8 @@ export class DesktopSessionService {
       sessionEpochAtIssue: input.sessionEpoch,
       createdAt: input.createdAt,
       lastUsedAt: input.createdAt,
-      expiresAt: input.expiresAt ?? new Date(Date.parse(input.createdAt) + DESKTOP_SESSION_LIFETIME_MS).toISOString()
+      expiresAt: input.expiresAt ?? new Date(Date.parse(input.createdAt) + DESKTOP_SESSION_LIFETIME_MS).toISOString(),
+      ...(input.protocolVersion ? { refreshProtocolVersion: input.protocolVersion } : {})
     };
     return { ...unsigned, tokenHash: hashCredential(this.credentialFor(unsigned)) };
   }
@@ -200,5 +218,6 @@ function safeEqual(left: string, right: string) {
 export const desktopSessionPolicy = {
   lifetimeMs: DESKTOP_SESSION_LIFETIME_MS,
   refreshOperationRecoveryMs: REFRESH_OPERATION_RECOVERY_MS,
+  legacyRotationGraceMs: LEGACY_REFRESH_ROTATION_GRACE_MS,
   maximumActiveFamilies: MAXIMUM_ACTIVE_FAMILIES
 } as const;

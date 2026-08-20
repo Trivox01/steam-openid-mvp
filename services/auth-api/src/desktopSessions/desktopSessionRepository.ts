@@ -1,4 +1,12 @@
 import type { Pool, PoolClient } from "pg";
+import {
+  LEGACY_REFRESH_PROTOCOL_VERSION,
+  LEGACY_REFRESH_ROTATION_GRACE_MS,
+  MODERN_REFRESH_PROTOCOL_VERSION,
+  isLegacyRefreshProtocol,
+  normalizeRefreshProtocolVersion,
+  type RefreshProtocolVersion
+} from "./refreshProtocol.ts";
 
 export interface DesktopSessionRecord {
   id: string;
@@ -15,6 +23,10 @@ export interface DesktopSessionRecord {
   replacementSessionId?: string;
   refreshOperationHash?: string;
   refreshOperationExpiresAt?: string;
+  // Persisted protocol classification. Absent means the row was written by a
+  // backend that predates the column, which the database default classifies as
+  // legacy. New sessions are always written with an explicit value.
+  refreshProtocolVersion?: RefreshProtocolVersion;
 }
 
 export type DesktopSessionRotationResult =
@@ -40,6 +52,43 @@ export interface DesktopSessionRepository {
   cleanup(now: string, retentionDays: number, limit: number): Promise<number>;
 }
 
+// A legacy predecessor is identified only by its own persisted protocol
+// classification. Never by client version, user agent, request shape, or any
+// deployment or migration timestamp.
+function isLegacySession(predecessor: DesktopSessionRecord) {
+  return isLegacyRefreshProtocol(predecessor.refreshProtocolVersion);
+}
+
+// Legacy first rotation: the session must have been issued under the legacy
+// protocol and the request must carry no operation identity.
+function legacyFirstRotationAllowed(
+  predecessor: DesktopSessionRecord,
+  operationHash: string | undefined
+) {
+  return !operationHash && isLegacySession(predecessor);
+}
+
+// Legacy duplicate grace: only a legacy session that was itself rotated without
+// an operation identity gets the bounded historical window.
+function withinLegacyGrace(
+  predecessor: DesktopSessionRecord,
+  operationHash: string | undefined,
+  now: string
+) {
+  if (operationHash || !predecessor.rotatedAt) return false;
+  if (!isLegacySession(predecessor)) return false;
+  if (predecessor.refreshOperationHash || predecessor.refreshOperationExpiresAt) return false;
+  return Date.parse(now) - Date.parse(predecessor.rotatedAt) <= LEGACY_REFRESH_ROTATION_GRACE_MS;
+}
+
+// The replacement inherits legacy only through a legacy rotation, so an old
+// client keeps a usable family for its remaining lifetime. A rotation carrying a
+// valid operation identity always produces a modern replacement, which is a
+// safe one-way upgrade of the family.
+function replacementProtocolVersion(operationHash: string | undefined): RefreshProtocolVersion {
+  return operationHash ? MODERN_REFRESH_PROTOCOL_VERSION : LEGACY_REFRESH_PROTOCOL_VERSION;
+}
+
 export class InMemoryDesktopSessionRepository implements DesktopSessionRepository {
   readonly sessions = new Map<string, DesktopSessionRecord>();
   readonly users = new Map<string, { accountStatus: "active" | "suspended" | "disabled"; sessionEpoch: number }>();
@@ -47,6 +96,8 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
   async validateSchema() {}
 
   async create(input: DesktopSessionRecord, maximumActiveFamilies: number) {
+    // Stored verbatim so that an absent protocol column can be simulated the
+    // same way an older backend writes it.
     this.sessions.set(input.id, { ...input });
     const families = [...this.sessions.values()]
       .filter((session) => session.userId === input.userId && !session.revokedAt && session.generation === 0)
@@ -58,7 +109,7 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
 
   async findById(id: string) {
     const value = this.sessions.get(id);
-    return value ? { ...value } : undefined;
+    return value ? readRecord(value) : undefined;
   }
 
   async rotate(input: {
@@ -69,8 +120,9 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
     operationHash?: string;
     recoveryExpiresAt: string;
   }): Promise<DesktopSessionRotationResult> {
-    const predecessor = this.sessions.get(input.predecessorId);
-    if (!predecessor || predecessor.tokenHash !== input.predecessorHash) return { status: "invalid" };
+    const stored = this.sessions.get(input.predecessorId);
+    const predecessor = stored ? readRecord(stored) : undefined;
+    if (!stored || !predecessor || predecessor.tokenHash !== input.predecessorHash) return { status: "invalid" };
     const user = this.users.get(predecessor.userId);
     if (user && user.accountStatus !== "active") return { status: "account_not_active" };
     if (user && user.sessionEpoch !== predecessor.sessionEpochAtIssue) {
@@ -84,23 +136,34 @@ export class InMemoryDesktopSessionRepository implements DesktopSessionRepositor
         predecessor.refreshOperationHash === input.operationHash);
       const withinRecovery = Boolean(predecessor.refreshOperationExpiresAt &&
         Date.parse(input.now) <= Date.parse(predecessor.refreshOperationExpiresAt));
+      const legacyRecovery = withinLegacyGrace(predecessor, input.operationHash, input.now);
       const replacement = this.sessions.get(predecessor.replacementSessionId);
-      if (sameOperation && withinRecovery && replacement &&
+      if (((sameOperation && withinRecovery) || legacyRecovery) && replacement &&
           !replacement.revokedAt && !replacement.rotatedAt &&
           Date.parse(replacement.expiresAt) > Date.parse(input.now)) {
-        return { status: "duplicate", session: { ...replacement } };
+        return { status: "duplicate", session: readRecord(replacement) };
       }
       await this.revokeFamily(predecessor.tokenFamilyId, input.now);
       return { status: "reuse_detected" };
     }
-    if (!input.operationHash) return { status: "invalid" };
-    predecessor.rotatedAt = input.now;
-    predecessor.lastUsedAt = input.now;
-    predecessor.replacementSessionId = input.replacement.id;
-    predecessor.refreshOperationHash = input.operationHash;
-    predecessor.refreshOperationExpiresAt = input.recoveryExpiresAt;
-    this.sessions.set(input.replacement.id, { ...input.replacement });
-    return { status: "rotated", session: { ...input.replacement } };
+    if (!legacyFirstRotationAllowed(predecessor, input.operationHash) && !input.operationHash) {
+      return { status: "invalid" };
+    }
+    stored.rotatedAt = input.now;
+    stored.lastUsedAt = input.now;
+    stored.replacementSessionId = input.replacement.id;
+    // A legacy rotation keeps both operation columns unset, which is what marks
+    // the predecessor as legacy-rotated for the bounded grace policy.
+    if (input.operationHash) {
+      stored.refreshOperationHash = input.operationHash;
+      stored.refreshOperationExpiresAt = input.recoveryExpiresAt;
+    }
+    const replacement: DesktopSessionRecord = {
+      ...input.replacement,
+      refreshProtocolVersion: replacementProtocolVersion(input.operationHash)
+    };
+    this.sessions.set(replacement.id, { ...replacement });
+    return { status: "rotated", session: replacement };
   }
 
   async revokeFamily(familyId: string, now: string) {
@@ -126,11 +189,14 @@ const COLUMNS = `ds.id, ds.user_id AS "userId", ds.token_hash AS "tokenHash",
   ds.expires_at AS "expiresAt", ds.revoked_at AS "revokedAt",
   ds.rotated_at AS "rotatedAt", ds.replacement_session_id AS "replacementSessionId",
   ds.refresh_operation_hash AS "refreshOperationHash",
-  ds.refresh_operation_expires_at AS "refreshOperationExpiresAt"`;
+  ds.refresh_operation_expires_at AS "refreshOperationExpiresAt",
+  ds.refresh_protocol_version AS "refreshProtocolVersion"`;
 
 export class PostgresDesktopSessionRepository implements DesktopSessionRepository {
   private readonly pool: Pool;
-  constructor(pool: Pool) { this.pool = pool; }
+  constructor(pool: Pool) {
+    this.pool = pool;
+  }
 
   async validateSchema() {
     const result = await this.pool.query<{ count: string }>(
@@ -139,9 +205,9 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
          AND column_name = ANY($1::text[])`,
       [["id", "user_id", "token_hash", "token_family_id", "generation", "session_epoch_at_issue",
         "expires_at", "revoked_at", "rotated_at", "replacement_session_id",
-        "refresh_operation_hash", "refresh_operation_expires_at"]]
+        "refresh_operation_hash", "refresh_operation_expires_at", "refresh_protocol_version"]]
     );
-    if (Number(result.rows[0]?.count) !== 12) throw new Error("desktop_session_schema_invalid");
+    if (Number(result.rows[0]?.count) !== 13) throw new Error("desktop_session_schema_invalid");
   }
 
   async create(input: DesktopSessionRecord, maximumActiveFamilies: number) {
@@ -205,7 +271,8 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
           predecessor.refreshOperationHash === input.operationHash);
         const withinRecovery = Boolean(predecessor.refreshOperationExpiresAt &&
           Date.parse(input.now) <= Date.parse(predecessor.refreshOperationExpiresAt));
-        if (sameOperation && withinRecovery) {
+        const legacyRecovery = withinLegacyGrace(predecessor, input.operationHash, input.now);
+        if ((sameOperation && withinRecovery) || legacyRecovery) {
           const child = await client.query<DesktopSessionRecord>(
             `SELECT ${COLUMNS} FROM desktop_sessions ds WHERE ds.id = $1`, [predecessor.replacementSessionId]
           );
@@ -221,17 +288,23 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
         await client.query("COMMIT");
         return { status: "reuse_detected" };
       }
-      if (!input.operationHash) return await rollback(client, { status: "invalid" });
-      await insertSession(client, input.replacement);
+      if (!legacyFirstRotationAllowed(predecessor, input.operationHash) && !input.operationHash) {
+        return await rollback(client, { status: "invalid" });
+      }
+      const replacement: DesktopSessionRecord = {
+        ...input.replacement,
+        refreshProtocolVersion: replacementProtocolVersion(input.operationHash)
+      };
+      await insertSession(client, replacement);
       await client.query(
         `UPDATE desktop_sessions SET rotated_at = $2, last_used_at = $2,
            replacement_session_id = $3, refresh_operation_hash = $4,
            refresh_operation_expires_at = $5 WHERE id = $1`,
-        [predecessor.id, input.now, input.replacement.id, input.operationHash,
-          input.recoveryExpiresAt]
+        [predecessor.id, input.now, replacement.id, input.operationHash ?? null,
+          input.operationHash ? input.recoveryExpiresAt : null]
       );
       await client.query("COMMIT");
-      return { status: "rotated", session: input.replacement };
+      return { status: "rotated", session: replacement };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -259,14 +332,20 @@ export class PostgresDesktopSessionRepository implements DesktopSessionRepositor
 }
 
 async function insertSession(client: PoolClient, input: DesktopSessionRecord) {
+  // The protocol version is written explicitly, never left to the column
+  // default, so a session issued by this backend can never be misclassified as
+  // legacy. A missing value fails loudly against the NOT NULL column instead of
+  // silently widening legacy eligibility.
   await client.query(
     `INSERT INTO desktop_sessions
       (id,user_id,token_hash,token_family_id,generation,session_epoch_at_issue,
-       created_at,last_used_at,expires_at,revoked_at,rotated_at,replacement_session_id)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+       created_at,last_used_at,expires_at,revoked_at,rotated_at,replacement_session_id,
+       refresh_protocol_version)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [input.id, input.userId, input.tokenHash, input.tokenFamilyId, input.generation,
       input.sessionEpochAtIssue, input.createdAt, input.lastUsedAt, input.expiresAt,
-      input.revokedAt ?? null, input.rotatedAt ?? null, input.replacementSessionId ?? null]
+      input.revokedAt ?? null, input.rotatedAt ?? null, input.replacementSessionId ?? null,
+      input.refreshProtocolVersion ?? null]
   );
 }
 
@@ -282,11 +361,21 @@ async function rollback<T extends DesktopSessionRotationResult>(client: PoolClie
   return result;
 }
 
+// Reads a stored record with the same classification semantics as the database
+// column default: an absent value is legacy.
+function readRecord(record: DesktopSessionRecord): DesktopSessionRecord {
+  return {
+    ...record,
+    refreshProtocolVersion: normalizeRefreshProtocolVersion(record.refreshProtocolVersion)
+  };
+}
+
 function normalize(record: DesktopSessionRecord): DesktopSessionRecord {
   const { revokedAt: _revokedAt, rotatedAt: _rotatedAt,
     replacementSessionId: _replacementSessionId,
     refreshOperationHash: _refreshOperationHash,
     refreshOperationExpiresAt: _refreshOperationExpiresAt,
+    refreshProtocolVersion: _refreshProtocolVersion,
     ...required } = record;
   return {
     ...required,
@@ -295,6 +384,7 @@ function normalize(record: DesktopSessionRecord): DesktopSessionRecord {
     createdAt: new Date(record.createdAt).toISOString(),
     lastUsedAt: new Date(record.lastUsedAt).toISOString(),
     expiresAt: new Date(record.expiresAt).toISOString(),
+    refreshProtocolVersion: normalizeRefreshProtocolVersion(record.refreshProtocolVersion),
     ...(record.revokedAt ? { revokedAt: new Date(record.revokedAt).toISOString() } : {}),
     ...(record.rotatedAt ? { rotatedAt: new Date(record.rotatedAt).toISOString() } : {}),
     ...(record.replacementSessionId ? { replacementSessionId: record.replacementSessionId } : {}),
