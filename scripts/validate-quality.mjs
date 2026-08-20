@@ -20,6 +20,7 @@ assert.deepEqual([...ar].filter((key) => !en.has(key)), [], "English locale is m
 
 const css = fs.readFileSync("src/styles/index.css", "utf8");
 const details = fs.readFileSync("src/pages/GameDetailsPage.tsx", "utf8");
+const filterBar = fs.readFileSync("src/components/ui/FilterBar.tsx", "utf8");
 const statistics = fs.readFileSync("src/pages/StatisticsPage.tsx", "utf8");
 const navigation = fs.readFileSync("src/components/layout/Sidebar.tsx", "utf8");
 const artwork = fs.readFileSync("src/components/ui/GameArtwork.tsx", "utf8");
@@ -38,8 +39,11 @@ assert.match(settings, /aria-modal="true"/);
 assert.match(enSteam, /"steam\.achievements\.summaryCounts": "\{\{completed\}\}/);
 assert.match(arSteam, /"steam\.achievements\.summaryCounts": "اكتملت \{\{completed\}\}/);
 assert.match(css, /\.game-v2-toolbar\s*\{[^}]*position:sticky/s);
-assert.match(details, /aria-pressed=\{props\.filter === item\}/);
-assert.match(details, /aria-pressed=\{props\.view === "grid"\}/);
+// Pressed state lives with the shared segmented control, not with a page-local
+// toolbar. Game Details reuses it instead of shipping its own filter buttons.
+assert.match(filterBar, /aria-pressed=\{value === option\.value\}/);
+assert.match(details, /<SegmentedFilter/);
+assert.match(details, /<AchievementRow/);
 assert.doesNotMatch(statistics, /\+4\.2% this month|WEEKLY ACTIVITY|MOST PLAYED|LEADERBOARD/);
 assert.equal((navigation.match(/aria-current=/g) ?? []).length, 1);
 assert.match(

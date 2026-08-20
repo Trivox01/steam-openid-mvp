@@ -4,25 +4,85 @@ import fs from "node:fs";
 
 const assertions = validateGameDetailsExperience();
 const page = fs.readFileSync("src/pages/GameDetailsPage.tsx", "utf8");
-assert.match(page, /game-v2-continue/);
-assert.match(page, /insight\.nextAchievement\.translationKey/);
-assert.match(page, /event\.ctrlKey \|\| event\.metaKey/);
-assert.match(page, /searchRef\.current\?\.focus/);
+const row = fs.readFileSync("src/components/achievements/AchievementRow.tsx", "utf8");
+const hook = fs.readFileSync("src/hooks/useGameInstallState.ts", "utf8");
+const pageStyles = fs.readFileSync("src/styles/game-details-v1.css", "utf8");
+const styles = fs.readFileSync("src/styles/index.css", "utf8");
+const entry = fs.readFileSync("src/main.tsx", "utf8");
+
+// One vertical hierarchy: identity, progress, sync status, an optional
+// recommendation, the achievement list, optional sessions.
+assert.match(page, /gd-identity/);
+assert.match(page, /gd-progress/);
+assert.match(page, /gd-status/);
+assert.match(page, /gd-achievements/);
+assert.doesNotMatch(
+  page,
+  /game-v2-hero|game-v2-overview|game-v2-shelf|game-v2-rare-columns|game-v2-continue|game-v2-metric/,
+  "the cinematic hero, the metric wall and the shelves must not come back"
+);
 assert.match(page, /kind: "cover"/);
 assert.match(page, /variant="cover"/);
+assert.doesNotMatch(page, /variant="background"|backgroundUrl/, "v1 uses the cover artwork only");
+
+// The achievement list is the primary content and owns its own async states.
+assert.match(page, /<AchievementRow/);
+assert.doesNotMatch(page, /AchievementExperienceCard|achievement-x-collection/, "the card grid is replaced by rows");
+assert.match(page, /const PAGE_SIZE = 60/);
+assert.match(page, /achievementsState\.status === "loading"/);
+assert.match(page, /achievementsState\.status === "error"/);
+assert.match(page, /achievementsState\.retry/);
+assert.doesNotMatch(
+  page,
+  /if \(achievementsState\.status === "error"\) return/,
+  "a failed achievement load must not replace the page or the Play action"
+);
+assert.doesNotMatch(page, /AchievementDensity|AchievementView|"recent"/, "density, grid/list and the recent filter are gone");
+assert.doesNotMatch(page, /addEventListener\("keydown"|event\.ctrlKey/, "the page must not hijack Ctrl+F from dialogs");
+assert.doesNotMatch(page, /<ProgressBar/, "there is no real partial achievement progress to draw yet");
+
+// Nothing may be presented as more certain than it is.
+assert.match(page, /calculateAchievementSummary/);
+assert.match(page, /unknownUnlockStates > 0/);
+assert.match(page, /insight\.nextAchievement\.translationKey/);
 assert.match(page, /achievementDataUnavailable/);
 assert.match(page, /hasAchievementData/);
+assert.match(page, /window\.addEventListener\("offline"/);
+assert.match(page, /gameDetails\.offlineCached/);
+assert.match(page, /disabled=\{updating \|\| !online\}/, "no sync action while clearly offline");
+assert.match(page, /<RecentGameSessions appId=\{game\.appId\}/);
 assert.doesNotMatch(page, /GameDetailsSquare/);
-const styles = fs.readFileSync("src/styles/index.css", "utf8");
-const nexusStyles = fs.readFileSync("src/styles/nexus-system-v2.css", "utf8");
-assert.match(page, /game-v2-overview-secondary/);
-assert.match(styles, /game-v2-hero__cover[^}]*aspect-ratio:2\/3/);
-assert.match(styles, /inset-block-start:calc\(var\(--nx-topbar-height,60px\) \+ 8px\)/);
-assert.doesNotMatch(styles, /\.game-v2-toolbar[^}]*inset-block-start:76px/);
-assert.match(nexusStyles, /\.game-v2-overview\s*\{[^}]*repeat\(4, minmax\(0, 1fr\)\)/);
-assert.match(nexusStyles, /\.game-v2-overview-secondary[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
-assert.match(nexusStyles, /\.game-v2-hero__copy h1[^}]*40px/);
-assert.match(nexusStyles, /\.game-details-v2 \{ gap: 22px; \}/);
+
+// Rows are real buttons, state is never colour alone, rarity is never invented.
+assert.match(row, /type="button"/);
+assert.match(row, /aria-label=/);
+assert.match(row, /knownAchievementRarity/);
+assert.match(row, /unlockStateKnown !== false/);
+assert.match(row, /ChevronRight/);
+assert.doesNotMatch(
+  row,
+  /achievement\.rarityPercentage|rarityTier/,
+  "displayed rarity comes from known global percentages only"
+);
+
+// The install-state hook observes; it never launches anything.
+assert.match(hook, /gameLauncher\.subscribe/);
+assert.doesNotMatch(hook, /gameLauncher\.(?:act|openSteamInstaller)\(/);
+
+assert.match(entry, /game-details-v1\.css/);
+
+// Compact, flat surfaces that survive light, dark and forced colours.
+assert.match(pageStyles, /\.gd-identity \.gd-identity__cover \{[^}]*aspect-ratio: 2 \/ 3/s);
+assert.match(pageStyles, /\.gd-achievement-row \{[^}]*min-block-size: 44px/s);
+assert.match(pageStyles, /max-inline-size: 1180px/, "achievement text must not stretch across 1920");
+assert.match(pageStyles, /html\[dir="rtl"\] \.gd-identity__back svg/);
+assert.match(pageStyles, /html\[dir="rtl"\] \.gd-achievement-row__chevron/);
+assert.match(pageStyles, /forced-colors: active/);
+assert.doesNotMatch(
+  pageStyles,
+  /blur\(|backdrop-filter|linear-gradient|box-shadow/,
+  "no glass, no decorative gradient, no glow"
+);
 assert.match(styles, /scrollbar-gutter:stable/);
 assert.match(styles, /::-webkit-scrollbar-thumb:hover/);
 assert.match(styles, /forced-colors:active/);
