@@ -36,6 +36,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
 const REFRESH_OPERATION_X = "00000000-0000-4000-8000-000000000011";
 const REFRESH_OPERATION_Y = "00000000-0000-4000-8000-000000000012";
 const REFRESH_OPERATION_Z = "00000000-0000-4000-8000-000000000013";
+const SESSION_MIGRATION_VERSIONS = [17, 18, 19] as const;
 
 test("PostgreSQL repository integration and concurrency", {
   skip: databaseUrl ? false : "TEST_DATABASE_URL is not configured"
@@ -56,11 +57,19 @@ test("PostgreSQL repository integration and concurrency", {
     const appliedSessionMigrations = await pool.query<{
       version: number;
       checksum: string;
-    }>("SELECT version, checksum FROM auth_schema_migrations WHERE version IN (17, 18) ORDER BY version");
-    assert.deepEqual(appliedSessionMigrations.rows.map((row) => Number(row.version)), [17, 18]);
+    }>(
+      "SELECT version, checksum FROM auth_schema_migrations WHERE version = ANY($1::int[]) ORDER BY version",
+      [[...SESSION_MIGRATION_VERSIONS]]
+    );
+    assert.deepEqual(
+      appliedSessionMigrations.rows.map((row) => Number(row.version)),
+      [...SESSION_MIGRATION_VERSIONS]
+    );
     assert.deepEqual(
       appliedSessionMigrations.rows.map((row) => row.checksum),
-      migrations.filter((migration) => migration.version >= 17).map((migration) => migration.checksum)
+      migrations
+        .filter((migration) => (SESSION_MIGRATION_VERSIONS as readonly number[]).includes(migration.version))
+        .map((migration) => migration.checksum)
     );
     const repository = new PostgresAuthTransactionRepository(pool);
     await repository.validateSchema();
