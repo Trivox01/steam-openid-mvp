@@ -85,7 +85,7 @@ decision recorded in the PR description.
 ```
 --library-card-min: 208px
 portrait ratio: 2:3
-~6 columns @1920
+6 columns @1920
 5 columns @1440
 4 columns @1280
 Play/Install: icon-only, 38×38
