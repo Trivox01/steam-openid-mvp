@@ -1,0 +1,368 @@
+/*
+  Game Details v1 - compact desktop layout.
+
+  Rules this file must keep:
+  - No blur, no backdrop-filter, no decorative gradient, no glow, no shadow.
+    Hierarchy comes from surface levels, borders, typography and spacing, so light
+    and dark are both first class and nothing depends on dark artwork behind it.
+  - Logical properties only. RTL needs no mirrored copy of this file.
+  - Exactly two things are mirrored in RTL: the back arrow and the row chevron.
+    Artwork, platform text and the Trophy/Lock/state icons are never mirrored.
+  - Bounded content width so achievement text does not stretch across 1920.
+*/
+
+.game-details-v1 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-4, 16px);
+  max-inline-size: 1180px;
+}
+
+/* A - compact game identity */
+.gd-identity {
+  display: grid;
+  grid-template-columns: auto 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--nx-space-4, 16px);
+  min-block-size: 96px;
+  padding: var(--nx-space-3, 12px) var(--nx-space-4, 16px);
+  border: 1px solid var(--nx-border, var(--border-muted));
+  border-radius: var(--nx-radius-md, 9px);
+  background: var(--nx-surface-1, var(--surface));
+}
+
+.gd-identity--skeleton { grid-template-columns: auto 64px minmax(0, 1fr); }
+
+.gd-identity__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--nx-radius-sm, 6px);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.gd-identity__back:hover {
+  background: var(--surface-hover);
+  border-color: var(--nx-border, var(--border-muted));
+}
+
+.gd-identity .gd-identity__cover {
+  inline-size: 64px;
+  block-size: 96px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--nx-radius-sm, 6px);
+  overflow: hidden;
+}
+
+.gd-identity__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.gd-identity__title {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gd-identity__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text-primary) 62%, transparent);
+}
+
+.gd-identity__meta > span + span::before { content: "\00b7"; margin-inline-end: 8px; }
+
+.gd-identity__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* B - progress row */
+.gd-progress {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px var(--nx-space-4, 16px);
+  border: 1px solid var(--nx-border, var(--border-muted));
+  border-radius: var(--nx-radius-md, 9px);
+  background: var(--nx-surface-1, var(--surface));
+  font-size: 13px;
+}
+
+.gd-progress__value { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+
+.gd-progress__track {
+  flex: 0 1 220px;
+  min-inline-size: 120px;
+  block-size: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  overflow: hidden;
+}
+
+.gd-progress__fill { display: block; block-size: 100%; background: var(--action-play); }
+
+.gd-progress__item { color: color-mix(in srgb, var(--text-primary) 70%, transparent); }
+
+.gd-progress__item--unknown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+
+/* C - data and sync status */
+.gd-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px var(--nx-space-4, 16px);
+  border: 1px solid var(--nx-border, var(--border-muted));
+  border-radius: var(--nx-radius-md, 9px);
+  background: var(--nx-surface-1, var(--surface));
+  font-size: 12.5px;
+}
+
+.gd-status__state { font-weight: 600; color: var(--text-primary); }
+.gd-status__time { color: color-mix(in srgb, var(--text-primary) 60%, transparent); }
+.gd-status__spacer { flex: 1 1 auto; }
+
+.gd-status__message {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+/* D - next achievement */
+.gd-next {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  inline-size: 100%;
+  padding: 10px var(--nx-space-4, 16px);
+  border: 1px solid var(--nx-border, var(--border-muted));
+  border-inline-start: 2px solid var(--nx-violet);
+  border-radius: var(--nx-radius-md, 9px);
+  background: var(--nx-surface-1, var(--surface));
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.gd-next:hover { background: var(--surface-hover); }
+
+.gd-next__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.gd-next__label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 58%, transparent);
+}
+
+.gd-next__title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+
+.gd-next__reason {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text-primary) 66%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gd-next__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--text-primary) 66%, transparent);
+}
+
+/* Arabic display text must not inherit Latin letter-spacing tricks. */
+html[lang="ar"] .gd-next__label { letter-spacing: normal; text-transform: none; }
+
+/* E - achievements */
+.gd-achievements { display: flex; flex-direction: column; gap: 10px; }
+
+.gd-achievements__count {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+}
+
+.gd-achievement-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--nx-border, var(--border-muted));
+  border-radius: var(--nx-radius-md, 9px);
+  background: var(--nx-surface-1, var(--surface));
+  overflow: hidden;
+}
+
+.gd-achievement-row {
+  display: grid;
+  grid-template-columns: 32px 16px minmax(0, 1fr) auto auto 16px;
+  align-items: center;
+  gap: 10px;
+  inline-size: 100%;
+  min-block-size: 44px;
+  padding: 4px 12px;
+  border: 0;
+  border-block-end: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.gd-achievement-list > .gd-achievement-row:last-child { border-block-end: 0; }
+.gd-achievement-row:hover { background: var(--surface-hover); }
+.gd-achievement-row:focus-visible { outline: 2px solid var(--nx-violet); outline-offset: -2px; }
+
+.gd-achievement-row__state { display: inline-flex; align-items: center; }
+.gd-achievement-row--unlocked .gd-achievement-row__state { color: var(--action-play); }
+.gd-achievement-row--locked .gd-achievement-row__state,
+.gd-achievement-row--unknown .gd-achievement-row__state {
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+}
+
+.gd-achievement-row__text { display: flex; flex-direction: column; min-inline-size: 0; }
+
+.gd-achievement-row__title {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gd-achievement-row__description {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text-primary) 58%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gd-achievement-row__rarity,
+.gd-achievement-row__date {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  color: color-mix(in srgb, var(--text-primary) 58%, transparent);
+}
+
+.gd-achievement-row__rarity { min-inline-size: 56px; }
+.gd-achievement-row__date { min-inline-size: 72px; }
+
+.gd-achievement-row__chevron { color: color-mix(in srgb, var(--text-primary) 40%, transparent); }
+
+.gd-achievements__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+}
+
+.gd-achievements__error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px var(--nx-space-4, 16px);
+  border: 1px solid var(--nx-border, var(--border-muted));
+  border-radius: var(--nx-radius-md, 9px);
+  font-size: 13px;
+}
+
+.gd-achievements__empty { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+/* F - recent sessions */
+.gd-sessions { display: flex; flex-direction: column; gap: 8px; }
+
+.gd-sessions__title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+
+.gd-sessions__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--nx-border, var(--border-muted));
+  border-radius: var(--nx-radius-md, 9px);
+  background: var(--nx-surface-1, var(--surface));
+  overflow: hidden;
+}
+
+.gd-sessions__list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-block-size: 40px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+  border-block-end: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.gd-sessions__list li:last-child { border-block-end: 0; }
+.gd-sessions__list time { color: color-mix(in srgb, var(--text-primary) 58%, transparent); }
+.gd-sessions__unlocks { margin-inline-start: auto; }
+
+/* Directional controls only. Artwork and state icons stay as they are. */
+html[dir="rtl"] .gd-identity__back svg { transform: scaleX(-1); }
+html[dir="rtl"] .gd-achievement-row__chevron { transform: scaleX(-1); }
+
+/* Narrow desktop windows drop the optional columns, never the title. */
+@media (max-width: 1050px) {
+  .gd-achievement-row { grid-template-columns: 32px 16px minmax(0, 1fr) auto 16px; }
+  .gd-achievement-row__date { display: none; }
+}
+
+@media (max-width: 840px) {
+  .gd-achievement-row { grid-template-columns: 32px 16px minmax(0, 1fr) 16px; }
+  .gd-achievement-row__rarity { display: none; }
+}
+
+@media (forced-colors: active) {
+  .gd-identity,
+  .gd-progress,
+  .gd-status,
+  .gd-next,
+  .gd-achievement-list,
+  .gd-achievements__error,
+  .gd-sessions__list { border-color: CanvasText; }
+  .gd-progress__fill { background: Highlight; }
+  .gd-achievement-row:focus-visible { outline-color: Highlight; }
+}
