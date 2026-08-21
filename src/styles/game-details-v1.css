@@ -7,6 +7,10 @@
   - Colour carries meaning: violet is Nexus identity, selection and interaction,
     cyan is data (progress, counts, rarity), green is an unlocked achievement,
     graphite is structure. Nothing is coloured for decoration.
+  - Three typographic tiers and no more: the white title, the secondary metadata
+    line, and the supporting data-state line. Density is the polish.
+  - Platform identity is carried by white glyphs that inherit the text colour,
+    and only for a platform the data can prove. No badge, no brand file.
   - Neon is a system accent, not a texture: a 2px identity rail, two corner
     brackets around the cover, one accent per state, and exactly one controlled
     glow (the progress fill, in dark mode only). No blur, no glass, no bloom.
@@ -33,6 +37,7 @@
   --gd-data: var(--gd-accent-alt);
   --gd-hairline: color-mix(in srgb, var(--text-primary) 10%, transparent);
   --gd-hairline-strong: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --gd-secondary: color-mix(in srgb, var(--text-primary) 72%, transparent);
   --gd-muted: color-mix(in srgb, var(--text-primary) 64%, transparent);
   --gd-muted-soft: color-mix(in srgb, var(--text-primary) 46%, transparent);
   --gd-panel: var(--nx-surface-1, var(--surface));
@@ -153,7 +158,7 @@
 .gd-identity__main {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   block-size: 100%;
   min-inline-size: 0;
   padding-inline-start: 16px;
@@ -183,32 +188,43 @@
   white-space: nowrap;
 }
 
+/* Tier two: one secondary line, brighter than the supporting text below it and
+   clearly quieter than the title. */
 .gd-identity__meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-block-size: 20px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--gd-muted);
+  color: var(--gd-secondary);
 }
 
 .gd-identity__meta > span + span::before { content: "\00b7"; margin-inline-end: 8px; color: var(--gd-muted-soft); }
 
-/* The platform is the one HUD label in the identity area, built from metadata
-   that was already on screen. */
-.gd-identity__meta > span:first-child {
-  padding-block: 1px;
-  padding-inline: 6px;
-  border: 1px solid var(--gd-hairline-strong);
-  border-inline-start: 2px solid var(--gd-accent);
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--text-primary) 82%, transparent);
+/* Platform identity is icons, not another STEAM label: white glyphs at the head
+   of the secondary line, closed by a hairline so the strip reads as a technical
+   column instead of a badge. */
+.gd-platforms {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding-inline-end: 9px;
+  border-inline-end: 1px solid var(--gd-hairline);
 }
+
+/* The glyphs inherit the page text colour, so they are white on dark and dark on
+   light instead of a hard-coded white that would vanish in light mode. */
+.gd-platform {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+}
+
+/* The strip already ends in a hairline, so the middot must not double it. */
+.gd-identity__meta > .gd-platforms + span::before { content: none; margin-inline-end: 0; }
 
 .gd-identity__meta [dir="ltr"] { font-variant-numeric: tabular-nums; }
 
@@ -294,14 +310,15 @@
   color: color-mix(in srgb, var(--text-primary) 84%, transparent);
 }
 
-/* C - data state: sync is metadata on one line, never a section */
+/* C - data state: tier three. Sync is supporting text on one line, never a
+   section, and the state word stays the most readable thing on it. */
 .gd-status {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   min-block-size: 24px;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--gd-muted);
 }
 
@@ -310,6 +327,8 @@
   margin-inline-end: 8px;
   color: var(--gd-muted-soft);
 }
+
+.gd-status__time { font-variant-numeric: tabular-nums; color: var(--gd-muted-soft); }
 
 .gd-status__state { font-weight: 600; color: color-mix(in srgb, var(--text-primary) 88%, transparent); }
 
@@ -793,7 +812,6 @@ html[lang="ar"] .gd-achievement-row__title { letter-spacing: normal; }
 
 html[lang="ar"] .gd-next__label,
 html[lang="ar"] .gd-achievements__title,
-html[lang="ar"] .gd-identity__meta > span:first-child,
 html[lang="ar"] .gd-achievements .select-control,
 html[lang="ar"] .gd-sessions__title { letter-spacing: normal; text-transform: none; }
 
@@ -861,6 +879,7 @@ html[data-theme="light"] .gd-identity::after { background: var(--gd-accent); }
   .gd-progress::before,
   .gd-status__state::before { background: CanvasText; }
   .gd-status--warn .gd-status__state::before { background: none; border-color: CanvasText; }
+  .gd-platform { color: CanvasText; }
   .gd-identity__mount { background-image: none; }
   .gd-identity__mount::before,
   .gd-identity__mount::after { border-color: CanvasText; }

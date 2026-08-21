@@ -5,6 +5,7 @@ import { AchievementIcon } from "../components/ui/AchievementIcon";
 import { EmptyView, ErrorView, LoadingView } from "../components/ui/StateViews";
 import { FilterToolbar, SearchField, SegmentedFilter, SelectControl } from "../components/ui/FilterBar";
 import { GameArtwork } from "../components/ui/GameArtwork";
+import { PlatformStrip, type PlatformKey } from "../components/ui/PlatformStrip";
 import { GameActionButton } from "../components/games/GameActionButton";
 import { GameSessionIndicator } from "../components/games/GameSessionIndicator";
 import { formatSessionSummaryDuration, sessionSummaryPluralKey } from "../features/session-summaries/sessionSummaryFormatting";
@@ -49,6 +50,10 @@ import type { Achievement, AchievementId, Game, GameId, SteamAchievementSyncResu
  * state and the stored timestamp are the truth, the action shows whether an
  * update can run, and a transient phrase appears only when it adds something
  * neither of them can say.
+ *
+ * One identity rule: a platform glyph is shown only for a platform this app's
+ * data can actually prove, so the strip is derived from the game itself and
+ * never from what would look good in the layout.
  *
  * Steam sync state, the sync action and the installation state belong to Steam
  * games only. A local game states the local game text instead of borrowing
@@ -165,6 +170,10 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
     ? new Date(game.achievementsSyncedAt)
     : undefined;
   const installKey = isSteam ? gameInstallStateKey(installState) : undefined;
+  // Provable platforms only: this is a Windows desktop client, and a Steam game
+  // is owned on Steam by definition of where the library came from. Anything
+  // else would be an icon the data cannot back.
+  const platforms: PlatformKey[] = isSteam ? ["pc", "steam"] : ["pc"];
   const visible = filtered.slice(0, visibleCount);
   const filtersActive = query.trim().length > 0 || filter !== "all";
   const listReady = achievementsState.status === "success" && allAchievements.length > 0;
@@ -267,8 +276,10 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
               {isSteam && <GameActionButton appId={game.appId} title={game.name} owned compact />}
             </div>
           </div>
+          {/* Secondary line: platform glyphs first, then the real metadata this
+              game actually has. */}
           <div className="gd-identity__meta">
-            <span>{isSteam ? "Steam" : t("gameDetails.platform")}</span>
+            <PlatformStrip platforms={platforms} />
             {isSteam && <span dir="ltr">{t("gameDetails.appId", { id: game.appId })}</span>}
             {game.playtimeHours > 0 && <span>{t("gameDetails.playtime", { hours: number.format(game.playtimeHours) })}</span>}
             {lastPlayed && (
