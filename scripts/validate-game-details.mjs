@@ -29,7 +29,47 @@ assert.doesNotMatch(
 assert.match(page, /kind: "cover"/);
 assert.match(page, /variant="cover"/);
 assert.match(page, /gd-identity__mount/, "the cover is framed by its mount, not dropped into the panel");
-assert.doesNotMatch(page, /variant="background"|backgroundUrl/, "the portrait cover carries the identity, not background art");
+
+// The identity panel now carries this game's real hero art, and the rules that
+// keep it atmosphere instead of content are testable ones. This replaces the
+// older blanket ban on background artwork, which was the right guard while the
+// page had no artwork layer and the wrong one now: it forbade the treatment
+// instead of the failure modes. The portrait cover is still the identity anchor
+// inside its mount, the banner is a second decorative layer rather than a
+// replacement for it, and it exists only when the existing artwork pipeline
+// resolves a real source. That last point is the whole fallback contract: no
+// source means no element, so nothing can break and nothing is invented to fill
+// the space.
+assert.match(
+  page,
+  /gd-identity__mount[\s\S]*?variant="cover"/,
+  "the portrait cover stays the identity anchor inside its mount"
+);
+assert.equal(
+  page.match(/variant="background"/g)?.length,
+  1,
+  "one background layer only: the banner is added to the identity panel, never in place of the cover"
+);
+assert.match(
+  page,
+  /className="gd-identity__banner" aria-hidden="true"/,
+  "the banner is decoration, so assistive technology never sees it"
+);
+assert.match(
+  page,
+  /kind: "hero"/,
+  "the banner comes from the existing Steam artwork pipeline, not from a new image service"
+);
+assert.match(
+  page,
+  /storedUrl: game\.backgroundUrl/,
+  "the real stored background is preferred before any derived Steam asset"
+);
+assert.match(
+  page,
+  /\{bannerSources\.length > 0 && \(/,
+  "no real source means no banner element at all, which is what keeps the failure state silent"
+);
 
 // The achievement list is the primary content and owns its own async states.
 assert.match(page, /<AchievementRow/);
@@ -251,6 +291,27 @@ assert.doesNotMatch(
   /strokeWidth|stroke=/,
   "platform glyphs are filled silhouettes; a hairline outline collapses into a smudge at 16px"
 );
+// The PC mark names a computer, not an operating system: a monitor is screen,
+// neck and base, which is three closed subpaths in one filled path. The four
+// pane mark it replaced may not come back. The Steam disc passed its visual
+// review, so it is frozen here; only the PC glyph was in scope for this pass.
+const pcGlyph = platformStrip.match(/pc: \(\s*<path[\s\S]*?\/>\s*\)/)?.[0] ?? "";
+assert.ok(pcGlyph.length > 0, "the PC glyph must stay one filled path, not a group of strokes");
+assert.equal(
+  (pcGlyph.match(/Z/g) ?? []).length,
+  3,
+  "the PC mark is a monitor: three closed subpaths for screen, neck and base"
+);
+assert.doesNotMatch(
+  platformStrip,
+  /M1\.8 1\.8h5\.4v5\.4h-5\.4Zm7 0/,
+  "the four-pane mark named an operating system instead of a computer"
+);
+assert.match(
+  platformStrip,
+  /steam: \(\s*<path[\s\S]*?d="M8 1a7 7 0 1 0 0 14/,
+  "the Steam disc is visually approved and deliberately frozen"
+);
 
 // Rows are real buttons, state is never colour alone, rarity is never invented.
 assert.match(row, /type="button"/);
@@ -298,6 +359,60 @@ assert.match(
 );
 assert.match(pageStyles, /html\[data-theme="light"\] \.game-details-v1/, "light mode is designed, not inverted dark");
 assert.match(pageStyles, /forced-colors: active/);
+
+// The hero banner is a layer, not a block. It is absolutely positioned inside a
+// panel that owns its stacking context, so it can neither add height nor paint
+// over the content; the readability veil above it is a flat surface fill rather
+// than a wash; and the shared artwork skin's loading and error states are
+// suppressed, because a decorative image may never announce a failure behind the
+// identity panel. Strength is a token, so light mode answers for its own
+// readability instead of inheriting the dark treatment, and forced colours drop
+// the atmosphere entirely.
+assert.match(
+  pageStyles,
+  /\.gd-identity \{[^}]*isolation: isolate/s,
+  "the panel owns the stacking context the banner is layered against"
+);
+assert.match(
+  pageStyles,
+  /\.gd-identity__banner \{[^}]*position: absolute/s,
+  "the banner is a layer inside the panel, so it cannot change the panel height"
+);
+assert.match(
+  pageStyles,
+  /\.gd-identity__banner \{[^}]*z-index: -1/s,
+  "the artwork stays behind the cover, the title, the progress and the status line"
+);
+assert.match(
+  pageStyles,
+  /\.gd-identity__banner::after \{[^}]*background: var\(--gd-banner-veil\)/s,
+  "the readability veil is a flat surface fill, not a gradient wash"
+);
+assert.match(
+  pageStyles,
+  /\.gd-identity__banner img \{[^}]*opacity: var\(--gd-banner-strength\)/s,
+  "banner strength is a token, so each theme can answer for its own readability"
+);
+assert.match(
+  pageStyles,
+  /\.gd-identity__banner \.game-artwork__fallback \{ display: none/,
+  "a failed decorative image must never draw an artwork-unavailable box behind the panel"
+);
+assert.match(
+  pageStyles,
+  /html\[data-theme="light"\] \.game-details-v1 \{[^}]*--gd-banner-strength/s,
+  "light mode sets its own banner strength and veil instead of reusing the dark treatment"
+);
+assert.match(
+  pageStyles,
+  /html\[dir="rtl"\] \.gd-identity__banner img \{[^}]*transform: none/s,
+  "the panel mirrors in RTL, the artwork never does"
+);
+assert.match(
+  pageStyles,
+  /@media \(forced-colors: active\)[\s\S]*\.gd-identity__banner \{ display: none/,
+  "forced colours drop the atmosphere and keep guaranteed contrast"
+);
 
 // Hierarchy is carried by structure, not decoration: a section mark instead of a
 // header card, a surface band instead of a table border, one control geometry for
