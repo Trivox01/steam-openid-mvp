@@ -53,6 +53,41 @@ assert.match(page, /disabled=\{updating \|\| !online\}/, "no sync action while c
 assert.match(page, /<RecentGameSessions appId=\{game\.appId\}/);
 assert.doesNotMatch(page, /GameDetailsSquare/);
 
+// The SmartSync status on screen is live: one subscription with its own
+// cleanup, one status read per render, no polling and no timers.
+assert.match(
+  page,
+  /useEffect\(\(\) => smartSync\.subscribe\(/,
+  "the page must re-render when the coordinator status changes"
+);
+assert.equal(
+  page.match(/smartSync\.getStatus\(/g)?.length,
+  1,
+  "the coordinator status is read once per render"
+);
+assert.doesNotMatch(page, /setInterval|setTimeout/, "no polling and no timers behind the status");
+
+// The background page-open sync is bounded: it never escapes as an unhandled
+// rejection and it never reports a success it did not get.
+assert.match(
+  page,
+  /smartSync\.syncGame\(steamGameId, "page-open"\)\.catch\(/,
+  "the background sync needs a deliberate catch"
+);
+assert.doesNotMatch(page, /void smartSync\.syncGame\(/, "a fire-and-forget sync leaves an unhandled rejection");
+
+// A non-Steam game never borrows Steam sync semantics.
+assert.match(page, /const syncState = isSteam \? getSyncState\(/, "only Steam games get a Steam sync state");
+assert.match(page, /const smartStatus = isSteam \?/);
+assert.match(page, /const lastSynced = isSteam &&/, "a local game has no last Steam sync time");
+assert.match(page, /gameDetails\.localGame/, "a local game states the real local text");
+assert.match(page, /\{isSteam && \(\s*<button/s, "the sync action exists for Steam only");
+assert.match(
+  page,
+  /const installKey = isSteam \? gameInstallStateKey\(/,
+  "installation state must not leak to a non-Steam game"
+);
+
 // Rows are real buttons, state is never colour alone, rarity is never invented.
 assert.match(row, /type="button"/);
 assert.match(row, /aria-label=/);
@@ -65,9 +100,13 @@ assert.doesNotMatch(
   "displayed rarity comes from known global percentages only"
 );
 
-// The install-state hook observes; it never launches anything.
+// The install-state hook observes; it never launches anything, and it never
+// keeps one app's snapshot for another.
 assert.match(hook, /gameLauncher\.subscribe/);
 assert.doesNotMatch(hook, /gameLauncher\.(?:act|openSteamInstaller)\(/);
+assert.match(hook, /const key = appId \?\? ""/);
+assert.match(hook, /gameLauncher\.getSnapshot\(key\)/);
+assert.match(hook, /if \(state\.key !== key\)/, "a changed or absent appId resynchronises the snapshot");
 
 assert.match(entry, /game-details-v1\.css/);
 

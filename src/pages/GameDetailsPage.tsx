@@ -38,6 +38,10 @@ import type { Achievement, AchievementId, Game, GameId } from "../types";
  *   when every unlock state is known, rarity appears only when a real global
  *   percentage exists, and offline says it is showing the last synchronized
  *   data instead of claiming the data is current.
+ *
+ * Steam sync state, the sync action and the installation state belong to Steam
+ * games only. A local game states the local game text instead of borrowing
+ * Steam semantics it cannot have.
  */
 
 const PAGE_SIZE = 60;
@@ -73,6 +77,9 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  // The coordinator owns the sync status; this only re-renders the page when it
+  // changes, so queued/updating/unavailable are never stale on screen.
+  const [, bumpSyncRevision] = useState(0);
   // Advisory only. The browser can report online while the network is useless,
   // so this never upgrades cached data to "current", it only stops the page from
   // offering an action that cannot work.
@@ -94,10 +101,18 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
     };
   }, []);
 
+  // One subscription for the lifetime of the page, torn down by the unsubscribe
+  // the coordinator returns. No polling and no timers.
+  useEffect(() => smartSync.subscribe(() => bumpSyncRevision((value) => value + 1)), []);
+
   const steamGameId = game?.platform === "steam" ? game.id : undefined;
   useEffect(() => {
     if (!steamGameId || !online) return;
-    void smartSync.syncGame(steamGameId, "page-open");
+    // Background attempt. The coordinator records the real outcome and the status
+    // row reads it, so a rejection is reported there instead of escaping as an
+    // unhandled rejection. The catch changes nothing on screen and never turns a
+    // failure into a success.
+    smartSync.syncGame(steamGameId, "page-open").catch(() => undefined);
   }, [steamGameId, online]);
 
   const experience = useMemo(() => {
@@ -127,15 +142,18 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
   const number = new Intl.NumberFormat(language, { maximumFractionDigits: 1 });
   const isSteam = game.platform === "steam";
   const hasAchievementData = allAchievements.length > 0 || game.totalAchievements > 0;
-  const syncState = getSyncState(game, hasAchievementData);
-  const smartStatus = smartSync.getStatus(`achievements:${game.id}`);
+  // Steam sync state, the sync status and the last sync time only mean something
+  // for a Steam game. A local game is not "never synced": it has no Steam
+  // achievement sync to be behind on.
+  const syncState = isSteam ? getSyncState(game, hasAchievementData) : undefined;
+  const smartStatus = isSteam ? smartSync.getStatus(`achievements:${game.id}`) : "idle";
   const updating = syncing || smartStatus === "updating" || smartStatus === "queued";
   const completionExact = summary.completion !== null && summary.unknownUnlockStates === 0;
   const lastPlayed = game.lastPlayedAt && isValidDate(game.lastPlayedAt) ? new Date(game.lastPlayedAt) : undefined;
-  const lastSynced = game.achievementsSyncedAt && isValidDate(game.achievementsSyncedAt)
+  const lastSynced = isSteam && game.achievementsSyncedAt && isValidDate(game.achievementsSyncedAt)
     ? new Date(game.achievementsSyncedAt)
     : undefined;
-  const installKey = gameInstallStateKey(installState);
+  const installKey = isSteam ? gameInstallStateKey(installState) : undefined;
   const visible = filtered.slice(0, visibleCount);
   const filtersActive = query.trim().length > 0 || filter !== "all";
   const recommended = insight.nextAchievement
@@ -146,8 +164,10 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
     : "";
   const recommendedRarity = insight.nextAchievement?.metadata?.globalUnlockPercent;
   // Offline wins over every cached status string: claiming "Updated just now"
-  // while disconnected would be a lie.
-  const statusMessage = !online
+  // while disconnected would be a lie. A local game has no sync message at all.
+  const statusMessage = !isSteam
+    ? ""
+    : !online
     ? t("gameDetails.offlineCached")
     : syncMessage || (updating ? t("gameDetails.smartSync.updating")
       : smartStatus === "success" ? t("gameDetails.smartSync.updated")
@@ -263,7 +283,9 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
       </div>
 
       <div className="gd-status">
-        <span className="gd-status__state">{t(SYNC_STATE_LABELS[syncState])}</span>
+        <span className="gd-status__state">
+          {syncState ? t(SYNC_STATE_LABELS[syncState]) : t("gameDetails.localGame")}
+        </span>
         {lastSynced && (
           <time className="gd-status__time" dateTime={lastSynced.toISOString()}>
             {t("gameDetails.lastSyncValue", {
@@ -343,7 +365,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
         ) : allAchievements.length === 0 ? (
           <EmptyView
             compact
-            title={t(emptyTitleKey(syncState))}
+            title={t(emptyTitleKey(syncState, isSteam))}
             description={t(emptyDescriptionKey(syncState, isSteam))}
           />
         ) : visible.length === 0 ? (
@@ -462,7 +484,8 @@ function RecentGameSessions({ appId }: { appId: string }) {
 
 /**
  * The real reason there is no achievement data, taken from what the last sync
- * actually reported. Never a guess and never a generic "not available".
+ * actually reported. Never a guess and never a generic "not available". Steam
+ * only: the caller does not ask for a sync state for a local game.
  */
 function getSyncState(game: Game, hasAchievementData = game.totalAchievements > 0): SyncState {
   const status = game.achievementsSyncStatus;
@@ -475,7 +498,8 @@ function getSyncState(game: Game, hasAchievementData = game.totalAchievements > 
   return "success";
 }
 
-function emptyTitleKey(state: SyncState) {
+function emptyTitleKey(state: SyncState | undefined, isSteam: boolean) {
+  if (!isSteam || !state) return "gameDetails.noAchievements";
   if (state === "private") return "gameDetails.sync.private";
   if (state === "never") return "gameDetails.neverSynced";
   if (state === "partial") return "gameDetails.sync.partial";
@@ -483,8 +507,8 @@ function emptyTitleKey(state: SyncState) {
   return "gameDetails.noAchievements";
 }
 
-function emptyDescriptionKey(state: SyncState, isSteam: boolean) {
-  if (!isSteam) return "gameDetails.localGame";
+function emptyDescriptionKey(state: SyncState | undefined, isSteam: boolean) {
+  if (!isSteam || !state) return "gameDetails.localGame";
   if (state === "private") return "gameDetails.privateDescription";
   if (state === "never") return "gameDetails.sync.never";
   if (state === "partial") return "gameDetails.partialDescription";

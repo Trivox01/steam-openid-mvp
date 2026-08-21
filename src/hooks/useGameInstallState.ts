@@ -9,16 +9,29 @@ import type { GameLaunchSnapshot, GameOwnership } from "../services/GameLauncher
  * installation state instead of guessing one. It never launches a game, never
  * opens Steam and never opens the Steam installer: `act` and `openSteamInstaller`
  * stay with the action button that the user actually pressed.
+ *
+ * The snapshot is stored together with the app it belongs to. When the app
+ * changes, or when there is no app at all, the state is resynchronised in the
+ * same render from `gameLauncher.getSnapshot(appId ?? "")`, so one game's
+ * installation state can never be shown for another and an absent app falls
+ * back to the unknown snapshot instead of the previous game's.
  */
 export function useGameInstallState(appId?: string, ownership: GameOwnership = "unknown") {
-  const [snapshot, setSnapshot] = useState<GameLaunchSnapshot>(() => gameLauncher.getSnapshot(appId ?? ""));
+  const key = appId ?? "";
+  const [state, setState] = useState<{ key: string; snapshot: GameLaunchSnapshot }>(() => ({
+    key,
+    snapshot: gameLauncher.getSnapshot(key)
+  }));
+  if (state.key !== key) {
+    setState({ key, snapshot: gameLauncher.getSnapshot(key) });
+  }
   useEffect(() => {
     if (!appId) return;
-    const unsubscribe = gameLauncher.subscribe(appId, setSnapshot);
+    const unsubscribe = gameLauncher.subscribe(appId, (snapshot) => setState({ key: appId, snapshot }));
     void gameLauncher.refresh(appId, ownership);
     return unsubscribe;
   }, [appId, ownership]);
-  return snapshot;
+  return state.snapshot;
 }
 
 /**
