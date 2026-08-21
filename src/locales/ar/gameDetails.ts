@@ -113,6 +113,9 @@ export const gameDetails = {
   "gameDetails.continueJourney": "تابع رحلتك",
   "gameDetails.recommendationProgress": "تقدم الإنجاز",
   "gameDetails.viewRecommended": "عرض الإنجاز المقترح",
+  // بطاقة عنوان صف التوصية. بلا متغيرات عن قصد: اسم الإنجاز يُعرض بجانبها،
+  // واستدعاء t() على الجملة ذات المتغير أدناه يطبع النص البديل كما هو.
+  "gameDetails.nextTarget": "الهدف التالي",
   "gameDetails.nextAchievement": "الإنجاز التالي: {{name}}",
   "gameDetails.gameNotFound": "اللعبة غير موجودة",
   "gameDetails.gameNotFoundDescription": "لم تعد هذه اللعبة متاحة في مكتبتك.",

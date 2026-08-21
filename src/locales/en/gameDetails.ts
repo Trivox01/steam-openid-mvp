@@ -117,6 +117,10 @@ export const gameDetails = {
   "gameDetails.continueJourney": "Continue Your Journey",
   "gameDetails.recommendationProgress": "Achievement progress",
   "gameDetails.viewRecommended": "View recommended achievement",
+  // Label for the recommendation row. Kept free of variables on purpose: the
+  // achievement name is rendered next to it, and a bare t() call on the
+  // parameterized sentence below would print the raw placeholder on screen.
+  "gameDetails.nextTarget": "Next target",
   "gameDetails.nextAchievement": "Next achievement: {{name}}",
   "gameDetails.gameNotFound": "Game not found",
   "gameDetails.gameNotFoundDescription": "This game is no longer available in your library.",

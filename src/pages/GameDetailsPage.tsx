@@ -29,8 +29,8 @@ import type { Achievement, AchievementId, Game, GameId, SteamAchievementSyncResu
  * Two regions, not five cards: one identity panel that carries the cover, the
  * title, the metadata line, the integrated progress and the data-state line,
  * then the achievement list as the primary content. The cover anchors the panel
- * at a real 112x168 portrait size, so entering the page reads as entering this
- * game rather than opening a settings screen.
+ * at a real 112x168 portrait size inside its mount, so entering the page reads
+ * as entering this game rather than opening a settings screen.
  *
  * Two state rules the page must keep:
  * - The two queries fail independently. A failed achievement load stays inside
@@ -39,6 +39,11 @@ import type { Achievement, AchievementId, Game, GameId, SteamAchievementSyncResu
  *   when every unlock state is known, rarity appears only when a real global
  *   percentage exists, and offline says it is showing the last synchronized
  *   data instead of claiming the data is current.
+ *
+ * One copy rule: a locale value that carries a {{variable}} is a sentence, not a
+ * label, and may only be rendered together with its variables. The translator
+ * re-emits the raw placeholder when a variable is missing, so a bare t() call on
+ * such a key leaks template syntax into the UI. Labels get their own keys.
  *
  * Steam sync state, the sync action and the installation state belong to Steam
  * games only. A local game states the local game text instead of borrowing
@@ -161,6 +166,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
   const recommended = insight.nextAchievement
     ? allAchievements.find((item) => item.id === insight.nextAchievement?.achievementId)
     : undefined;
+  const recommendedTitle = recommended ? recommended.title || t("gameDetails.hiddenAchievement") : "";
   const recommendationReason = insight.nextAchievement && recommended
     ? t(insight.nextAchievement.translationKey, { name: recommended.title })
     : "";
@@ -182,6 +188,13 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
       : (smartStatus === "success" && dataSyncSucceeded) ? t("gameDetails.smartSync.updated")
       : smartStatus === "unavailable" ? t("gameDetails.smartSync.unavailable")
       : smartStatus === "saved" ? t("gameDetails.smartSync.saved") : "");
+  // The state marker reads the same persisted truth as the text beside it, so it
+  // can never show success while the words report a failure. Green is only a real
+  // full success; partial, failed, private and unsupported are all a real
+  // problem; before the first sync there is nothing to report.
+  const statusTone = !isSteam || syncState === "never"
+    ? ""
+    : syncState === "success" ? " gd-status--ok" : " gd-status--warn";
 
   const syncAchievements = async () => {
     if (updating || !isSteam || !online) return;
@@ -222,18 +235,22 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
         >
           <ArrowLeft size={16} aria-hidden="true" />
         </button>
-        <GameArtwork
-          src={game.coverUrl}
-          sources={isSteam
-            ? steamArtworkSources({ appId: game.appId, kind: "cover", storedUrl: game.coverUrl, iconUrl: game.iconUrl })
-            : undefined}
-          alt={t("gameDetails.coverAlt", { title: game.name })}
-          variant="cover"
-          className="gd-identity__cover"
-          eager
-          appId={isSteam ? game.appId : undefined}
-          componentName="GameDetailsIdentity"
-        />
+        {/* The mount frames the artwork as this game's identity: a recessed
+            technical surface and two corner brackets, drawn in CSS. */}
+        <div className="gd-identity__mount">
+          <GameArtwork
+            src={game.coverUrl}
+            sources={isSteam
+              ? steamArtworkSources({ appId: game.appId, kind: "cover", storedUrl: game.coverUrl, iconUrl: game.iconUrl })
+              : undefined}
+            alt={t("gameDetails.coverAlt", { title: game.name })}
+            variant="cover"
+            className="gd-identity__cover"
+            eager
+            appId={isSteam ? game.appId : undefined}
+            componentName="GameDetailsIdentity"
+          />
+        </div>
         <div className="gd-identity__main">
           <div className="gd-identity__head">
             <h1 className="gd-identity__title" dir="auto">{game.name}</h1>
@@ -304,7 +321,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
           </div>
 
           {/* Sync is metadata on one line: state, time, message, action. */}
-          <div className="gd-status">
+          <div className={`gd-status${statusTone}`}>
             <span className="gd-status__state">
               {syncState ? t(SYNC_STATE_LABELS[syncState]) : t("gameDetails.localGame")}
             </span>
@@ -359,15 +376,14 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
           )}
         </div>
 
-        {/* A thin tactical row, not a recommendation card. Real rarity only. */}
+        {/* A thin tactical row, not a recommendation card. Real rarity only. The
+            label carries no variables; the name is the element next to it. */}
         {insight.nextAchievement && recommended && (
           <button type="button" className="gd-next" onClick={() => openAchievement(recommended)}>
-            <span className="gd-next__label">{t("gameDetails.nextAchievement")}</span>
+            <span className="gd-next__label">{t("gameDetails.nextTarget")}</span>
             <AchievementIcon src={recommended.iconUrl} alt="" size={32} />
             <span className="gd-next__text">
-              <span className="gd-next__title" dir="auto">
-                {recommended.title || t("gameDetails.hiddenAchievement")}
-              </span>
+              <span className="gd-next__title" dir="auto">{recommendedTitle}</span>
               {recommendationReason && !recommendationReason.includes(recommended.title) && (
                 <span className="gd-next__reason">{recommendationReason}</span>
               )}
@@ -459,7 +475,8 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
 
 /**
  * Page shell while the game itself is loading. It keeps the back control usable
- * and reserves the identity geometry instead of inventing placeholder content.
+ * and reserves the identity geometry, including the cover mount, instead of
+ * inventing placeholder content.
  */
 function GameDetailsShell({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation();
@@ -475,7 +492,7 @@ function GameDetailsShell({ onBack }: { onBack: () => void }) {
         >
           <ArrowLeft size={16} aria-hidden="true" />
         </button>
-        <span className="gd-identity__cover" aria-hidden="true" />
+        <span className="gd-identity__mount" aria-hidden="true" />
         <div className="gd-identity__main" />
       </header>
       <LoadingView size="md" label={t("state.loading")} />
