@@ -45,6 +45,11 @@ import type { Achievement, AchievementId, Game, GameId, SteamAchievementSyncResu
  * re-emits the raw placeholder when a variable is missing, so a bare t() call on
  * such a key leaks template syntax into the UI. Labels get their own keys.
  *
+ * One status rule: the data-state line says a thing once. The persisted sync
+ * state and the stored timestamp are the truth, the action shows whether an
+ * update can run, and a transient phrase appears only when it adds something
+ * neither of them can say.
+ *
  * Steam sync state, the sync action and the installation state belong to Steam
  * games only. A local game states the local game text instead of borrowing
  * Steam semantics it cannot have.
@@ -171,23 +176,26 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
     ? t(insight.nextAchievement.translationKey, { name: recommended.title })
     : "";
   const recommendedRarity = insight.nextAchievement?.metadata?.globalUnlockPercent;
-  // Offline wins over every cached status string: claiming "Updated just now"
-  // while disconnected would be a lie. A local game has no sync message at all.
-  // The coordinator's success status only means the job finished without
-  // throwing; it is not proof that Steam achievement data synced. The real
-  // outcome lives on the persisted game (syncState), so "Updated just now" may
-  // appear only when that data is actually success or partial. A failed,
-  // private, unsupported or never-synced game must never be paired with a
-  // success message.
-  const dataSyncSucceeded = syncState === "success" || syncState === "partial";
+  // One hierarchy on the data-state line. The state text and the stored
+  // timestamp next to it are the persisted truth, and the action itself already
+  // shows whether an update can run, so a transient phrase is rendered only when
+  // it says something neither of them can: there is no connection, work is in
+  // progress, or this user just asked for a sync and this is its real outcome.
+  //
+  // The coordinator's own success, unavailable and saved statuses are
+  // deliberately not rendered. A resolved coordinator job was never proof that
+  // Steam achievement data synced, so it may not speak about freshness at all,
+  // and a second phrase meaning "the update cannot run now" would only repeat
+  // the state text and the disabled action. That is stricter than gating a
+  // freshness claim on the persisted data, so the old contradiction of a success
+  // message beside a failed sync cannot come back.
   const statusMessage = !isSteam
     ? ""
     : !online
     ? t("gameDetails.offlineCached")
-    : syncMessage || (updating ? t("gameDetails.smartSync.updating")
-      : (smartStatus === "success" && dataSyncSucceeded) ? t("gameDetails.smartSync.updated")
-      : smartStatus === "unavailable" ? t("gameDetails.smartSync.unavailable")
-      : smartStatus === "saved" ? t("gameDetails.smartSync.saved") : "");
+    : updating
+    ? t("gameDetails.smartSync.updating")
+    : syncMessage;
   // The state marker reads the same persisted truth as the text beside it, so it
   // can never show success while the words report a failure. Green is only a real
   // full success; partial, failed, private and unsupported are all a real
@@ -320,7 +328,8 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
             )}
           </div>
 
-          {/* Sync is metadata on one line: state, time, message, action. */}
+          {/* Sync is metadata on one line: state, timestamp, at most one
+              transient phrase, then the action. */}
           <div className={`gd-status${statusTone}`}>
             <span className="gd-status__state">
               {syncState ? t(SYNC_STATE_LABELS[syncState]) : t("gameDetails.localGame")}

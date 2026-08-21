@@ -106,17 +106,32 @@ assert.match(page, /gameDetails\.offlineCached/);
 assert.match(page, /disabled=\{updating \|\| !online\}/, "no sync action while clearly offline");
 assert.match(page, /<RecentGameSessions appId=\{game\.appId\}/);
 
-// Sync messaging must follow the persisted game data, never the coordinator's
-// operational success flag. A resolved promise is not proof that Steam
-// achievement data synced, so a failed/private/unsupported/never game must never
-// be shown next to "Updated just now", and manual sync must not declare success
-// without reading the real per-game result.
+// The data-state line says a thing once, and never says it more confidently than
+// the persisted data allows. The state text and the stored timestamp are the
+// freshness truth; the coordinator's operational statuses are not allowed to
+// speak about freshness at all, and no second phrase may repeat what the state
+// text and the disabled action already say. Manual sync still reads the real
+// per-game result before it claims anything.
 assert.doesNotMatch(
   page,
   /smartStatus === "success" \? t\("gameDetails\.smartSync\.updated"\)/,
   "the coordinator success status alone must not claim 'Updated just now'"
 );
-assert.match(page, /dataSyncSucceeded/, "the updated message must be gated by the real data state");
+assert.doesNotMatch(
+  page,
+  /gameDetails\.smartSync\.updated/,
+  "a coordinator status must never claim freshness; the persisted sync state and the stored timestamp are the only freshness truth on that line"
+);
+assert.doesNotMatch(
+  page,
+  /gameDetails\.smartSync\.unavailable|gameDetails\.smartSync\.saved/,
+  "a second phrase that also means 'the update cannot run now' only repeats the state text and the disabled action"
+);
+assert.match(
+  page,
+  /<time className="gd-status__time"/,
+  "the stored sync timestamp stays on the line, because it is what replaces the removed phrases"
+);
 assert.match(
   page,
   /await smartSync\.syncGame\(game\.id, "manual", true\) as SteamAchievementSyncResult/,
@@ -243,7 +258,39 @@ assert.match(
   /\.gd-achievements \.library-search,\s*\.gd-achievements \.segmented-filter,\s*\.gd-achievements \.select-control select \{[^}]*border-radius: 0/s,
   "search, filters and sort must share one geometry instead of three design systems"
 );
+// The shared Sort control is a label wrapping a select, and the shared styles
+// give that label a pill. The page-scoped reset is what makes the three controls
+// one family, so it is now part of the tested contract.
+assert.match(
+  pageStyles,
+  /\.game-details-v1 \.gd-achievements \.select-control \{[^}]*border-radius: 0/s,
+  "the Sort wrapper must never reintroduce a pill around the select"
+);
 assert.match(pageStyles, /--gd-data:/, "data colour is a named role, so cyan cannot spread across the page");
+
+// The identity panel is composed, not filled: a spine between the cover column
+// and the data column, a header band that binds the title to the primary action,
+// and a marked data band. None of them may become a card.
+assert.match(
+  pageStyles,
+  /\.gd-identity__main \{[^}]*border-inline-start: 1px solid var\(--gd-hairline\)/s,
+  "the spine separates the cover column from the data column"
+);
+assert.match(
+  pageStyles,
+  /\.gd-identity__head \{[^}]*border-block-end: 1px solid var\(--gd-hairline\)/s,
+  "the title and the primary action form one header band"
+);
+assert.match(
+  pageStyles,
+  /\.gd-progress::before \{/,
+  "the data band is marked by a deliberate tick, not by a card"
+);
+assert.match(
+  pageStyles,
+  /\.gd-status--warn \.gd-status__state::before \{[^}]*background: none/s,
+  "a problem state differs in geometry, not in colour alone"
+);
 
 // Cyberpunk accents stay accents. Comments may name forbidden properties without
 // declaring them, so the declaration checks run on the executable CSS only.
