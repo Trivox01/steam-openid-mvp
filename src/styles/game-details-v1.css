@@ -15,6 +15,9 @@
     rail of an unknown achievement state.
   - Depth comes from surface bands, local contrast and accent-tinted edges,
     never from background artwork or a hero image.
+  - The identity panel is composed, not filled: a spine between the cover and
+    the data column, a header band that binds the title to the primary action, a
+    data band for progress and one status line. None of them is a card.
   - Logical properties only. Exactly three directional things mirror in RTL: the
     back arrow, the row chevron and the clipped identity corner. Artwork,
     Trophy, Lock and platform identity are never mirrored.
@@ -144,19 +147,28 @@
   overflow: hidden;
 }
 
+/* The spine: one hairline separates the cover column from the data column, so
+   the panel reads as composed instead of as a large rectangle with content
+   dropped into it. It costs no vertical height. */
 .gd-identity__main {
   display: flex;
   flex-direction: column;
   gap: 8px;
   block-size: 100%;
   min-inline-size: 0;
+  padding-inline-start: 16px;
+  border-inline-start: 1px solid var(--gd-hairline);
 }
 
+/* Header band: the title and the primary action are one row closed by a
+   hairline, so the metadata below belongs to the game and not to the button. */
 .gd-identity__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  padding-block-end: 8px;
+  border-block-end: 1px solid var(--gd-hairline);
 }
 
 .gd-identity__title {
@@ -176,7 +188,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-block-size: 20px;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--gd-muted);
 }
 
@@ -209,6 +223,7 @@
 
 /* B - progress, integrated at the foot of the identity panel */
 .gd-progress {
+  position: relative;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -217,6 +232,18 @@
   padding-block-start: 12px;
   border-block-start: 1px solid var(--gd-hairline);
   font-size: 12.5px;
+}
+
+/* The data band is marked on its own separator: a short cyan segment, the same
+   language as the section mark in the achievements header. */
+.gd-progress::before {
+  content: "";
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-start: 0;
+  inline-size: 28px;
+  block-size: 1px;
+  background: var(--gd-data);
 }
 
 .gd-progress__value {
@@ -231,7 +258,7 @@
 .gd-progress__track {
   position: relative;
   flex: 1 1 240px;
-  max-inline-size: 420px;
+  max-inline-size: 520px;
   min-inline-size: 120px;
   block-size: 8px;
   background-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
@@ -273,6 +300,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  min-block-size: 24px;
   font-size: 12px;
   color: var(--gd-muted);
 }
@@ -298,7 +326,17 @@
 }
 
 .gd-status--ok .gd-status__state::before { background: var(--action-play); }
-.gd-status--warn .gd-status__state::before { background: var(--action-install, var(--gd-accent)); }
+
+/* A real problem is a hollow marker: the state differs in geometry as well as
+   in colour, which also survives a colour-blind or forced-colours reading. */
+.gd-status--warn .gd-status__state::before {
+  box-sizing: border-box;
+  inline-size: 8px;
+  block-size: 8px;
+  background: none;
+  border: 2px solid var(--action-install, var(--gd-accent));
+}
+
 .gd-status__message { display: inline-flex; align-items: center; gap: 6px; }
 
 .game-details-v1 .gd-textbutton {
@@ -331,14 +369,15 @@
 .gd-achievements { display: flex; flex-direction: column; gap: 8px; }
 
 /* A tactical section header: an index mark, a tracked label and the real count
-   as technical numerics. No card, no toolbar box. */
+   as technical numerics. No card, no toolbar box. The text indent matches the
+   rows below it, so the whole section shares one alignment. */
 .gd-achievements__head {
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   padding-block-end: 7px;
-  padding-inline-start: 10px;
+  padding-inline-start: 12px;
   border-block-end: 1px solid var(--gd-hairline-strong);
 }
 
@@ -713,6 +752,28 @@
   color: var(--gd-muted-soft);
 }
 
+/* The shared Sort control is a label wrapping a select, and the shared styles
+   give that label a pill. Page scope removes the wrapper box entirely, so the
+   select is the only box and it carries the same 30px square geometry and the
+   same hairline weight as Search and the filters. The HUD label stays compact.
+   Raised specificity on purpose: it must win over the shared rules whatever the
+   stylesheet order is, without editing the shared component. */
+.game-details-v1 .gd-achievements .select-control {
+  min-block-size: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.game-details-v1 .gd-achievements .select-control select {
+  min-block-size: 30px;
+  border: 1px solid var(--gd-hairline-strong);
+  border-radius: 0;
+  background: var(--input-background, var(--surface));
+}
+
 .gd-achievements .select-control select {
   padding-inline: 8px;
   color: var(--text-primary);
@@ -775,6 +836,7 @@ html[data-theme="light"] .gd-identity::after { background: var(--gd-accent); }
   .game-details-v1 { --gd-cover: 96px; }
   .gd-identity__mount { block-size: 144px; }
   .gd-identity__title { font-size: 22px; }
+  .gd-identity__main { padding-inline-start: 12px; }
 }
 
 @media (max-width: 840px) {
@@ -789,13 +851,16 @@ html[data-theme="light"] .gd-identity::after { background: var(--gd-accent); }
   .game-details-v1 .gd-textbutton,
   .gd-achievements .library-search,
   .gd-achievements .segmented-filter,
-  .gd-achievements .select-control select { border-color: CanvasText; }
+  .gd-achievements .select-control select,
+  .game-details-v1 .gd-achievements .select-control select { border-color: CanvasText; }
   .gd-identity::before,
   .gd-identity::after,
   .gd-achievement-row::before,
   .gd-next::before,
   .gd-achievements__head::before,
+  .gd-progress::before,
   .gd-status__state::before { background: CanvasText; }
+  .gd-status--warn .gd-status__state::before { background: none; border-color: CanvasText; }
   .gd-identity__mount { background-image: none; }
   .gd-identity__mount::before,
   .gd-identity__mount::after { border-color: CanvasText; }
