@@ -17,8 +17,10 @@
   - The only gradients are repeating and functional: the technical grid behind
     the cover, the segmented progress line, the quartile ticks and the dotted
     rail of an unknown achievement state.
-  - Depth comes from surface bands, local contrast and accent-tinted edges,
-    never from background artwork or a hero image.
+  - Depth comes from surface bands, local contrast and accent-tinted edges. The
+    identity panel also carries this game's real hero art, but only as a heavily
+    subdued layer under a flat veil: never a wash, never the content, never in
+    place of the cover, and switched off in light mode and in forced colours.
   - The identity panel is composed, not filled: a spine between the cover and
     the data column, a header band that binds the title to the primary action, a
     data band for progress and one status line. None of them is a card.
@@ -42,6 +44,12 @@
   --gd-muted-soft: color-mix(in srgb, var(--text-primary) 46%, transparent);
   --gd-panel: var(--nx-surface-1, var(--surface));
   --gd-band: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  /* How much of the real hero art survives, and the flat veil laid over it. The
+     veil is the panel's own colour, so the art is pushed down into the surface
+     instead of towards an arbitrary black. Dark is the primary treatment and
+     owns these two values; light replaces both. */
+  --gd-banner-strength: 0.34;
+  --gd-banner-veil: color-mix(in srgb, var(--gd-panel) 62%, transparent);
   --gd-cover: 112px;
   display: flex;
   flex-direction: column;
@@ -52,6 +60,11 @@
 /* A - identity: cover, title, metadata, progress and data state in one panel */
 .gd-identity {
   position: relative;
+  /* The panel owns its stacking context, so the banner layer below the content
+     is layered against this panel and not against whatever ancestor happens to
+     create a context. Without it, a z-index of -1 could fall behind the panel
+     background and disappear. */
+  isolation: isolate;
   display: grid;
   grid-template-columns: auto var(--gd-cover) minmax(0, 1fr);
   align-items: stretch;
@@ -78,6 +91,54 @@
 .gd-identity::before { inset-block: 0; background: var(--gd-accent); }
 .gd-identity::after { inset-block-start: 0; block-size: 26px; background: var(--gd-accent-alt); }
 
+/* Atmosphere, not content. This game's real hero art is absolutely positioned,
+   so it cannot add a single pixel to the panel height, dimmed to a fraction of
+   its strength and covered by a flat veil. A veil, not a gradient wash, and no
+   blur, glass or bloom anywhere near it. It paints above the panel background
+   and below every child, so the cover, the title, the metadata, the progress and
+   the status line all stay crisp on top of it. */
+.gd-identity__banner {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.gd-identity__banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--gd-banner-veil);
+}
+
+/* The shared artwork skin is neutralised here: this layer is a plain fill of the
+   panel, not a framed image. */
+.gd-identity__banner .game-artwork,
+.gd-identity__banner img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.gd-identity__banner img {
+  object-fit: cover;
+  /* Key art usually sits a little above centre. This is a crop, and a symmetric
+     one, so it is identical in Arabic. */
+  object-position: 50% 32%;
+  opacity: var(--gd-banner-strength);
+}
+
+/* Decoration may never announce a failure: no skeleton shimmer and no artwork
+   unavailable box behind the panel. When every real source fails, the layer
+   stays empty and the identity surface renders exactly as it did before. */
+.gd-identity__banner .game-artwork__skeleton,
+.gd-identity__banner .game-artwork__fallback { display: none; }
+
 .gd-identity--skeleton { grid-template-columns: auto var(--gd-cover) minmax(0, 1fr); }
 
 .gd-identity__back {
@@ -103,7 +164,8 @@
 
 /* The cover is mounted, not placed: a recessed technical surface plus two
    corner brackets bind the artwork to the panel and make the game own the
-   identity area. */
+   identity area. It stays the primary identity object; the banner behind it is
+   atmosphere and never a replacement for it. */
 .gd-identity__mount {
   position: relative;
   inline-size: var(--gd-cover);
@@ -820,6 +882,10 @@ html[dir="rtl"] .gd-identity__back svg { transform: scaleX(-1); }
 html[dir="rtl"] .gd-achievement-row__chevron { transform: scaleX(-1); }
 html[dir="rtl"] .gd-identity { clip-path: polygon(14px 0, 100% 0, 100% 100%, 0 100%, 0 14px); }
 
+/* The panel mirrors; the artwork never does. The crop is symmetric and the
+   image is not flipped, so the hero reads identically in Arabic. */
+html[dir="rtl"] .gd-identity__banner img { transform: none; }
+
 /* Dark is the strongest expression of the accent language. */
 html[data-theme="dark"] .game-details-v1 {
   --gd-panel: color-mix(in srgb, var(--surface) 84%, #000 16%);
@@ -837,6 +903,11 @@ html[data-theme="light"] .game-details-v1 {
   --gd-panel: var(--card-background, var(--surface));
   --gd-band: color-mix(in srgb, var(--text-primary) 3%, transparent);
   --gd-data: var(--gd-accent);
+  /* Light is not the dark treatment reused. Dark text over a photograph is a
+     real contrast risk, so the art is reduced to a tint of the surface: a hint
+     of the game, never a picture. Readability wins over atmosphere. */
+  --gd-banner-strength: 0.16;
+  --gd-banner-veil: color-mix(in srgb, var(--gd-panel) 84%, transparent);
 }
 
 html[data-theme="light"] .gd-identity { background: var(--gd-panel); }
@@ -880,6 +951,9 @@ html[data-theme="light"] .gd-identity::after { background: var(--gd-accent); }
   .gd-status__state::before { background: CanvasText; }
   .gd-status--warn .gd-status__state::before { background: none; border-color: CanvasText; }
   .gd-platform { color: CanvasText; }
+  /* Atmosphere is not information: the banner is dropped entirely so the forced
+     palette keeps its guaranteed contrast. */
+  .gd-identity__banner { display: none; }
   .gd-identity__mount { background-image: none; }
   .gd-identity__mount::before,
   .gd-identity__mount::after { border-color: CanvasText; }
