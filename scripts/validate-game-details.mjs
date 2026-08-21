@@ -10,12 +10,14 @@ const pageStyles = fs.readFileSync("src/styles/game-details-v1.css", "utf8");
 const styles = fs.readFileSync("src/styles/index.css", "utf8");
 const entry = fs.readFileSync("src/main.tsx", "utf8");
 
-// One vertical hierarchy: identity, progress, sync status, an optional
-// recommendation, the achievement list, optional sessions.
+// v2 reads as one identity panel (cover, title, metadata, progress, data state)
+// followed by the achievement list, with optional sessions last.
 assert.match(page, /gd-identity/);
+assert.match(page, /gd-identity__main/);
 assert.match(page, /gd-progress/);
 assert.match(page, /gd-status/);
 assert.match(page, /gd-achievements/);
+assert.match(page, /gd-achievements__head/, "the list header carries the count and the filter reset");
 assert.doesNotMatch(
   page,
   /game-v2-hero|game-v2-overview|game-v2-shelf|game-v2-rare-columns|game-v2-continue|game-v2-metric/,
@@ -23,7 +25,7 @@ assert.doesNotMatch(
 );
 assert.match(page, /kind: "cover"/);
 assert.match(page, /variant="cover"/);
-assert.doesNotMatch(page, /variant="background"|backgroundUrl/, "v1 uses the cover artwork only");
+assert.doesNotMatch(page, /variant="background"|backgroundUrl/, "the portrait cover carries the identity, not background art");
 
 // The achievement list is the primary content and owns its own async states.
 assert.match(page, /<AchievementRow/);
@@ -40,6 +42,10 @@ assert.doesNotMatch(
 assert.doesNotMatch(page, /AchievementDensity|AchievementView|"recent"/, "density, grid/list and the recent filter are gone");
 assert.doesNotMatch(page, /addEventListener\("keydown"|event\.ctrlKey/, "the page must not hijack Ctrl+F from dialogs");
 assert.doesNotMatch(page, /<ProgressBar/, "there is no real partial achievement progress to draw yet");
+
+// The recommendation is a thin row above the list, never another card.
+assert.match(page, /className="gd-next"/);
+assert.match(page, /gd-next__label/);
 
 // Nothing may be presented as more certain than it is.
 assert.match(page, /calculateAchievementSummary/);
@@ -122,6 +128,8 @@ assert.match(row, /aria-label=/);
 assert.match(row, /knownAchievementRarity/);
 assert.match(row, /unlockStateKnown !== false/);
 assert.match(row, /ChevronRight/);
+assert.match(row, /size=\{40\}/, "the row shows real 40px achievement artwork, not a table thumbnail");
+assert.match(row, /gd-achievement-row__state/, "every state carries its own glyph chip");
 assert.doesNotMatch(
   row,
   /achievement\.rarityPercentage|rarityTier/,
@@ -138,20 +146,41 @@ assert.match(hook, /if \(state\.key !== key\)/, "a changed or absent appId resyn
 
 assert.match(entry, /game-details-v1\.css/);
 
-// Compact, flat surfaces that survive light, dark and forced colours.
+// v2 geometry: a real portrait cover anchors the identity, rows are 52px, and
+// the content stays bounded so achievement text never crosses 1920.
+assert.match(pageStyles, /--gd-cover: 112px/, "the cover is a real identity anchor, not metadata artwork");
 assert.match(pageStyles, /\.gd-identity \.gd-identity__cover \{[^}]*aspect-ratio: 2 \/ 3/s);
-assert.match(pageStyles, /\.gd-achievement-row \{[^}]*min-block-size: 44px/s);
-assert.match(pageStyles, /max-inline-size: 1180px/, "achievement text must not stretch across 1920");
+assert.match(pageStyles, /\.gd-achievement-row \{[^}]*min-block-size: 52px/s);
+assert.match(pageStyles, /max-inline-size: 1240px/, "achievement text must not stretch across 1920");
 assert.match(pageStyles, /html\[dir="rtl"\] \.gd-identity__back svg/);
 assert.match(pageStyles, /html\[dir="rtl"\] \.gd-achievement-row__chevron/);
+assert.match(pageStyles, /html\[dir="rtl"\] \.gd-identity \{[^}]*clip-path/s, "the clipped corner mirrors in RTL");
+assert.match(pageStyles, /html\[lang="ar"\] \.gd-next__label/, "Arabic must not inherit Latin HUD tracking");
+assert.match(pageStyles, /html\[data-theme="light"\] \.game-details-v1/, "light mode is designed, not inverted dark");
 assert.match(pageStyles, /forced-colors: active/);
-// Comments may document forbidden properties without declaring them, so the
-// forbidden-declaration check runs on the executable CSS only.
+
+// Cyberpunk accents stay accents. Comments may name forbidden properties without
+// declaring them, so the declaration checks run on the executable CSS only.
 const executablePageStyles = pageStyles.replace(/\/\*[\s\S]*?\*\//g, "");
 assert.doesNotMatch(
   executablePageStyles,
-  /blur\(|backdrop-filter|linear-gradient|box-shadow/,
-  "no glass, no decorative gradient, no glow"
+  /blur\(|backdrop-filter|radial-gradient|text-shadow/,
+  "no glass, no radial light bloom, no glowing text"
+);
+assert.equal(
+  executablePageStyles.match(/box-shadow: 0 0/g)?.length,
+  1,
+  "exactly one controlled glow on the whole page"
+);
+assert.match(
+  executablePageStyles,
+  /html\[data-theme="dark"\] \.gd-progress__fill \{[^}]*box-shadow: 0 0/s,
+  "the one glow belongs to the progress fill in dark mode only"
+);
+assert.equal(
+  executablePageStyles.match(/linear-gradient\(/g)?.length,
+  executablePageStyles.match(/repeating-linear-gradient\(/g)?.length,
+  "the only gradients are the repeating, meaningful ones: progress segments and the unknown-state rail"
 );
 assert.match(styles, /scrollbar-gutter:stable/);
 assert.match(styles, /::-webkit-scrollbar-thumb:hover/);

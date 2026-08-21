@@ -24,16 +24,17 @@ import {
 import type { Achievement, AchievementId, Game, GameId, SteamAchievementSyncResult } from "../types";
 
 /**
- * Game Details v1.
+ * Game Details v2.
  *
- * One vertical hierarchy: identity, progress, sync status, an optional
- * recommendation, the achievement list, and optional recent sessions. The
- * achievement list is the primary content, so nothing above it is allowed to
- * grow into a hero or a wall of metric cards.
+ * Two regions, not five cards: one identity panel that carries the cover, the
+ * title, the metadata line, the integrated progress and the data-state line,
+ * then the achievement list as the primary content. The cover anchors the panel
+ * at a real 112x168 portrait size, so entering the page reads as entering this
+ * game rather than opening a settings screen.
  *
  * Two state rules the page must keep:
  * - The two queries fail independently. A failed achievement load stays inside
- *   the achievement region so the identity row and Play/Install survive it.
+ *   the achievement region so the identity panel and Play/Install survive it.
  * - Nothing is presented as more certain than it is. Completion is exact only
  *   when every unlock state is known, rarity appears only when a real global
  *   percentage exists, and offline says it is showing the last synchronized
@@ -109,7 +110,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
   useEffect(() => {
     if (!steamGameId || !online) return;
     // Background attempt. The coordinator records the real outcome and the status
-    // row reads it, so a rejection is reported there instead of escaping as an
+    // line reads it, so a rejection is reported there instead of escaping as an
     // unhandled rejection. The catch changes nothing on screen and never turns a
     // failure into a success.
     smartSync.syncGame(steamGameId, "page-open").catch(() => undefined);
@@ -156,6 +157,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
   const installKey = isSteam ? gameInstallStateKey(installState) : undefined;
   const visible = filtered.slice(0, visibleCount);
   const filtersActive = query.trim().length > 0 || filter !== "all";
+  const listReady = achievementsState.status === "success" && allAchievements.length > 0;
   const recommended = insight.nextAchievement
     ? allAchievements.find((item) => item.id === insight.nextAchievement?.achievementId)
     : undefined;
@@ -209,6 +211,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
 
   return (
     <section className="game-details-v1">
+      {/* One panel: identity, progress and data state. The cover anchors it. */}
       <header className="gd-identity">
         <button
           type="button"
@@ -231,8 +234,14 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
           appId={isSteam ? game.appId : undefined}
           componentName="GameDetailsIdentity"
         />
-        <div className="gd-identity__text">
-          <h1 className="gd-identity__title" dir="auto">{game.name}</h1>
+        <div className="gd-identity__main">
+          <div className="gd-identity__head">
+            <h1 className="gd-identity__title" dir="auto">{game.name}</h1>
+            <div className="gd-identity__actions">
+              {isSteam && <GameSessionIndicator appId={game.appId} />}
+              {isSteam && <GameActionButton appId={game.appId} title={game.name} owned compact />}
+            </div>
+          </div>
           <div className="gd-identity__meta">
             <span>{isSteam ? "Steam" : t("gameDetails.platform")}</span>
             {isSteam && <span dir="ltr">{t("gameDetails.appId", { id: game.appId })}</span>}
@@ -246,116 +255,135 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
             )}
             {installKey && <span>{t(installKey)}</span>}
           </div>
-        </div>
-        <div className="gd-identity__actions">
-          {isSteam && <GameSessionIndicator appId={game.appId} />}
-          {isSteam && <GameActionButton appId={game.appId} title={game.name} owned compact />}
+
+          {/* Progress belongs to the identity, not to a metric card of its own. */}
+          <div className="gd-progress" role="group" aria-label={t("gameDetails.completion")}>
+            {summary.total === null ? (
+              <span className="gd-progress__item gd-progress__item--unknown">
+                <HelpCircle size={14} aria-hidden="true" />
+                {t("gameDetails.achievementDataUnavailable")}
+              </span>
+            ) : (
+              <>
+                {completionExact ? (
+                  <>
+                    <strong className="gd-progress__value">
+                      {t("gameDetails.completionValue", { percent: number.format(summary.completion ?? 0) })}
+                    </strong>
+                    <span
+                      className="gd-progress__track"
+                      role="progressbar"
+                      aria-label={t("gameDetails.completion")}
+                      aria-valuenow={summary.completion ?? 0}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    >
+                      <span className="gd-progress__fill" style={{ inlineSize: `${summary.completion ?? 0}%` }} />
+                    </span>
+                  </>
+                ) : (
+                  <strong className="gd-progress__value">{t("gameDetails.completionPartial")}</strong>
+                )}
+                <span className="gd-progress__item">
+                  {t("gameDetails.unlockedOfTotal", {
+                    unlocked: number.format(summary.unlocked ?? 0),
+                    total: number.format(summary.total)
+                  })}
+                </span>
+                <span className="gd-progress__item">
+                  {t("gameDetails.lockedCount", { count: number.format(summary.locked ?? 0) })}
+                </span>
+                {summary.unknownUnlockStates > 0 && (
+                  <span className="gd-progress__item gd-progress__item--unknown">
+                    <HelpCircle size={14} aria-hidden="true" />
+                    {t("gameDetails.unknownCount", { count: number.format(summary.unknownUnlockStates) })}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Sync is metadata on one line: state, time, message, action. */}
+          <div className="gd-status">
+            <span className="gd-status__state">
+              {syncState ? t(SYNC_STATE_LABELS[syncState]) : t("gameDetails.localGame")}
+            </span>
+            {lastSynced && (
+              <time className="gd-status__time" dateTime={lastSynced.toISOString()}>
+                {t("gameDetails.lastSyncValue", {
+                  date: new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(lastSynced)
+                })}
+              </time>
+            )}
+            {statusMessage && (
+              <span className="gd-status__message" role="status">
+                {!online && <WifiOff size={14} aria-hidden="true" />}
+                {statusMessage}
+              </span>
+            )}
+            {isSteam && (
+              <button
+                type="button"
+                className="secondary-button gd-textbutton gd-status__action"
+                onClick={() => void syncAchievements()}
+                disabled={updating || !online}
+                title={online ? undefined : t("gameDetails.offlineSyncDisabled")}
+              >
+                <RefreshCw size={14} className={updating ? "steam-sync-spinning" : ""} aria-hidden="true" />
+                {updating ? t("gameDetails.syncing") : t("gameDetails.sync")}
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      <div className="gd-progress" role="group" aria-label={t("gameDetails.completion")}>
-        {summary.total === null ? (
-          <span className="gd-progress__item gd-progress__item--unknown">
-            <HelpCircle size={14} aria-hidden="true" />
-            {t("gameDetails.achievementDataUnavailable")}
-          </span>
-        ) : (
-          <>
-            {completionExact ? (
-              <>
-                <strong className="gd-progress__value">
-                  {t("gameDetails.completionValue", { percent: number.format(summary.completion ?? 0) })}
-                </strong>
-                <span
-                  className="gd-progress__track"
-                  role="progressbar"
-                  aria-label={t("gameDetails.completion")}
-                  aria-valuenow={summary.completion ?? 0}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                >
-                  <span className="gd-progress__fill" style={{ inlineSize: `${summary.completion ?? 0}%` }} />
-                </span>
-              </>
-            ) : (
-              <strong className="gd-progress__value">{t("gameDetails.completionPartial")}</strong>
-            )}
-            <span className="gd-progress__item">
-              {t("gameDetails.unlockedOfTotal", {
-                unlocked: number.format(summary.unlocked ?? 0),
-                total: number.format(summary.total)
+      <section className="gd-achievements" aria-label={t("gameDetails.allAchievements")}>
+        <div className="gd-achievements__head">
+          <h2 className="gd-achievements__title">{t("gameDetails.allAchievements")}</h2>
+          {listReady && (
+            <span className="gd-achievements__count">
+              {t("gameDetails.achievementCount", {
+                shown: number.format(filtered.length),
+                total: number.format(allAchievements.length)
               })}
             </span>
-            <span className="gd-progress__item">
-              {t("gameDetails.lockedCount", { count: number.format(summary.locked ?? 0) })}
-            </span>
-            {summary.unknownUnlockStates > 0 && (
-              <span className="gd-progress__item gd-progress__item--unknown">
-                <HelpCircle size={14} aria-hidden="true" />
-                {t("gameDetails.unknownCount", { count: number.format(summary.unknownUnlockStates) })}
-              </span>
-            )}
-          </>
-        )}
-      </div>
+          )}
+          {filtersActive && visible.length > 0 && (
+            <button
+              type="button"
+              className="secondary-button gd-textbutton"
+              onClick={() => { setQuery(""); setFilter("all"); }}
+            >
+              {t("gameDetails.clearFilters")}
+            </button>
+          )}
+        </div>
 
-      <div className="gd-status">
-        <span className="gd-status__state">
-          {syncState ? t(SYNC_STATE_LABELS[syncState]) : t("gameDetails.localGame")}
-        </span>
-        {lastSynced && (
-          <time className="gd-status__time" dateTime={lastSynced.toISOString()}>
-            {t("gameDetails.lastSyncValue", {
-              date: new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(lastSynced)
-            })}
-          </time>
-        )}
-        <span className="gd-status__spacer" />
-        {statusMessage && (
-          <span className="gd-status__message" role="status">
-            {!online && <WifiOff size={14} aria-hidden="true" />}
-            {statusMessage}
-          </span>
-        )}
-        {isSteam && (
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => void syncAchievements()}
-            disabled={updating || !online}
-            title={online ? undefined : t("gameDetails.offlineSyncDisabled")}
-          >
-            <RefreshCw size={14} className={updating ? "steam-sync-spinning" : ""} aria-hidden="true" />
-            {updating ? t("gameDetails.syncing") : t("gameDetails.sync")}
+        {/* A thin tactical row, not a recommendation card. Real rarity only. */}
+        {insight.nextAchievement && recommended && (
+          <button type="button" className="gd-next" onClick={() => openAchievement(recommended)}>
+            <span className="gd-next__label">{t("gameDetails.nextAchievement")}</span>
+            <AchievementIcon src={recommended.iconUrl} alt="" size={32} />
+            <span className="gd-next__text">
+              <span className="gd-next__title" dir="auto">
+                {recommended.title || t("gameDetails.hiddenAchievement")}
+              </span>
+              {recommendationReason && !recommendationReason.includes(recommended.title) && (
+                <span className="gd-next__reason">{recommendationReason}</span>
+              )}
+            </span>
+            <span className="gd-next__meta">
+              {typeof recommendedRarity === "number" && (
+                <span dir="ltr">
+                  <Gem size={13} aria-hidden="true" />
+                  {t("gameDetails.globalPercent", { percent: number.format(recommendedRarity) })}
+                </span>
+              )}
+            </span>
+            <ChevronRight className="gd-achievement-row__chevron" size={16} aria-hidden="true" />
           </button>
         )}
-      </div>
 
-      {insight.nextAchievement && recommended && (
-        <button type="button" className="gd-next" onClick={() => openAchievement(recommended)}>
-          <AchievementIcon src={recommended.iconUrl} alt="" size={32} />
-          <span className="gd-next__text">
-            <span className="gd-next__label">{t("gameDetails.continueJourney")}</span>
-            <span className="gd-next__title" dir="auto">
-              {recommended.title || t("gameDetails.hiddenAchievement")}
-            </span>
-            {recommendationReason && !recommendationReason.includes(recommended.title) && (
-              <span className="gd-next__reason">{recommendationReason}</span>
-            )}
-          </span>
-          <span className="gd-next__meta">
-            {typeof recommendedRarity === "number" && (
-              <span dir="ltr">
-                <Gem size={13} aria-hidden="true" />
-                {t("gameDetails.globalPercent", { percent: number.format(recommendedRarity) })}
-              </span>
-            )}
-            <ChevronRight className="gd-achievement-row__chevron" size={16} aria-hidden="true" />
-          </span>
-        </button>
-      )}
-
-      <section className="gd-achievements" aria-label={t("gameDetails.allAchievements")}>
         <FilterToolbar>
           <SearchField value={query} onChange={setQuery} placeholder={t("gameDetails.searchPlaceholder")} />
           <SegmentedFilter
@@ -375,7 +403,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
         ) : achievementsState.status === "error" ? (
           <div className="gd-achievements__error" role="alert">
             <span>{t("gameDetails.achievementsError")}</span>
-            <button type="button" className="secondary-button" onClick={achievementsState.retry}>
+            <button type="button" className="secondary-button gd-textbutton" onClick={achievementsState.retry}>
               {t("gameDetails.retry")}
             </button>
           </div>
@@ -388,18 +416,16 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
         ) : visible.length === 0 ? (
           <div className="gd-achievements__empty">
             <EmptyView compact title={t("gameDetails.noResults")} description={t("gameDetails.noResultsDescription")} />
-            <button type="button" className="secondary-button" onClick={() => { setQuery(""); setFilter("all"); }}>
+            <button
+              type="button"
+              className="secondary-button gd-textbutton"
+              onClick={() => { setQuery(""); setFilter("all"); }}
+            >
               {t("gameDetails.clearFilters")}
             </button>
           </div>
         ) : (
           <>
-            <span className="gd-achievements__count">
-              {t("gameDetails.achievementCount", {
-                shown: number.format(filtered.length),
-                total: number.format(allAchievements.length)
-              })}
-            </span>
             <div className="gd-achievement-list">
               {visible.map((achievement) => (
                 <AchievementRow key={achievement.id} achievement={achievement} onOpen={openAchievement} />
@@ -415,7 +441,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
                 </span>
                 <button
                   type="button"
-                  className="secondary-button"
+                  className="secondary-button gd-textbutton"
                   onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
                 >
                   {t("gameDetails.loadMore")}
@@ -423,13 +449,6 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
               </div>
             )}
           </>
-        )}
-        {filtersActive && visible.length > 0 && (
-          <span className="gd-achievements__count">
-            <button type="button" className="secondary-button" onClick={() => { setQuery(""); setFilter("all"); }}>
-              {t("gameDetails.clearFilters")}
-            </button>
-          </span>
         )}
       </section>
 
@@ -457,7 +476,7 @@ function GameDetailsShell({ onBack }: { onBack: () => void }) {
           <ArrowLeft size={16} aria-hidden="true" />
         </button>
         <span className="gd-identity__cover" aria-hidden="true" />
-        <div className="gd-identity__text" />
+        <div className="gd-identity__main" />
       </header>
       <LoadingView size="md" label={t("state.loading")} />
     </section>
@@ -466,7 +485,8 @@ function GameDetailsShell({ onBack }: { onBack: () => void }) {
 
 /**
  * Recent local play sessions. Real local data only: when there is none, the
- * section renders nothing rather than an empty shelf.
+ * section renders nothing rather than an empty shelf. Secondary by design, so it
+ * is a HUD label over three hairline rows, never a panel.
  */
 function RecentGameSessions({ appId }: { appId: string }) {
   const { language, t } = useTranslation();
