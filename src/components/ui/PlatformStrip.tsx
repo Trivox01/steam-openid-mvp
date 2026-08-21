@@ -9,11 +9,21 @@ import type { ReactNode } from "react";
  * and Steam are provable. Console platforms are deliberately absent, because
  * nothing in this app's data model can prove them and a platform icon with no
  * data behind it is invented metadata, not decoration. The day such data exists,
- * it is one entry in the two maps below.
+ * it is one entry in the two maps below and nothing else has to change.
  *
  * The glyphs are our own geometry painted with currentColor, so no third-party
- * brand file is bundled and the icons stay white on dark and dark on light
+ * brand file is bundled and the icons stay light on dark and dark on light
  * instead of hard-coding white.
+ *
+ * Both marks are filled silhouettes on the same 16 unit grid, and that is a
+ * readability decision taken at runtime size rather than a style preference: a
+ * 1.4px outline at 16px collapses into a grey smudge, while a filled shape keeps
+ * its identity through Windows display scaling. Steam is therefore the round
+ * mark with the valve carved out of it, where the negative space carries the
+ * identity and no detail is thinner than a pixel; PC is the four pane window.
+ * Their ink areas are within six percent of each other, about 123 and 117
+ * square units of the 256 unit box, so neither glyph looks heavier than the
+ * other in the strip.
  *
  * The strip is information, not a control: it is not focusable and carries no
  * action, but each glyph is an image with a real accessible name, so an
@@ -27,20 +37,19 @@ const GLYPHS: Record<PlatformKey, ReactNode> = {
   pc: (
     <path
       fill="currentColor"
-      d="M2 3.4 7.3 2.6v5.1H2V3.4Zm6.7-.9L14 1.6v6.1H8.7V2.5ZM2 8.9h5.3V14l-5.3-.8V8.9Zm6.7 0H14v6.5l-5.3-.8V8.9Z"
+      d="M1.8 1.8h5.4v5.4h-5.4Zm7 0h5.4v5.4h-5.4Zm-7 7h5.4v5.4h-5.4Zm7 0h5.4v5.4h-5.4Z"
     />
   ),
   steam: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-      <circle cx="8" cy="8" r="6.2" />
-      <circle cx="10.2" cy="6" r="2" />
-      <path d="M6.7 9.3 8.7 7.4" />
-      <circle cx="5.5" cy="10.5" r="1.5" fill="currentColor" stroke="none" />
-    </g>
+    <path
+      fill="currentColor"
+      fillRule="evenodd"
+      d="M8 1a7 7 0 1 0 0 14a7 7 0 1 0 0 -14ZM10.2 3.4a2.4 2.4 0 1 0 0 4.8a2.4 2.4 0 1 0 0 -4.8ZM10.2 4.85a0.95 0.95 0 1 0 0 1.9a0.95 0.95 0 1 0 0 -1.9ZM8.66 8.15L6.83 11.76A1.91 1.91 0 0 1 4.17 9.04L7.82 7.29Z"
+    />
   )
 };
 
-export function PlatformStrip({ platforms, size = 13 }: { platforms: PlatformKey[]; size?: number }) {
+export function PlatformStrip({ platforms, size = 16 }: { platforms: PlatformKey[]; size?: number }) {
   if (platforms.length === 0) return null;
   return (
     <span className="gd-platforms">
