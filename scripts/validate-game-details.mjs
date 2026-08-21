@@ -117,8 +117,11 @@ assert.match(pageStyles, /max-inline-size: 1180px/, "achievement text must not s
 assert.match(pageStyles, /html\[dir="rtl"\] \.gd-identity__back svg/);
 assert.match(pageStyles, /html\[dir="rtl"\] \.gd-achievement-row__chevron/);
 assert.match(pageStyles, /forced-colors: active/);
+// Comments may document forbidden properties without declaring them, so the
+// forbidden-declaration check runs on the executable CSS only.
+const executablePageStyles = pageStyles.replace(/\/\*[\s\S]*?\*\//g, "");
 assert.doesNotMatch(
-  pageStyles,
+  executablePageStyles,
   /blur\(|backdrop-filter|linear-gradient|box-shadow/,
   "no glass, no decorative gradient, no glow"
 );
