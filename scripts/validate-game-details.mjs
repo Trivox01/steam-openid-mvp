@@ -51,6 +51,34 @@ assert.match(page, /window\.addEventListener\("offline"/);
 assert.match(page, /gameDetails\.offlineCached/);
 assert.match(page, /disabled=\{updating \|\| !online\}/, "no sync action while clearly offline");
 assert.match(page, /<RecentGameSessions appId=\{game\.appId\}/);
+
+// Sync messaging must follow the persisted game data, never the coordinator's
+// operational success flag. A resolved promise is not proof that Steam
+// achievement data synced, so a failed/private/unsupported/never game must never
+// be shown next to "Updated just now", and manual sync must not declare success
+// without reading the real per-game result.
+assert.doesNotMatch(
+  page,
+  /smartStatus === "success" \? t\("gameDetails\.smartSync\.updated"\)/,
+  "the coordinator success status alone must not claim 'Updated just now'"
+);
+assert.match(page, /dataSyncSucceeded/, "the updated message must be gated by the real data state");
+assert.match(
+  page,
+  /await smartSync\.syncGame\(game\.id, "manual", true\) as SteamAchievementSyncResult/,
+  "manual sync must capture the result summary"
+);
+assert.match(
+  page,
+  /if \(gameResult\?\.status === "success" \|\| gameResult\?\.status === "partial"\)/,
+  "manual sync may claim success only when the result confirms it"
+);
+assert.match(
+  page,
+  /const gameResult = result\?\.games\?\.find\(\(item\) => item\.gameId === game\.id\)/,
+  "manual sync reads the real per-game outcome"
+);
+
 assert.doesNotMatch(page, /GameDetailsSquare/);
 
 // The SmartSync status on screen is live: one subscription with its own

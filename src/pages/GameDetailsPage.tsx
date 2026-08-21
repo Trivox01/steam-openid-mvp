@@ -21,7 +21,7 @@ import {
   type AchievementFilter,
   type AchievementSort
 } from "../services/gameDetailsExperience";
-import type { Achievement, AchievementId, Game, GameId } from "../types";
+import type { Achievement, AchievementId, Game, GameId, SteamAchievementSyncResult } from "../types";
 
 /**
  * Game Details v1.
@@ -165,12 +165,19 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
   const recommendedRarity = insight.nextAchievement?.metadata?.globalUnlockPercent;
   // Offline wins over every cached status string: claiming "Updated just now"
   // while disconnected would be a lie. A local game has no sync message at all.
+  // The coordinator's success status only means the job finished without
+  // throwing; it is not proof that Steam achievement data synced. The real
+  // outcome lives on the persisted game (syncState), so "Updated just now" may
+  // appear only when that data is actually success or partial. A failed,
+  // private, unsupported or never-synced game must never be paired with a
+  // success message.
+  const dataSyncSucceeded = syncState === "success" || syncState === "partial";
   const statusMessage = !isSteam
     ? ""
     : !online
     ? t("gameDetails.offlineCached")
     : syncMessage || (updating ? t("gameDetails.smartSync.updating")
-      : smartStatus === "success" ? t("gameDetails.smartSync.updated")
+      : (smartStatus === "success" && dataSyncSucceeded) ? t("gameDetails.smartSync.updated")
       : smartStatus === "unavailable" ? t("gameDetails.smartSync.unavailable")
       : smartStatus === "saved" ? t("gameDetails.smartSync.saved") : "");
 
@@ -179,8 +186,18 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
     setSyncing(true);
     setSyncMessage("");
     try {
-      await smartSync.syncGame(game.id, "manual", true);
-      setSyncMessage(t("gameDetails.sync.success"));
+      // The coordinator resolves with the per-game result summary; a resolved
+      // promise is not proof of achievement sync success, so read the real
+      // outcome for this game before claiming it.
+      const result = await smartSync.syncGame(game.id, "manual", true) as SteamAchievementSyncResult;
+      const gameResult = result?.games?.find((item) => item.gameId === game.id);
+      if (gameResult?.status === "success" || gameResult?.status === "partial") {
+        setSyncMessage(t("gameDetails.sync.success"));
+      } else if (gameResult?.status === "unsupported") {
+        setSyncMessage(t("gameDetails.sync.unsupported"));
+      } else {
+        setSyncMessage(t("gameDetails.sync.error"));
+      }
     } catch {
       setSyncMessage(navigator.onLine === false
         ? t("gameDetails.offlineCached")
