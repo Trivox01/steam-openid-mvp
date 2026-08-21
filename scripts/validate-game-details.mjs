@@ -231,6 +231,26 @@ assert.doesNotMatch(
   /<img|url\(|\.svg|\.png/,
   "no third-party brand file is bundled for a platform icon; the glyphs are our own geometry"
 );
+// Legibility at runtime size is part of the same contract, because the strip
+// failed its visual review once: at 13px both marks were visually lost and the
+// round one no longer read as Steam. Filled shapes on one drawing grid are the
+// fix, since a hairline outline is the first thing to disappear at 16px and
+// under Windows display scaling.
+assert.match(
+  platformStrip,
+  /size = 16/,
+  "16px is the reviewed glyph size; a smaller default is exactly the regression this pass fixed"
+);
+assert.match(
+  platformStrip,
+  /viewBox="0 0 16 16"/,
+  "both glyphs are drawn on one 16 unit grid, which is what keeps their perceived weight comparable"
+);
+assert.doesNotMatch(
+  platformStrip,
+  /strokeWidth|stroke=/,
+  "platform glyphs are filled silhouettes; a hairline outline collapses into a smudge at 16px"
+);
 
 // Rows are real buttons, state is never colour alone, rarity is never invented.
 assert.match(row, /type="button"/);
