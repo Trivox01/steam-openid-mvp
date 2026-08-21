@@ -18,12 +18,19 @@ import type { ReactNode } from "react";
  * Both marks are filled silhouettes on the same 16 unit grid, and that is a
  * readability decision taken at runtime size rather than a style preference: a
  * 1.4px outline at 16px collapses into a grey smudge, while a filled shape keeps
- * its identity through Windows display scaling. Steam is therefore the round
- * mark with the valve carved out of it, where the negative space carries the
- * identity and no detail is thinner than a pixel; PC is the four pane window.
- * Their ink areas are within six percent of each other, about 123 and 117
- * square units of the 256 unit box, so neither glyph looks heavier than the
- * other in the strip.
+ * its identity through Windows display scaling.
+ *
+ * Steam is the round mark with the valve carved out of it, where the negative
+ * space carries the identity and no detail is thinner than a pixel. That
+ * geometry has been reviewed in the real app and is deliberately frozen.
+ *
+ * PC is a desktop monitor - screen, neck, base - because this glyph has to say
+ * computer rather than name an operating system. It is three solid subpaths and
+ * not a thin bezel: at 16px a 1.5px bezel fails exactly the way an outline does,
+ * and it is the filled slab standing on its base that makes the silhouette read
+ * as a monitor at that size. Ink is about 116 square units against Steam's 123
+ * of the 256 unit box; the monitor is the lighter of the two on purpose, because
+ * a rectangle reads heavier than a disc of equal area.
  *
  * The strip is information, not a control: it is not focusable and carries no
  * action, but each glyph is an image with a real accessible name, so an
@@ -37,7 +44,7 @@ const GLYPHS: Record<PlatformKey, ReactNode> = {
   pc: (
     <path
       fill="currentColor"
-      d="M1.8 1.8h5.4v5.4h-5.4Zm7 0h5.4v5.4h-5.4Zm-7 7h5.4v5.4h-5.4Zm7 0h5.4v5.4h-5.4Z"
+      d="M1.8 2.4h12.4v8.2h-12.4ZM6.8 10.6h2.4v1.6h-2.4ZM4.4 12.2h7.2v1.5h-7.2Z"
     />
   ),
   steam: (
