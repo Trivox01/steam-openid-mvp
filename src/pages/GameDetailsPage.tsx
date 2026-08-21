@@ -55,6 +55,13 @@ import type { Achievement, AchievementId, Game, GameId, SteamAchievementSyncResu
  * data can actually prove, so the strip is derived from the game itself and
  * never from what would look good in the layout.
  *
+ * One artwork rule: the panel may carry this game's real hero art as a subdued
+ * layer behind its content. It is atmosphere, so it is decorative to assistive
+ * technology, it never replaces the portrait cover, and it is rendered only when
+ * the existing artwork pipeline actually has a real source. Nothing is ever
+ * generated to fill the space, and a game with no usable artwork simply keeps
+ * the plain identity surface.
+ *
  * Steam sync state, the sync action and the installation state belong to Steam
  * games only. A local game states the local game text instead of borrowing
  * Steam semantics it cannot have.
@@ -174,6 +181,14 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
   // is owned on Steam by definition of where the library came from. Anything
   // else would be an icon the data cannot back.
   const platforms: PlatformKey[] = isSteam ? ["pc", "steam"] : ["pc"];
+  // Real hero art only, taken from the same pipeline that already resolves the
+  // cover: the stored background first, then Steam's real library hero, header
+  // and capsule, each of them content-inspected before it is accepted. A local
+  // game and an appId the pipeline rejects both produce an empty list, and an
+  // empty list means no banner element is rendered at all.
+  const bannerSources = isSteam
+    ? steamArtworkSources({ appId: game.appId, kind: "hero", storedUrl: game.backgroundUrl })
+    : [];
   const visible = filtered.slice(0, visibleCount);
   const filtersActive = query.trim().length > 0 || filter !== "all";
   const listReady = achievementsState.status === "success" && allAchievements.length > 0;
@@ -243,6 +258,20 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
     <section className="game-details-v1">
       {/* One panel: identity, progress and data state. The cover anchors it. */}
       <header className="gd-identity">
+        {/* Atmosphere, not content: the real hero art sits behind the panel,
+            heavily subdued under a flat veil. It is decoration, so assistive
+            technology never sees it, and it exists only when a real source does. */}
+        {bannerSources.length > 0 && (
+          <div className="gd-identity__banner" aria-hidden="true">
+            <GameArtwork
+              sources={bannerSources}
+              alt=""
+              variant="background"
+              appId={game.appId}
+              componentName="GameDetailsBanner"
+            />
+          </div>
+        )}
         <button
           type="button"
           className="gd-identity__back"
