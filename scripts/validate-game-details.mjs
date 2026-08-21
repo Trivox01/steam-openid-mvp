@@ -9,6 +9,8 @@ const hook = fs.readFileSync("src/hooks/useGameInstallState.ts", "utf8");
 const pageStyles = fs.readFileSync("src/styles/game-details-v1.css", "utf8");
 const styles = fs.readFileSync("src/styles/index.css", "utf8");
 const entry = fs.readFileSync("src/main.tsx", "utf8");
+const localeEn = fs.readFileSync("src/locales/en/gameDetails.ts", "utf8");
+const localeAr = fs.readFileSync("src/locales/ar/gameDetails.ts", "utf8");
 
 // v2 reads as one identity panel (cover, title, metadata, progress, data state)
 // followed by the achievement list, with optional sessions last.
@@ -25,6 +27,7 @@ assert.doesNotMatch(
 );
 assert.match(page, /kind: "cover"/);
 assert.match(page, /variant="cover"/);
+assert.match(page, /gd-identity__mount/, "the cover is framed by its mount, not dropped into the panel");
 assert.doesNotMatch(page, /variant="background"|backgroundUrl/, "the portrait cover carries the identity, not background art");
 
 // The achievement list is the primary content and owns its own async states.
@@ -46,6 +49,51 @@ assert.doesNotMatch(page, /<ProgressBar/, "there is no real partial achievement 
 // The recommendation is a thin row above the list, never another card.
 assert.match(page, /className="gd-next"/);
 assert.match(page, /gd-next__label/);
+
+// Visible copy must never expose template syntax. A locale value carrying a
+// {{variable}} is a sentence, not a label: it may only be rendered together with
+// its variables, because the translator re-emits the raw placeholder when one is
+// missing. That is exactly how "NEXT ACHIEVEMENT: {{NAME}}" reached the real UI,
+// so the guard below covers the whole class of bug, not just the key that broke.
+const localeEntries = (source) => {
+  const entries = new Map();
+  for (const match of source.matchAll(/^\s*"([^"]+)":\s*"((?:[^"\\]|\\.)*)"/gm)) {
+    entries.set(match[1], match[2]);
+  }
+  return entries;
+};
+const enCopy = localeEntries(localeEn);
+const arCopy = localeEntries(localeAr);
+assert.ok(enCopy.size > 50 && arCopy.size > 50, "both locale files must parse into real key/value pairs");
+
+const parameterizedKeys = new Set(
+  [...enCopy, ...arCopy].filter(([, value]) => value.includes("{{")).map(([key]) => key)
+);
+assert.ok(
+  parameterizedKeys.has("gameDetails.nextAchievement"),
+  "nextAchievement is a parameterized sentence, so it must stay inside the guarded set"
+);
+for (const [source, name] of [[page, "GameDetailsPage.tsx"], [row, "AchievementRow.tsx"]]) {
+  for (const [, key] of source.matchAll(/t\("([^"]+)"\)/g)) {
+    assert.ok(
+      !parameterizedKeys.has(key),
+      `${name} renders ${key} with no variables; a parameterized sentence would print its raw placeholder on screen`
+    );
+  }
+}
+assert.doesNotMatch(
+  page,
+  /t\("gameDetails\.nextAchievement"\)/,
+  "the recommendation label must be the placeholder-free key, not the parameterized sentence"
+);
+assert.ok(
+  enCopy.has("gameDetails.nextTarget") && arCopy.has("gameDetails.nextTarget"),
+  "the recommendation label needs a real translation in both languages"
+);
+for (const [, key] of [...page.matchAll(/"(gameDetails\.[A-Za-z.]+)"/g), ...row.matchAll(/"(gameDetails\.[A-Za-z.]+)"/g)]) {
+  assert.ok(enCopy.has(key), `${key} is used by Game Details but missing from the English locale`);
+  assert.ok(arCopy.has(key), `${key} is used by Game Details but missing from the Arabic locale`);
+}
 
 // Nothing may be presented as more certain than it is.
 assert.match(page, /calculateAchievementSummary/);
@@ -83,6 +131,13 @@ assert.match(
   page,
   /const gameResult = result\?\.games\?\.find\(\(item\) => item\.gameId === game\.id\)/,
   "manual sync reads the real per-game outcome"
+);
+// The state marker is part of that same truth: it is derived from the persisted
+// sync state, so the dot can never disagree with the words beside it.
+assert.match(
+  page,
+  /const statusTone = !isSteam \|\| syncState === "never"/,
+  "the state marker must follow the persisted sync state, not the coordinator status"
 );
 
 assert.doesNotMatch(page, /GameDetailsSquare/);
@@ -150,14 +205,45 @@ assert.match(entry, /game-details-v1\.css/);
 // the content stays bounded so achievement text never crosses 1920.
 assert.match(pageStyles, /--gd-cover: 112px/, "the cover is a real identity anchor, not metadata artwork");
 assert.match(pageStyles, /\.gd-identity \.gd-identity__cover \{[^}]*aspect-ratio: 2 \/ 3/s);
+assert.match(
+  pageStyles,
+  /\.gd-identity__mount \{[^}]*inline-size: var\(--gd-cover\)/s,
+  "the mount reserves the cover geometry so the artwork is framed, not floating"
+);
 assert.match(pageStyles, /\.gd-achievement-row \{[^}]*min-block-size: 52px/s);
 assert.match(pageStyles, /max-inline-size: 1240px/, "achievement text must not stretch across 1920");
 assert.match(pageStyles, /html\[dir="rtl"\] \.gd-identity__back svg/);
 assert.match(pageStyles, /html\[dir="rtl"\] \.gd-achievement-row__chevron/);
 assert.match(pageStyles, /html\[dir="rtl"\] \.gd-identity \{[^}]*clip-path/s, "the clipped corner mirrors in RTL");
 assert.match(pageStyles, /html\[lang="ar"\] \.gd-next__label/, "Arabic must not inherit Latin HUD tracking");
+assert.match(
+  pageStyles,
+  /html\[lang="ar"\] \.gd-achievements__title/,
+  "the uppercase tactical header must be neutralised for Arabic"
+);
 assert.match(pageStyles, /html\[data-theme="light"\] \.game-details-v1/, "light mode is designed, not inverted dark");
 assert.match(pageStyles, /forced-colors: active/);
+
+// Hierarchy is carried by structure, not decoration: a section mark instead of a
+// header card, a surface band instead of a table border, one control geometry for
+// search/filters/sort, and colour that means something.
+assert.match(pageStyles, /\.gd-achievements__head::before/, "the section mark replaces a header card");
+assert.match(
+  pageStyles,
+  /\.gd-achievement-list \{[^}]*background: var\(--gd-band\)/s,
+  "the list sits on its own surface band, which is what gives the page depth"
+);
+assert.match(
+  pageStyles,
+  /\.gd-achievement-row--unlocked::before \{[^}]*var\(--action-play\)/s,
+  "an unlocked row is rewarded on its state rail, not with a glow"
+);
+assert.match(
+  pageStyles,
+  /\.gd-achievements \.library-search,\s*\.gd-achievements \.segmented-filter,\s*\.gd-achievements \.select-control select \{[^}]*border-radius: 0/s,
+  "search, filters and sort must share one geometry instead of three design systems"
+);
+assert.match(pageStyles, /--gd-data:/, "data colour is a named role, so cyan cannot spread across the page");
 
 // Cyberpunk accents stay accents. Comments may name forbidden properties without
 // declaring them, so the declaration checks run on the executable CSS only.
@@ -180,7 +266,7 @@ assert.match(
 assert.equal(
   executablePageStyles.match(/linear-gradient\(/g)?.length,
   executablePageStyles.match(/repeating-linear-gradient\(/g)?.length,
-  "the only gradients are the repeating, meaningful ones: progress segments and the unknown-state rail"
+  "the only gradients are the repeating, meaningful ones: the cover grid, the progress segments and ticks, and the unknown-state rail"
 );
 assert.match(styles, /scrollbar-gutter:stable/);
 assert.match(styles, /::-webkit-scrollbar-thumb:hover/);
