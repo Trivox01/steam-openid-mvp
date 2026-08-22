@@ -3,10 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { validateNexusPlatformFoundation } from "../src/domain/nexus/validation.ts";
 
-// 1. The new domain contracts hold.
+// 1. The new domain contracts hold (completion truth, canonical trust,
+// ownership integrity, id strategy, backend-only boundary, credential split).
 const assertions = validateNexusPlatformFoundation();
 assert.ok(
-  assertions >= 30,
+  assertions >= 50,
   `expected focused coverage of the new domain contracts, got ${assertions} assertions`
 );
 
@@ -35,7 +36,8 @@ for (const table of [
   "platform_games",
   "user_game_ownership",
   "platform_achievements",
-  "user_achievement_states"
+  "user_achievement_states",
+  "user_canonical_mapping_suggestions"
 ]) {
   assert.doesNotMatch(
     migrationSql,
@@ -89,11 +91,14 @@ for (const topic of [
   "Why the Nexus account is independent from Steam",
   "Linked provider architecture",
   "Canonical game vs platform game",
+  "Identity and key strategy",
   "Achievement ownership",
   "Adapter boundaries",
   "Security and token boundaries",
   "Capability differences",
   "Migration path",
+  "Transitional stage",
+  "Provider-neutral onboarding",
   "What Phase 1 implements",
   "What later phases defer"
 ]) {
@@ -115,10 +120,40 @@ for (const topic of [
   "CREATE UNIQUE INDEX",
   "uniqueness semantics",
   "Unlink behaviour",
-  "Deletion and privacy behaviour"
+  "Deletion and privacy behaviour",
+  "connection_status",
+  "revoked_at"
 ]) {
   assert.ok(dbProposal.includes(topic), `the database proposal must document: ${topic}`);
 }
+
+// Ownership and achievement state must not carry a redundant user_id column;
+// the Nexus user is derived through the linked account.
+const ownershipTable = dbProposal.match(/CREATE TABLE user_game_ownership \(([\s\S]*?)\);/);
+assert.ok(ownershipTable, "user_game_ownership must be defined in the proposal");
+assert.doesNotMatch(
+  ownershipTable[1],
+  /\buser_id\b/,
+  "user_game_ownership must derive the Nexus user via linked_account_id"
+);
+const statesTable = dbProposal.match(/CREATE TABLE user_achievement_states \(([\s\S]*?)\);/);
+assert.ok(statesTable, "user_achievement_states must be defined in the proposal");
+assert.doesNotMatch(
+  statesTable[1],
+  /\buser_id\b/,
+  "user_achievement_states must derive the Nexus user via linked_account_id"
+);
+
+// credential_ref lives in exactly one place so the relationship is enforced by
+// a single FK, not duplicated between tables.
+const linksTable = dbProposal.match(/CREATE TABLE linked_platform_accounts \(([\s\S]*?)\);/);
+assert.ok(linksTable, "linked_platform_accounts must be defined in the proposal");
+assert.doesNotMatch(
+  linksTable[1],
+  /credential_ref/,
+  "linked_platform_accounts must not duplicate credential_ref"
+);
+
 assert.ok(
   !fs.existsSync(path.join(migrationsDir, "020_nexus_multi_platform_foundation.sql")),
   "the proposed migration must not be added to the migrations directory"

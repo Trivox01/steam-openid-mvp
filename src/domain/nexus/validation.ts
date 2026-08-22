@@ -1,8 +1,10 @@
 /**
- * Contract validators for the Nexus multi-platform foundation.
+ * Contract validators for the Nexus multi-platform foundation (correction pass).
  *
- * These validate the new domain rules only. They do not touch, relax or
- * re-implement any existing Steam validator.
+ * These validate the new domain rules only: completion truth, canonical trust,
+ * ownership integrity, id strategy, the backend-only adapter boundary and the
+ * public/server credential split. They do not touch, relax or re-implement any
+ * existing Steam validator.
  */
 
 import {
@@ -19,20 +21,28 @@ import type { LinkedPlatformAccount } from "./identity.ts";
 import {
   evaluateAccountLink,
   findRawCredentialFields,
-  planDisconnect
+  planDisconnect,
+  toPublicLinkedAccount
 } from "./identity.ts";
-import type { PlatformGame, UserGameOwnership } from "./catalog.ts";
+import type {
+  CanonicalMapping,
+  PlatformGame,
+  UserGameOwnership
+} from "./catalog.ts";
 import {
   CanonicalMappingError,
   candidateMappingFromTitleMatch,
   groupOwnershipByCanonical,
   isVerifiedMapping,
+  legacySteamGameKey,
   linkPlatformGameToCanonical,
-  platformGameKey
+  platformGameKey,
+  suggestionFromUserConfirmation
 } from "./catalog.ts";
 import type { UserAchievementState } from "./achievements.ts";
 import {
   canCompareProviderScores,
+  legacySteamAchievementKey,
   platformAchievementKey,
   summarizeAchievementProgress
 } from "./achievements.ts";
@@ -166,7 +176,7 @@ export function validateNexusPlatformFoundation(): number {
     "a revoked link must free the provider slot again"
   );
 
-  // Credential boundary ----------------------------------------------------
+  // Credential trust boundary ----------------------------------------------
   check(findRawCredentialFields(steamAccount).length === 0, "the Steam link must carry no credential fields");
   const leaky = { account: { provider: "xbox", access_token: "redacted-in-test" } };
   check(findRawCredentialFields(leaky).length === 1, "raw credential fields must be detected");
@@ -177,14 +187,27 @@ export function validateNexusPlatformFoundation(): number {
     providerUserId: "xuid-1",
     connectionStatus: "connected",
     scopes: ["library.read"],
-    tokenMetadata: {
+    credentialMetadata: {
       credentialRef: "cred-ref-1",
       encryptionKeyId: "key-1",
       revocationSupported: true
     },
     linkedAt: NOW
   };
-  check(findRawCredentialFields(xboxAccount).length === 0, "credential references must not look like credentials");
+  check(findRawCredentialFields(xboxAccount).length === 0, "credential references are not raw credentials");
+  const publicXbox = toPublicLinkedAccount(xboxAccount);
+  check(!("credentialMetadata" in publicXbox), "the public projection must drop credential metadata");
+  check(
+    !("credentialRef" in publicXbox) && !("encryptionKeyId" in publicXbox),
+    "credentialRef and encryptionKeyId must never be desktop-facing"
+  );
+  check(!("userId" in publicXbox), "the public projection must not leak the internal user id mapping");
+  const publicJson = JSON.stringify(publicXbox);
+  check(
+    !publicJson.includes("cred-ref-1") && !publicJson.includes("key-1"),
+    "the public projection must not serialise any credential locator"
+  );
+  check(publicXbox.providerUserId === "xuid-1", "the provider identity is safe to show on the desktop");
   const steamDisconnect = planDisconnect(steamAccount);
   check(
     steamDisconnect.credentialDisposition === "not_applicable" &&
@@ -198,10 +221,11 @@ export function validateNexusPlatformFoundation(): number {
     "credential-bearing providers must revoke before deleting"
   );
 
-  // Canonical vs platform game --------------------------------------------
-  check(platformGameKey("steam", "10") === "steam:10", "platform game keys stay provider-scoped");
+  // Canonical trust model ----------------------------------------------------
+  check(platformGameKey("steam", "10") === "steam:10", "provider identity keys stay provider-scoped");
+  check(legacySteamGameKey(10) === "steam:10", "the legacy Steam game key is preserved for compatibility");
   const steamGame: PlatformGame = {
-    id: platformGameKey("steam", "1091500"),
+    id: "pg-internal-0001",
     provider: "steam",
     providerGameId: "1091500",
     title: "Cyberpunk 2077",
@@ -209,64 +233,134 @@ export function validateNexusPlatformFoundation(): number {
     updatedAt: NOW
   };
   const xboxGame: PlatformGame = {
-    id: platformGameKey("xbox", "9NKX70BBCDRN"),
+    id: "pg-internal-0002",
     provider: "xbox",
     providerGameId: "9NKX70BBCDRN",
     title: "Cyberpunk 2077",
     firstSeenAt: NOW,
     updatedAt: NOW
   };
+  check(steamGame.id !== steamGame.providerGameId, "the internal id is opaque and distinct from the provider key");
   check(steamGame.canonicalGameId === undefined, "platform games start without a canonical link");
-  const titleCandidate = candidateMappingFromTitleMatch(1, NOW);
-  check(!isVerifiedMapping(titleCandidate), "identical titles are not verified evidence");
-  let rejected = false;
+
+  const suggestion = suggestionFromUserConfirmation(
+    "sug-1",
+    steamGame.id,
+    "canonical-cp2077",
+    "nexus-user-1",
+    NOW
+  );
+  check(suggestion.method === "user_confirmed" && suggestion.status === "pending", "a user confirmation is only a pending suggestion");
+  check(!("verifiedBy" in suggestion), "a user suggestion carries no verification evidence");
+  check(suggestion.platformGameId === steamGame.id, "a suggestion references the platform game but lives outside it");
+
+  const forgedUserMapping = {
+    method: "user_confirmed",
+    confidence: "verified",
+    verifiedBy: "nexus-user-1",
+    verifiedAt: NOW
+  } as unknown as CanonicalMapping;
+  check(!isVerifiedMapping(forgedUserMapping), "user_confirmed is never a verified mapping method");
+  let userForgeryRejected = false;
   try {
-    linkPlatformGameToCanonical(steamGame, "canonical-cp2077", titleCandidate, NOW);
+    linkPlatformGameToCanonical(steamGame, "canonical-cp2077", forgedUserMapping, NOW);
   } catch (error) {
-    rejected = error instanceof CanonicalMappingError && error.code === "unverified_mapping_rejected";
+    userForgeryRejected =
+      error instanceof CanonicalMappingError && error.code === "unverified_mapping_rejected";
   }
-  check(rejected, "title-only mappings must be refused by the domain");
-  const verified = {
-    method: "editorial_verified" as const,
-    confidence: "verified" as const,
+  check(userForgeryRejected, "a user-confirmed suggestion can never globally link PlatformGame -> CanonicalGame");
+
+  const titleCandidate = candidateMappingFromTitleMatch(1, NOW);
+  check(titleCandidate.method === "title_similarity_candidate", "title similarity stays a candidate-only hint");
+  const forgedTitleMapping = titleCandidate as unknown as CanonicalMapping;
+  check(!isVerifiedMapping(forgedTitleMapping), "identical titles are not verified evidence");
+  let titleForgeryRejected = false;
+  try {
+    linkPlatformGameToCanonical(steamGame, "canonical-cp2077", forgedTitleMapping, NOW);
+  } catch (error) {
+    titleForgeryRejected =
+      error instanceof CanonicalMappingError && error.code === "unverified_mapping_rejected";
+  }
+  check(titleForgeryRejected, "title-only mappings must be refused by the domain");
+
+  const editorialVerified: CanonicalMapping = {
+    method: "editorial_verified",
+    confidence: "verified",
     verifiedBy: "catalog-operator",
     verifiedAt: NOW
   };
-  const mappedSteam = linkPlatformGameToCanonical(steamGame, "canonical-cp2077", verified, NOW);
-  const mappedXbox = linkPlatformGameToCanonical(xboxGame, "canonical-cp2077", verified, NOW);
+  const providerVerified: CanonicalMapping = {
+    method: "provider_verified",
+    confidence: "verified",
+    verifiedBy: "provider-catalog-feed",
+    verifiedAt: NOW
+  };
+  check(isVerifiedMapping(editorialVerified) && isVerifiedMapping(providerVerified), "provider and editorial verification may create shared mappings");
+  const mappedSteam = linkPlatformGameToCanonical(steamGame, "canonical-cp2077", editorialVerified, NOW);
+  const mappedXbox = linkPlatformGameToCanonical(xboxGame, "canonical-cp2077", providerVerified, NOW);
   check(mappedSteam.canonicalGameId === "canonical-cp2077", "verified mappings must attach");
+
+  // Ownership integrity ------------------------------------------------------
   const ownership = (game: PlatformGame, linkedAccountId: string): UserGameOwnership => ({
     id: `${linkedAccountId}:${game.id}`,
-    userId: "nexus-user-1",
     linkedAccountId,
     platformGameId: game.id,
     provider: game.provider,
     playtimeKnown: game.provider === "steam",
     firstSeenAt: NOW
   });
+  const sampleOwnership = ownership(mappedSteam, "link-steam-1");
+  check(
+    !("userId" in sampleOwnership),
+    "ownership carries no redundant userId; the Nexus user is derived via the linked account"
+  );
+  check(sampleOwnership.linkedAccountId === "link-steam-1", "ownership is keyed by the linked account");
+  const portalGame: PlatformGame = {
+    ...steamGame,
+    id: "pg-internal-0003",
+    providerGameId: "400",
+    title: "Portal"
+  };
   const grouped = groupOwnershipByCanonical([
-    { ownership: ownership(mappedSteam, "link-steam-1"), platformGame: mappedSteam },
+    { ownership: sampleOwnership, platformGame: mappedSteam },
     { ownership: ownership(mappedXbox, "link-xbox-1"), platformGame: mappedXbox },
-    { ownership: ownership(steamGame, "link-steam-1"), platformGame: { ...steamGame, id: "steam:400", providerGameId: "400", title: "Portal" } }
+    { ownership: ownership(portalGame, "link-steam-1"), platformGame: portalGame }
   ]);
   check(grouped.length === 2, "unmapped platform games must not merge into a canonical group");
   check(grouped[0].providers.length === 2, "verified mappings group provider entries under one canonical game");
   check(grouped[1].key.startsWith("unmapped:"), "unmapped entries keep a provider-scoped group key");
 
-  // Achievements -----------------------------------------------------------
+  // Achievement completion truth ---------------------------------------------
   check(
     platformAchievementKey("steam", "10", "ACH_WIN_ONE_GAME") === "steam:10:ACH_WIN_ONE_GAME",
-    "achievement keys stay provider and game scoped"
+    "achievement provider identities stay provider and game scoped"
+  );
+  check(
+    legacySteamAchievementKey(10, "ACH_WIN_ONE_GAME") === "steam:10:ACH_WIN_ONE_GAME",
+    "the legacy Steam achievement key is preserved for compatibility"
   );
   const states: UserAchievementState[] = [
-    { id: "s1", userId: "nexus-user-1", linkedAccountId: "link-steam-1", platformAchievementId: "steam:10:A", unlocked: true, unlockStateKnown: true },
-    { id: "s2", userId: "nexus-user-1", linkedAccountId: "link-steam-1", platformAchievementId: "steam:10:B", unlocked: false, unlockStateKnown: true },
-    { id: "s3", userId: "nexus-user-1", linkedAccountId: "link-steam-1", platformAchievementId: "steam:10:C", unlocked: false, unlockStateKnown: false }
+    { id: "s1", linkedAccountId: "link-steam-1", platformAchievementId: "steam:10:A", unlocked: true, unlockStateKnown: true },
+    { id: "s2", linkedAccountId: "link-steam-1", platformAchievementId: "steam:10:B", unlocked: false, unlockStateKnown: true },
+    { id: "s3", linkedAccountId: "link-steam-1", platformAchievementId: "steam:10:C", unlocked: false, unlockStateKnown: false }
   ];
+  check(!("userId" in states[0]), "achievement state carries no redundant userId");
   const summary = summarizeAchievementProgress(states);
-  check(summary.known === 2 && summary.unknown === 1 && summary.unlocked === 1, "unknown unlock state must not count as locked");
-  check(summary.completionPercentage === 50, "completion is computed over known state only");
-  check(summarizeAchievementProgress([]).completionPercentage === null, "no known state means no completion figure");
+  check(summary.total === 3 && summary.known === 2 && summary.unknown === 1 && summary.unlocked === 1, "unknown unlock state must not count as locked");
+  check(summary.completionPercentage === null, "an exact completion figure is impossible while unknown states exist");
+  check(summary.knownCompletionPercentage === 50, "the diagnostic known-only figure stays available and non-exact");
+  const allKnown = summarizeAchievementProgress(states.slice(0, 2));
+  check(allKnown.completionPercentage === 50, "completion is exact only when every state is known");
+  const emptySummary = summarizeAchievementProgress([]);
+  check(
+    emptySummary.completionPercentage === null && emptySummary.knownCompletionPercentage === null,
+    "no states means no completion figure"
+  );
+  const unknownOnly = summarizeAchievementProgress([states[2]]);
+  check(
+    unknownOnly.completionPercentage === null && unknownOnly.knownCompletionPercentage === null,
+    "known === 0 means no completion figure at all"
+  );
   check(
     canCompareProviderScores({ kind: "xbox_gamerscore", value: 10 }, { kind: "xbox_gamerscore", value: 20 }),
     "same-provider scores are comparable"
@@ -277,7 +371,7 @@ export function validateNexusPlatformFoundation(): number {
   );
   check(!canCompareProviderScores({ kind: "none" }, { kind: "none" }), "Steam has no comparable score currency");
 
-  // Adapter boundary -------------------------------------------------------
+  // Adapter boundary -----------------------------------------------------------
   const steamStrategy = linkStrategyFor("steam");
   check(
     steamStrategy.provider === "steam" && steamStrategy.protocol === "steam_openid",
@@ -306,7 +400,7 @@ export function validateNexusPlatformFoundation(): number {
     "the Steam adapter surface must keep its library capability"
   );
 
-  // Steam compatibility ----------------------------------------------------
+  // Steam compatibility + legacy keys --------------------------------------------
   check(steamPlatformGameKey(10) === "steam:10", "Steam keys must match the existing steam:<appId> convention");
   check(toLegacyPlatform("steam") === "steam", "legacy UI platform values stay unchanged");
   check(fromLegacyPlatform("other") === undefined, "the legacy 'other' platform maps to no Nexus provider");
@@ -317,6 +411,7 @@ export function validateNexusPlatformFoundation(): number {
   const mappedOwnership = ownershipFromSteamOwnedGame(ownedGame, { userId: "nexus-user-1", linkedAccountId: "link-steam-1" }, NOW);
   check(mappedOwnership.playtimeKnown && mappedOwnership.playtimeMinutes === 120, "Steam playtime is a proven capability");
   check(mappedOwnership.linkedAccountId === "link-steam-1", "ownership belongs to the linked account");
+  check(!("userId" in mappedOwnership), "the compatibility layer must not reintroduce a redundant userId");
   const mappedAchievement = platformAchievementFromSteam(10, {
     apiName: "ACH_WIN_ONE_GAME",
     displayName: "Winner",
@@ -343,8 +438,13 @@ export function validateNexusPlatformFoundation(): number {
     { userId: "nexus-user-1", linkedAccountId: "link-steam-1" },
     NOW
   );
-  check(linked.tokenMetadata === undefined && linked.scopes.length === 0, "Steam OpenID linking stores no tokens and no scopes");
+  check(linked.credentialMetadata === undefined && linked.scopes.length === 0, "Steam OpenID linking stores no credentials and no scopes");
   check(linked.providerUserId === "76561190000000001", "Steam ID64 stays a provider identifier, not the Nexus identity");
+  const publicLinked = toPublicLinkedAccount(linked);
+  check(
+    publicLinked.providerUserId === linked.providerUserId && !("credentialMetadata" in publicLinked),
+    "the Steam public projection is safe and credential-free"
+  );
 
   return assertions;
 }

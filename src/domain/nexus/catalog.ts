@@ -9,8 +9,8 @@
  * - A shared canonical link is only ever created from provider or editorial
  *   verification. A single user's confirmation can NEVER promote a platform
  *   game into the shared canonical catalog; it only ever produces a per-user
- *   suggestion/candidate that lives outside PlatformGame.
- * - Matching titles are not evidence and remain candidate-only.
+ *   suggestion that lives outside PlatformGame.
+ * - Title similarity is a candidate-only hint and is not a mapping at all.
  *
  * ID model: PlatformGame.id is an internal opaque (future UUID) database id.
  * provider + providerGameId is the unique provider identity. The legacy
@@ -47,7 +47,7 @@ export type CanonicalSuggestionMethod =
   | "user_confirmed"
   | "title_similarity_candidate";
 
-/** Backwards-compatible alias kept for documentation; only verified methods. */
+/** Backwards-compatible documentation alias; only verified methods. */
 export type CanonicalMappingMethod = VerifiedCanonicalMappingMethod;
 
 export type CanonicalMappingConfidence = "verified" | "candidate";
@@ -73,6 +73,16 @@ export type UserCanonicalMappingSuggestion = {
   readonly suggestedByUserId: NexusUserId;
   readonly status: "pending" | "accepted_as_verified" | "rejected";
   readonly suggestedAt: string;
+};
+
+/**
+ * A non-authoritative title-similarity hint. Candidate-only by construction:
+ * it is not a CanonicalMapping and can never be persisted as a shared link.
+ */
+export type CanonicalMatchCandidate = {
+  readonly method: "title_similarity_candidate";
+  readonly similarity: number;
+  readonly observedAt: string;
 };
 
 export type PlatformGameArtwork = {
@@ -102,7 +112,7 @@ export type UserGameOwnership = {
   /**
    * Ownership belongs to a linked account. The owning Nexus user is derived
    * via linked_platform_accounts.user_id; there is intentionally no redundant
-   * userId column here so a cross-user row is structurally impossible.
+   * userId field here so a cross-user row is structurally impossible.
    */
   readonly linkedAccountId: LinkedPlatformAccountId;
   readonly platformGameId: PlatformGameId;
@@ -153,9 +163,9 @@ export function isVerifiedMapping(mapping?: CanonicalMapping): boolean {
 }
 
 /**
- * A user confirmation only ever produces a per-user SUGGESTION. It is
- * deliberately typed so it cannot be passed to linkPlatformGameToCanonical(),
- * and a validator proves it cannot create a global link.
+ * A user confirmation only ever produces a per-user SUGGESTION. It carries no
+ * verification evidence and there is no code path that turns it into a shared
+ * mapping; a validator proves a forged user-confirmed mapping is rejected.
  */
 export function suggestionFromUserConfirmation(
   id: string,
@@ -176,26 +186,19 @@ export function suggestionFromUserConfirmation(
 }
 
 /**
- * Title similarity produces a review candidate, never a mapping. It is also
- * only a suggestion and can never be persisted as a shared link.
+ * Title similarity produces a review candidate, never a mapping. The return
+ * type is deliberately not a CanonicalMapping.
  */
 export function candidateMappingFromTitleMatch(
   similarity: number,
   observedAt: string
-): CanonicalMapping {
-  return {
-    method: "provider_verified",
-    confidence: "candidate",
-    verifiedBy: "automated_title_similarity",
-    verifiedAt: observedAt,
-    evidence: `title_similarity=${similarity.toFixed(2)}`
-  };
+): CanonicalMatchCandidate {
+  return { method: "title_similarity_candidate", similarity, observedAt };
 }
 
 /**
  * Only provider/editorial verified mappings may attach a shared canonical id.
- * A user-confirmed or title-similarity value can never reach this function in
- * a way that succeeds.
+ * A user-confirmed or title-similarity value can never succeed here.
  */
 export function linkPlatformGameToCanonical(
   platformGame: PlatformGame,
