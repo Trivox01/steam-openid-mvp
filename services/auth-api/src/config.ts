@@ -1,3 +1,5 @@
+import type { NexusSteamIdentityResolutionMode } from "./nexus/steamIdentityResolver.ts";
+
 export type AuthStorageDriver = "memory" | "postgres";
 export type BadgeStorageDriver = "memory" | "local" | "s3";
 export interface S3BadgeStorageConfig {
@@ -34,11 +36,14 @@ export interface AuthApiConfig {
   steamWebApiKey?: string;
   /**
    * Phase 2A rollout flag for the transitional Steam linked-account dual write.
-   * Backend-only and off by default: while it is off, Steam authentication
-   * behaves exactly as before. It never affects identity resolution, which
-   * stays on users.steam_id64.
+   * Backend-only and off by default.
    */
   nexusLinkedAccountsDualWriteEnabled?: boolean;
+  /**
+   * Phase 2B identity resolution mode. Omitted means legacy and therefore keeps
+   * the exact pre-Phase-2B users.steam_id64 resolution path.
+   */
+  nexusSteamIdentityResolutionMode?: NexusSteamIdentityResolutionMode;
 }
 
 export class ConfigurationError extends Error {
@@ -85,6 +90,9 @@ export function loadAuthApiConfig(
   const nexusLinkedAccountsDualWriteEnabled = parseOptionalBoolean(
     environment.NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED,
     "NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED"
+  );
+  const nexusSteamIdentityResolutionMode = parseSteamIdentityResolutionMode(
+    environment.NEXUS_STEAM_IDENTITY_RESOLUTION_MODE
   );
 
   if (publicBaseUrl.search || openIdRealm.search || openIdRealm.hash) {
@@ -147,6 +155,9 @@ export function loadAuthApiConfig(
     ...(steamWebApiKey ? { steamWebApiKey } : {}),
     ...(nexusLinkedAccountsDualWriteEnabled
       ? { nexusLinkedAccountsDualWriteEnabled: true }
+      : {}),
+    ...(nexusSteamIdentityResolutionMode !== "legacy"
+      ? { nexusSteamIdentityResolutionMode }
       : {})
   };
 }
@@ -162,6 +173,18 @@ function parseOptionalBoolean(value: string | undefined, name: string) {
   if (value === "true") return true;
   if (value === "false") return false;
   throw new ConfigurationError(`invalid_${name}`);
+}
+
+function parseSteamIdentityResolutionMode(
+  value: string | undefined
+): "legacy" | NexusSteamIdentityResolutionMode {
+  if (value === undefined || value.trim() === "" || value === "legacy") {
+    return "legacy";
+  }
+  if (value === "dual_read" || value === "linked") return value;
+  throw new ConfigurationError(
+    "invalid_NEXUS_STEAM_IDENTITY_RESOLUTION_MODE"
+  );
 }
 
 function parseOptionalSecret(
