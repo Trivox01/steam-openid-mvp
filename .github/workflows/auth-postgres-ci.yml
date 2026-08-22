@@ -73,6 +73,9 @@ jobs:
       - name: Nexus linked accounts unit gate
         run: npm --prefix services/auth-api run test:nexus-linked-accounts
 
+      - name: Nexus Steam identity resolution gate
+        run: npm --prefix services/auth-api run test:nexus-identity-resolution
+
       - name: Persistent desktop sessions
         run: npm run test:persistent-sessions
 
