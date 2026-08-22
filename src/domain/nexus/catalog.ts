@@ -5,12 +5,16 @@
  * a canonical game is the product-level title, a platform game is one
  * provider's concrete entry (Steam AppID, Xbox title id, PlayStation title id).
  *
- * Trust model (correction pass):
+ * Trust model:
  * - A shared canonical link is only ever created from provider or editorial
  *   verification. A single user's confirmation can NEVER promote a platform
  *   game into the shared canonical catalog; it only ever produces a per-user
  *   suggestion that lives outside PlatformGame.
  * - Title similarity is a candidate-only hint and is not a mapping at all.
+ *
+ * Normalization:
+ * - PlatformGame owns provider + providerGameId. UserGameOwnership deliberately
+ *   does NOT duplicate provider; it is derived via the referenced PlatformGame.
  *
  * ID model: PlatformGame.id is an internal opaque (future UUID) database id.
  * provider + providerGameId is the unique provider identity. The legacy
@@ -116,7 +120,11 @@ export type UserGameOwnership = {
    */
   readonly linkedAccountId: LinkedPlatformAccountId;
   readonly platformGameId: PlatformGameId;
-  readonly provider: NexusProvider;
+  /**
+   * No provider field: the provider is derived via the referenced PlatformGame
+   * (PlatformGame.provider). Duplicating it here would allow impossible states
+   * such as an ownership row whose provider disagrees with its game.
+   */
   readonly playtimeMinutes?: number;
   /** False when the provider cannot supply playtime. Zero is not "unknown". */
   readonly playtimeKnown: boolean;
@@ -241,7 +249,7 @@ export type UnifiedLibraryGroup = {
 
 /**
  * Pure grouping used to reason about a future unified library. No UI consumes
- * it in Phase 1.
+ * it in Phase 1. Providers are derived from each entry's PlatformGame.
  */
 export function groupOwnershipByCanonical(
   entries: readonly OwnershipEntry[]

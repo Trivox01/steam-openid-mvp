@@ -5,13 +5,18 @@
  * are provider-specific even for the same canonical title. Unlock state belongs
  * to a linked account, because it is earned on one provider account.
  *
- * Completion truth (correction pass): a completion percentage is exact only
- * when every state is known. If any state is unknown, the exact figure is null
- * and only a clearly-labelled, non-exact diagnostic figure is exposed.
+ * Normalization: PlatformAchievement carries NO provider field. The provider
+ * identity of an achievement is derived — PlatformAchievement -> PlatformGame
+ * -> provider — so an impossible state such as an Xbox achievement attached to
+ * a Steam platform game is unrepresentable.
+ *
+ * Completion truth: a completion percentage is exact only when every state is
+ * known. If any state is unknown, the exact figure is null and only a
+ * clearly-labelled, non-exact diagnostic figure is exposed.
  */
 
 import type { NexusProvider } from "./provider.ts";
-import type { LinkedPlatformAccountId, NexusUserId } from "./identity.ts";
+import type { LinkedPlatformAccountId } from "./identity.ts";
 import type { PlatformGameId } from "./catalog.ts";
 
 export type PlatformAchievementId = string;
@@ -32,7 +37,9 @@ export type PlatformAchievement = {
   /** Internal opaque/UUID database id. NOT the legacy "steam:<appId>:<api>" key. */
   readonly id: PlatformAchievementId;
   readonly platformGameId: PlatformGameId;
-  readonly provider: NexusProvider;
+  /**
+   * No provider field: derived via platformGameId -> PlatformGame.provider.
+   */
   /** Steam api name, Xbox achievement id, PlayStation trophy id. */
   readonly providerAchievementId: string;
   readonly title: string;
@@ -87,7 +94,10 @@ export type AchievementProgressSummary = {
   readonly knownCompletionPercentage: number | null;
 };
 
-/** The unique provider identity of an achievement (NOT the internal DB id). */
+/**
+ * Natural/legacy key helper only. The provider argument scopes the key; it is
+ * NOT duplicated authoritative state on any stored entity.
+ */
 export function platformAchievementKey(
   provider: NexusProvider,
   providerGameId: string,

@@ -1,31 +1,29 @@
 /**
- * Steam compatibility layer.
+ * Steam compatibility layer (desktop-safe half).
  *
- * Pure, inert mappings between the existing Steam-shaped types and the new
- * Nexus domain. Nothing in this file is wired into the running application in
- * Phase 1: the current Steam OpenID, sync and UI paths are untouched. Its only
- * job is to prove that the existing, working Steam behaviour can become a
- * backend SteamPlatformAdapter later without a rewrite.
+ * Pure, inert mappings between the existing Steam-shaped DTOs and the new
+ * Nexus domain. Nothing here is wired into the running application in Phase 1:
+ * the current Steam OpenID, sync and UI paths are untouched. Its only job is
+ * to prove the existing Steam behaviour can later be wrapped by a backend
+ * adapter without a rewrite.
  *
- * ID strategy (correction pass): the "steam:<appId>" and
- * "steam:<appId>:<apiName>" strings produced here are LEGACY COMPATIBILITY
- * KEYS ONLY. They are not future database primary keys. Future rows use opaque
- * internal/UUID ids; these helpers only let the existing Steam runtime be
- * bridged onto the new model without re-keying.
+ * Mapping a Steam identity assertion onto the linked-account server record is
+ * backend-owned (the auth-api Nexus module) and intentionally not part of this
+ * desktop-facing layer.
+ *
+ * ID strategy: the "steam:<appId>" and "steam:<appId>:<apiName>" strings
+ * produced here are LEGACY COMPATIBILITY KEYS ONLY. They are not future
+ * database primary keys. Future rows use opaque internal/UUID ids; these
+ * helpers only let the existing Steam runtime be bridged without re-keying.
  */
 
 import type { Platform } from "../../types/index.ts";
 import type {
   SteamAchievementDto,
-  SteamOwnedGameDto,
-  SteamProfile
+  SteamOwnedGameDto
 } from "../../types/steam.ts";
 import type { NexusProvider } from "./provider.ts";
-import type {
-  LinkedPlatformAccount,
-  LinkedPlatformAccountId,
-  NexusUserId
-} from "./identity.ts";
+import type { LinkedPlatformAccountId } from "./identity.ts";
 import type {
   PlatformGame,
   PlatformGameId,
@@ -41,7 +39,6 @@ import { legacySteamAchievementKey } from "./achievements.ts";
 export const STEAM_PROVIDER: NexusProvider = "steam";
 
 export type SteamAccountBinding = {
-  readonly userId: NexusUserId;
   readonly linkedAccountId: LinkedPlatformAccountId;
 };
 
@@ -90,10 +87,10 @@ export function ownershipFromSteamOwnedGame(
   const platformGameId = steamPlatformGameKey(dto.appId) as PlatformGameId;
   return {
     id: `${binding.linkedAccountId}:${platformGameId}`,
-    // No userId: the owning Nexus user is derived via the linked account.
+    // No userId and no provider: both are derived (user via the linked
+    // account, provider via the referenced PlatformGame).
     linkedAccountId: binding.linkedAccountId,
     platformGameId,
-    provider: STEAM_PROVIDER,
     playtimeMinutes: dto.playtimeForeverMinutes,
     playtimeKnown: true,
     lastPlayedAt: dto.lastPlayedUnix
@@ -114,7 +111,7 @@ export function platformAchievementFromSteam(
     // Legacy compatibility key as stand-in id; not a future DB PK.
     id: legacySteamAchievementKey(appId, dto.apiName),
     platformGameId,
-    provider: STEAM_PROVIDER,
+    // No provider field: derived via the referenced PlatformGame.
     providerAchievementId: dto.apiName,
     title: dto.displayName,
     description: dto.description,
@@ -136,36 +133,11 @@ export function userAchievementStateFromSteam(
   const platformAchievementId = legacySteamAchievementKey(appId, dto.apiName);
   return {
     id: `${binding.linkedAccountId}:${platformAchievementId}`,
-    // No userId: the owning Nexus user is derived via the linked account.
     linkedAccountId: binding.linkedAccountId,
     platformAchievementId,
     unlocked: dto.unlocked,
     unlockStateKnown: true,
     unlockedAt: dto.unlockedAt,
     syncedAt
-  };
-}
-
-/**
- * Steam OpenID returns an identity assertion, not tokens, so the linked account
- * carries no scopes and no credential metadata.
- */
-export function linkedAccountFromSteamProfile(
-  profile: SteamProfile,
-  binding: SteamAccountBinding,
-  linkedAt: string,
-  lastSyncAt?: string
-): LinkedPlatformAccount {
-  return {
-    id: binding.linkedAccountId,
-    userId: binding.userId,
-    provider: STEAM_PROVIDER,
-    providerUserId: profile.steamId,
-    displayName: profile.personaName,
-    avatarUrl: profile.avatarUrl,
-    connectionStatus: "connected",
-    scopes: [],
-    linkedAt,
-    lastSyncAt
   };
 }
