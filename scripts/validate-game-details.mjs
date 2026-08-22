@@ -172,6 +172,65 @@ assert.match(
   "the bidi fix belongs to the copy: the page still renders the same formatted completion number"
 );
 
+// The AppID and global-percent sentences carried the same whole-sentence
+// dir="ltr" defect as completionValue: forcing an Arabic sentence left to right
+// makes its words read backwards and floats the technical number to the wrong
+// edge. The fix is the same narrow isolation, applied only to the interpolated
+// value, never to the sentence. English is already an LTR sentence, so it is left
+// untouched and must not receive the Arabic control characters.
+const arAppId = arCopy.get("gameDetails.appId") ?? "";
+assert.match(
+  arAppId,
+  /\\u2066\{\{id\}\}\\u2069/,
+  "the Arabic AppID sentence keeps its words RTL and isolates only the numeric id"
+);
+assert.doesNotMatch(
+  arAppId,
+  /\\u202[a-eA-E]/,
+  "the AppID value is isolated, never force-ordered by a legacy embedding or override control"
+);
+assert.doesNotMatch(
+  enCopy.get("gameDetails.appId") ?? "",
+  /\\u2066|\\u2069/,
+  "English needs no isolate, so the Arabic fix must not leak into the LTR copy"
+);
+assert.equal(
+  enCopy.get("gameDetails.appId"),
+  "AppID {{id}}",
+  "English AppID copy must stay unchanged"
+);
+assert.doesNotMatch(
+  page,
+  /dir="ltr">\s*\{t\("gameDetails\.appId"/,
+  "the localized AppID sentence must not be forced LTR; only the numeric id is isolated"
+);
+const arGlobalPercent = arCopy.get("gameDetails.globalPercent") ?? "";
+assert.match(
+  arGlobalPercent,
+  /\\u2066\{\{percent\}\}%\\u2069/,
+  "the Arabic global-percent sentence keeps its words RTL and isolates the number+percent unit"
+);
+assert.doesNotMatch(
+  arGlobalPercent,
+  /\\u202[a-eA-E]/,
+  "the global-percent unit is isolated, never force-ordered by a legacy embedding or override control"
+);
+assert.doesNotMatch(
+  enCopy.get("gameDetails.globalPercent") ?? "",
+  /\\u2066|\\u2069/,
+  "English needs no isolate, so the Arabic fix must not leak into the LTR copy"
+);
+assert.equal(
+  enCopy.get("gameDetails.globalPercent"),
+  "{{percent}}% global unlock",
+  "English global-percent copy must stay unchanged"
+);
+assert.doesNotMatch(
+  page,
+  /dir="ltr">\s*\{t\("gameDetails\.globalPercent"/,
+  "the localized global-percent sentence must not be forced LTR; only the number+percent unit is isolated"
+);
+
 // Nothing may be presented as more certain than it is.
 assert.match(page, /calculateAchievementSummary/);
 assert.match(page, /unknownUnlockStates > 0/);

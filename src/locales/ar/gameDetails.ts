@@ -5,7 +5,10 @@ export const gameDetails = {
   "gameDetails.lastPlayed": "آخر تشغيل {{date}}",
   "gameDetails.neverPlayed": "لم تُلعب بعد",
   "gameDetails.favorite": "مفضلة",
-  "gameDetails.appId": "معرّف اللعبة {{id}}",
+  // المعرّف رقم تقني يُعزل وحده (LRI قبله وPDI بعده) داخل الجملة العربية التي
+  // تبقى باتجاهها. كان سابقًا يُغلَّف الجملة كاملة بـ dir="ltr" فتُفرض العربية
+  // يسارًا. الإنجليزية جملة LTR أصلًا فلا تحتاج عزلًا.
+  "gameDetails.appId": "معرّف اللعبة \u2066{{id}}\u2069",
   "gameDetails.install.installed": "مثبتة",
   "gameDetails.install.notInstalled": "غير مثبتة",
   "gameDetails.install.running": "قيد التشغيل الآن",
@@ -106,7 +109,10 @@ export const gameDetails = {
   "gameDetails.loadMore": "عرض المزيد من الإنجازات",
   "gameDetails.showing": "يُعرض {{shown}} من {{total}}",
   "gameDetails.achievementDetails": "تفاصيل الإنجاز",
-  "gameDetails.globalPercent": "يفتحه {{percent}}% عالميًا",
+  // النسبة العالمية وحدتها الرقم وعلامتها. يُعزلان معًا (LRI قبل الوحدة وPDI
+  // بعدها) داخل الجملة العربية؛ كانا يُفرضان يسارًا بـ dir="ltr" فتظهر النسبة
+  // قبل الرقم. الإنجليزية تبقى كما هي بلا عزل.
+  "gameDetails.globalPercent": "يفتحه \u2066{{percent}}%\u2069 عالميًا",
   "gameDetails.rarityTooltip": "فتحه {{percent}} من اللاعبين",
   "gameDetails.rarityUnknown": "الندرة العالمية غير معروفة",
   "gameDetails.hiddenAchievement": "إنجاز مخفي",

@@ -309,7 +309,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
               game actually has. */}
           <div className="gd-identity__meta">
             <PlatformStrip platforms={platforms} />
-            {isSteam && <span dir="ltr">{t("gameDetails.appId", { id: game.appId })}</span>}
+            {isSteam && <span>{t("gameDetails.appId", { id: game.appId })}</span>}
             {game.playtimeHours > 0 && <span>{t("gameDetails.playtime", { hours: number.format(game.playtimeHours) })}</span>}
             {lastPlayed && (
               <span>
@@ -439,7 +439,7 @@ export function GameDetailsPage({ gameId, onBack, onOpenAchievement }: {
             </span>
             <span className="gd-next__meta">
               {typeof recommendedRarity === "number" && (
-                <span dir="ltr">
+                <span>
                   <Gem size={13} aria-hidden="true" />
                   {t("gameDetails.globalPercent", { percent: number.format(recommendedRarity) })}
                 </span>
