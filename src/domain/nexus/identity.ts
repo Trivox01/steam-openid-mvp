@@ -5,6 +5,10 @@
  * LinkedPlatformAccount rows owned by a NexusUser. Phase 1 defines the
  * contracts and the linking/disconnect policy only; nothing here touches the
  * live Steam OpenID or desktop session implementation.
+ *
+ * Trust boundary (correction pass): identity is modelled as an explicit
+ * backend record plus a desktop-facing projection. Credential metadata is
+ * backend-only and never reaches React/Tauri.
  */
 
 import type { NexusProvider } from "./provider.ts";
@@ -39,12 +43,12 @@ export type LinkedAccountConnectionStatus =
 export type LinkedAccountSyncStatus = "idle" | "success" | "partial" | "error";
 
 /**
- * Metadata about a provider credential. It deliberately cannot carry a token:
+ * BACKEND-ONLY credential metadata. It deliberately cannot carry a token:
  * `credentialRef` is an opaque handle into a server-side, encrypted credential
- * store. No field of this type may ever reach React, frontend persistence, the
- * desktop SQLite cache, source control or logs.
+ * store. This type must never be part of a desktop-facing payload; it exists
+ * only so the backend can manage the lifecycle of a stored credential.
  */
-export type ProviderTokenMetadata = {
+export type ProviderCredentialMetadata = {
   readonly credentialRef: string;
   readonly encryptionKeyId: string;
   readonly expiresAt?: string;
@@ -53,6 +57,7 @@ export type ProviderTokenMetadata = {
   readonly revocationSupported: boolean;
 };
 
+/** Backend record for one linked provider account. Not a UI DTO. */
 export type LinkedPlatformAccount = {
   readonly id: LinkedPlatformAccountId;
   readonly userId: NexusUserId;
@@ -63,12 +68,52 @@ export type LinkedPlatformAccount = {
   readonly avatarUrl?: string;
   readonly connectionStatus: LinkedAccountConnectionStatus;
   readonly scopes: readonly string[];
-  /** Absent for Steam OpenID, which issues no tokens. */
-  readonly tokenMetadata?: ProviderTokenMetadata;
+  /** Backend-only. Absent for Steam OpenID, which issues no tokens. */
+  readonly credentialMetadata?: ProviderCredentialMetadata;
   readonly linkedAt: string;
   readonly lastSyncAt?: string;
   readonly lastSyncStatus?: LinkedAccountSyncStatus;
 };
+
+/**
+ * Allowlisted desktop/Tauri-facing projection of a linked account. This is the
+ * primary security boundary: the desktop only ever receives this shape, which
+ * structurally cannot contain credentialRef, encryptionKeyId or any other
+ * credential detail. Blacklist scanning is only a test-time defense-in-depth.
+ */
+export type LinkedPlatformAccountPublic = {
+  readonly id: LinkedPlatformAccountId;
+  readonly provider: NexusProvider;
+  readonly providerUserId: string;
+  readonly displayName?: string;
+  readonly avatarUrl?: string;
+  readonly connectionStatus: LinkedAccountConnectionStatus;
+  readonly scopes: readonly string[];
+  readonly linkedAt: string;
+  readonly lastSyncAt?: string;
+  readonly lastSyncStatus?: LinkedAccountSyncStatus;
+};
+
+/**
+ * Explicit allowlist projection: only the named safe fields cross to the
+ * desktop. userId and credentialMetadata stay server-side.
+ */
+export function toPublicLinkedAccount(
+  account: LinkedPlatformAccount
+): LinkedPlatformAccountPublic {
+  return {
+    id: account.id,
+    provider: account.provider,
+    providerUserId: account.providerUserId,
+    displayName: account.displayName,
+    avatarUrl: account.avatarUrl,
+    connectionStatus: account.connectionStatus,
+    scopes: account.scopes,
+    linkedAt: account.linkedAt,
+    lastSyncAt: account.lastSyncAt,
+    lastSyncStatus: account.lastSyncStatus
+  };
+}
 
 export type AccountLinkRejectionReason =
   | "unauthenticated_nexus_user"
@@ -155,8 +200,8 @@ export type DisconnectPlan = {
 export function planDisconnect(account: LinkedPlatformAccount): DisconnectPlan {
   const descriptor = providerDescriptor(account.provider);
   let credentialDisposition: CredentialDisposition = "not_applicable";
-  if (descriptor.expectsProviderCredentials && account.tokenMetadata) {
-    credentialDisposition = account.tokenMetadata.revocationSupported
+  if (descriptor.expectsProviderCredentials && account.credentialMetadata) {
+    credentialDisposition = account.credentialMetadata.revocationSupported
       ? "revoke_then_delete"
       : "delete_only";
   } else if (descriptor.expectsProviderCredentials) {
@@ -189,9 +234,12 @@ function normalizeKey(key: string): string {
 }
 
 /**
- * Structural guard used by the contract validators and available to any future
- * serializer that crosses a trust boundary (HTTP response, desktop cache, log
- * line). Returns the dotted paths of fields that look like raw credentials.
+ * Defense-in-depth TEST helper only. This is NOT the primary security
+ * boundary: scanning a blacklist of suspicious key names cannot prove a
+ * payload is free of secrets. The real boundary is the allowlisted
+ * `LinkedPlatformAccountPublic` projection, which cannot structurally contain
+ * credential material. These helpers exist so validators can catch an
+ * accidental leak during development.
  */
 export function findRawCredentialFields(
   value: unknown,

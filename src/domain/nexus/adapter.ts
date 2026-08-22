@@ -1,13 +1,16 @@
 /**
  * Platform adapter boundary.
  *
- * One shared domain contract for reading provider data. Account linking is
- * deliberately NOT part of this interface: Steam OpenID, Xbox and PlayStation
- * authentication are different protocols and pretending otherwise would bake a
- * false abstraction into the system.
+ * TRUST BOUNDARY (correction pass): a provider adapter that resolves provider
+ * credentials is BACKEND-ONLY. It must never execute in React/Tauri. The flow
+ * is strictly:
  *
- * An adapter never receives credentials. It receives a linked account id and
- * resolves the credential server-side, from the encrypted credential store.
+ *   Desktop/Tauri  -->  Achievement Nexus Backend  -->  Provider Adapter  -->  Steam/Xbox/PlayStation API
+ *
+ * The desktop only ever receives safe projections/results (DTOs), never
+ * credentials and never a credential-resolving adapter. This file defines the
+ * shared DTOs and the backend-owned runtime contract; it does NOT implement
+ * any adapter.
  */
 
 import type {
@@ -23,6 +26,11 @@ import type {
 
 export type AdapterSyncStatus = "success" | "partial" | "unsupported" | "failed";
 
+/**
+ * Backend-only execution context. It carries identifiers the backend uses to
+ * resolve the linked account and any credential server-side. It is never
+ * constructed in, or serialised to, the desktop.
+ */
 export type AdapterContext = {
   readonly nexusUserId: NexusUserId;
   readonly linkedAccountId: LinkedPlatformAccountId;
@@ -87,6 +95,12 @@ export type DisconnectOutcome = {
   readonly completedAt: string;
 };
 
+/**
+ * BACKEND-ONLY runtime contract. Implementations resolve provider credentials
+ * server-side from the encrypted credential store via AdapterContext. This
+ * interface is never exposed to, or implemented by, the React/Tauri desktop.
+ * The desktop interacts with sync only through safe request/response DTOs.
+ */
 export interface PlatformAdapter {
   readonly provider: NexusProvider;
   readonly capabilities: ProviderCapabilities;

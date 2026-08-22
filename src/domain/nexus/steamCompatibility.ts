@@ -5,11 +5,13 @@
  * Nexus domain. Nothing in this file is wired into the running application in
  * Phase 1: the current Steam OpenID, sync and UI paths are untouched. Its only
  * job is to prove that the existing, working Steam behaviour can become a
- * SteamPlatformAdapter later without a rewrite.
+ * backend SteamPlatformAdapter later without a rewrite.
  *
- * Identifier conventions match the ones already produced by SteamProvider
- * (`steam:<appId>` and `steam:<appId>:<apiName>`), so a future migration can
- * reuse existing rows instead of re-keying them.
+ * ID strategy (correction pass): the "steam:<appId>" and
+ * "steam:<appId>:<apiName>" strings produced here are LEGACY COMPATIBILITY
+ * KEYS ONLY. They are not future database primary keys. Future rows use opaque
+ * internal/UUID ids; these helpers only let the existing Steam runtime be
+ * bridged onto the new model without re-keying.
  */
 
 import type { Platform } from "../../types/index.ts";
@@ -29,11 +31,12 @@ import type {
   PlatformGameId,
   UserGameOwnership
 } from "./catalog.ts";
-import { platformGameKey } from "./catalog.ts";
+import { legacySteamGameKey } from "./catalog.ts";
 import type {
   PlatformAchievement,
   UserAchievementState
 } from "./achievements.ts";
+import { legacySteamAchievementKey } from "./achievements.ts";
 
 export const STEAM_PROVIDER: NexusProvider = "steam";
 
@@ -53,8 +56,12 @@ export function fromLegacyPlatform(
   return platform === "other" ? undefined : platform;
 }
 
-export function steamPlatformGameKey(appId: number | string): PlatformGameId {
-  return platformGameKey(STEAM_PROVIDER, String(appId));
+/**
+ * Legacy compatibility key for an existing Steam game row. Compatibility only;
+ * NOT a future database primary key (those are opaque internal/UUID ids).
+ */
+export function steamPlatformGameKey(appId: number | string): string {
+  return legacySteamGameKey(appId);
 }
 
 export function platformGameFromSteamOwnedGame(
@@ -62,6 +69,8 @@ export function platformGameFromSteamOwnedGame(
   observedAt: string
 ): PlatformGame {
   return {
+    // Phase 1 bridge reuses the legacy Steam key as a stand-in id. A future
+    // migration assigns real opaque internal ids; this is compatibility only.
     id: steamPlatformGameKey(dto.appId),
     provider: STEAM_PROVIDER,
     providerGameId: String(dto.appId),
@@ -78,10 +87,10 @@ export function ownershipFromSteamOwnedGame(
   binding: SteamAccountBinding,
   observedAt: string
 ): UserGameOwnership {
-  const platformGameId = steamPlatformGameKey(dto.appId);
+  const platformGameId = steamPlatformGameKey(dto.appId) as PlatformGameId;
   return {
     id: `${binding.linkedAccountId}:${platformGameId}`,
-    userId: binding.userId,
+    // No userId: the owning Nexus user is derived via the linked account.
     linkedAccountId: binding.linkedAccountId,
     platformGameId,
     provider: STEAM_PROVIDER,
@@ -100,9 +109,10 @@ export function platformAchievementFromSteam(
   dto: SteamAchievementDto,
   syncedAt: string
 ): PlatformAchievement {
-  const platformGameId = steamPlatformGameKey(appId);
+  const platformGameId = steamPlatformGameKey(appId) as PlatformGameId;
   return {
-    id: `${platformGameId}:${dto.apiName}`,
+    // Legacy compatibility key as stand-in id; not a future DB PK.
+    id: legacySteamAchievementKey(appId, dto.apiName),
     platformGameId,
     provider: STEAM_PROVIDER,
     providerAchievementId: dto.apiName,
@@ -123,10 +133,10 @@ export function userAchievementStateFromSteam(
   binding: SteamAccountBinding,
   syncedAt: string
 ): UserAchievementState {
-  const platformAchievementId = `${steamPlatformGameKey(appId)}:${dto.apiName}`;
+  const platformAchievementId = legacySteamAchievementKey(appId, dto.apiName);
   return {
     id: `${binding.linkedAccountId}:${platformAchievementId}`,
-    userId: binding.userId,
+    // No userId: the owning Nexus user is derived via the linked account.
     linkedAccountId: binding.linkedAccountId,
     platformAchievementId,
     unlocked: dto.unlocked,
@@ -138,7 +148,7 @@ export function userAchievementStateFromSteam(
 
 /**
  * Steam OpenID returns an identity assertion, not tokens, so the linked account
- * carries no scopes and no token metadata.
+ * carries no scopes and no credential metadata.
  */
 export function linkedAccountFromSteamProfile(
   profile: SteamProfile,
