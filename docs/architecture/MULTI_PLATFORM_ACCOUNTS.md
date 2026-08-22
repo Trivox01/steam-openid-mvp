@@ -1,8 +1,18 @@
 # Multi-platform Nexus accounts
 
-Status: Phase 1, architecture only (final structural cleanup). Nothing
-described here changes runtime behaviour today. The current Steam OpenID login,
-desktop session system, RBAC, sync services and UI are untouched by this phase.
+Status:
+
+| phase | scope | state |
+| --- | --- | --- |
+| Phase 1 | domain contracts, adapter boundaries, capability model, validators, docs | **completed** (architecture only, no runtime change) |
+| Phase 2A | Steam transitional linked-account persistence: migration 020, backend storage/service, flag-gated dual-write | **implemented on this branch** |
+| Phase 2B | flip identity resolution to linked accounts | **next phase — not this one** |
+
+What Phase 2A does **not** change: `users.steam_id64` is still the
+authoritative login identity, Steam OpenID verification, access tokens,
+persistent desktop sessions, `session_epoch`, RBAC, account-status checks, the
+desktop session protocol, the Steam profile/library behaviour and the UI are all
+untouched. The linked-account row is additive metadata.
 
 Target model:
 
@@ -21,13 +31,14 @@ comments:
 | location | owner | contents |
 | --- | --- | --- |
 | `src/domain/nexus/` | desktop-safe shared domain | provider + capability model, `NexusUser`, the `LinkedPlatformAccountPublic` projection, `CanonicalGame` / `PlatformGame` / ownership, achievement contracts + completion truth, Steam compatibility mappings |
-| `services/auth-api/src/nexus/` | backend-only | `LinkedPlatformAccount` server record, `ProviderCredentialMetadata`, the public-projection mapper, account linking/disconnect policy, credential scanners, `PlatformAdapter` + `AdapterContext` + sync DTOs |
+| `services/auth-api/src/nexus/` | backend-only | `LinkedPlatformAccount` server record, `ProviderCredentialMetadata`, the public-projection mapper, account linking/disconnect policy, credential scanners, `PlatformAdapter` + `AdapterContext` + sync DTOs, and (Phase 2A) `linkedAccountRepository.ts` + `linkedAccountService.ts` |
 
 The desktop domain barrel (`src/domain/nexus/index.ts`) deliberately does not
 re-export anything from the backend tree, so `ProviderCredentialMetadata`,
-`AdapterContext` and the credential-resolving `PlatformAdapter` cannot be
-imported through it. The validators prove this by inspecting both the barrel
-source and its runtime namespace.
+`AdapterContext`, the credential-resolving `PlatformAdapter` and the Phase 2A
+persistence layer cannot be imported through it. The validators prove this by
+inspecting both the barrel source and its runtime namespace, and by scanning the
+whole `src/` tree for imports of the backend linked-account modules.
 
 ## Current Steam-first assumptions found
 
@@ -54,6 +65,7 @@ One useful exception: `017_persistent_desktop_sessions.sql` and
 `src/repositories/steamOpenIdDesktopRepository.ts` bind sessions to the internal
 `users.id`, not to the Steam ID. The session layer is therefore already
 compatible with a Nexus identity; only user lookup/creation is Steam-keyed.
+Phase 2A relies on exactly this: it adds the link row without touching sessions.
 
 **game == Steam game**
 
@@ -101,7 +113,8 @@ NexusUser (id, displayName, status, roles)
 ```
 
 Rules encoded in the backend-owned policy module
-(`services/auth-api/src/nexus/identity.ts`):
+(`services/auth-api/src/nexus/identity.ts`) and, since Phase 2A, enforced by the
+database as well:
 
 - linking requires an authenticated Nexus user; there is no implicit
   "login created a link" path;
@@ -109,9 +122,9 @@ Rules encoded in the backend-owned policy module
   one Nexus account at a time;
 - a Nexus account holds at most one active link per provider (V1 rule);
 - a revoked or disconnected link frees the slot again. A link is active iff
-  `connection_status` is not `revoked`/`disconnected`, and the database proposal
-  ties those terminal statuses to `revoked_at` with a CHECK constraint so the
-  uniqueness slot frees reliably;
+  `revoked_at IS NULL`, and a CHECK constraint ties the terminal statuses
+  `revoked`/`disconnected` to `revoked_at` so the uniqueness slot frees
+  reliably;
 - matching email addresses are never sufficient evidence to link.
 
 `connectionStatus` (`connected`, `reauth_required`, `revoked`, `disconnected`,
@@ -121,7 +134,99 @@ each provider syncs on its own schedule and can fail independently.
 
 The desktop never receives the backend record. It receives only
 `LinkedPlatformAccountPublic`, an explicit allowlisted projection (see Security
-and token boundaries).
+and token boundaries). Phase 2A ships no desktop or public route at all.
+
+## Phase 2A — Steam transitional link persistence
+
+Phase 2A is Stage A, step 2 of the migration path. It makes the link table real
+for Steam only, without moving the authority for login.
+
+```
+Steam OpenID verification      (unchanged)
+   → users.steam_id64 resolution   (unchanged, still authoritative)
+   → existing Nexus user           (unchanged, users.id)
+   → ensure linked_platform_accounts Steam row   ← added by Phase 2A
+   → session creation              (unchanged)
+```
+
+**What was implemented**
+
+- `020_nexus_linked_platform_accounts.sql` creates `linked_platform_accounts`
+  with the Phase 1 partial unique-index design, and backfills exactly one
+  active Steam link per existing valid user. See
+  `MULTI_PLATFORM_DB_PROPOSAL.md` for the applied SQL and the backfill rules.
+- `services/auth-api/src/nexus/linkedAccountRepository.ts` — backend-only
+  persistence: `findActiveByProviderIdentity`, `findActiveByUserAndProvider`,
+  `listByUser`, `insert`, `updateProfile`, plus an in-memory implementation for
+  tests. Unique-index violations surface as `LinkedAccountUniqueViolation`
+  carrying which slot was hit, so the database stays authoritative under
+  concurrency instead of being second-guessed by a read-then-write race.
+- `services/auth-api/src/nexus/linkedAccountService.ts` —
+  `ensureSteamLinkedAccount()` for an already-resolved Nexus user. It is
+  idempotent, refreshes only profile fields, and never stores credentials.
+- The dual-write hook is an optional 5th constructor argument on
+  `SessionTokenService`, invoked inside `issueForSteamIdentity` after the user
+  is resolved and before the session is issued. Because
+  `DesktopSessionService.issueForSteamIdentity` delegates to it, one hook covers
+  both the web and desktop session paths.
+
+**Integrity: a provider identity is never silently moved**
+
+- Steam ID X already active on Nexus user A, code tries to link it to user B →
+  `LinkedAccountConflictError` with code
+  `PROVIDER_IDENTITY_OWNED_BY_ANOTHER_USER`. Nothing is written.
+- Nexus user A already has active Steam identity X, code tries to link Y →
+  `USER_ALREADY_LINKED_TO_ANOTHER_PROVIDER_IDENTITY`. The existing link is never
+  replaced.
+- A malformed Steam ID → `INVALID_PROVIDER_IDENTITY`, rejected before any write.
+
+The hook is wired non-fatally: a conflict is logged as an operational signal
+(event, provider and error code only — never a user id or a Steam ID) and never
+turns into a login outage. Login correctness does not depend on the link.
+
+**Rollout sequence**
+
+The dual-write is gated by the backend-only environment flag
+`NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED`, default `false`. There is no
+frontend flag, and the validators fail if the name ever appears in `src/`.
+
+1. Migration 020 exists and is applied **in staging**. The table is created and
+   the backfill runs; nothing reads the table yet.
+2. Validate the backfill in staging: one active Steam link per user, ids
+   deterministic, `users.steam_id64` byte-identical to before.
+3. Enable `NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED=true` in staging only.
+4. Validate idempotency: repeated Steam logins create no duplicate row, and the
+   conflict codes appear only for genuinely conflicting identities.
+5. Production only after explicit approval. **The flag is not enabled in
+   production by this phase, and no production migration or deploy was
+   performed.**
+
+**Rollback behaviour**
+
+- *Flag off.* Setting `NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED` back to `false`
+  (or unsetting it) instantly restores the previous behaviour: the hook is not
+  constructed, so Steam authentication performs exactly the statements it did
+  before Phase 2A. Existing link rows are simply left in place and unread.
+- *Schema.* Migration 020 is purely additive — it creates one table, two partial
+  unique indexes and one ordinary index, and inserts into that new table only.
+  It never updates, deletes or alters `users`, `desktop_sessions` or any RBAC
+  table, so rolling the backend back to a pre-020 build needs no schema change:
+  the old code never references the new table.
+- *Full removal.* If the table must go, dropping `linked_platform_accounts`
+  loses only derived data, because every value in it is reconstructible from
+  `users.steam_id64` by re-running the backfill. That is the whole point of
+  keeping `users.steam_id64` authoritative until Phase 2B.
+- *Replay.* Re-running the migration is safe: the table uses
+  `CREATE TABLE IF NOT EXISTS`, the backfill derives a deterministic primary key
+  per user, is guarded by `NOT EXISTS` against an existing active Steam link,
+  and ends with `ON CONFLICT DO NOTHING`.
+
+**Explicitly out of scope for Phase 2A:** identity resolution via
+`linked_platform_accounts` (that is Phase 2B), the provider credential store,
+provider tokens, Xbox/PlayStation login, OAuth callbacks, Connected Accounts UI,
+unified library UI, SuperTokens, provider-neutral signup, catalog tables, the
+`SteamPlatformAdapter` runtime, and any change to the `users.steam_id64`
+constraints.
 
 ## Canonical game vs platform game
 
@@ -158,7 +263,7 @@ CanonicalGame "Cyberpunk 2077"
 
 This is why a unified library is a *view* over verified mappings, not a
 deduplication heuristic, and why no user action can rewrite global catalog
-truth.
+truth. None of these tables exist yet; Phase 2A created the link table only.
 
 ## Identity and key strategy
 
@@ -181,6 +286,11 @@ Three different kinds of identifier exist, and they must not be conflated:
 - `platformGameKey()` / `platformAchievementKey()` return the provider natural
   key, not an entity id, and never become duplicated authoritative state on a
   stored entity.
+- The same separation holds for the applied link table:
+  `linked_platform_accounts.id` is an internal opaque uuid, while
+  `(provider, provider_user_id)` is the provider natural key. The Phase 2A
+  backfill derives the uuid deterministically from the owning user so a replay
+  cannot mint a second identifier for the same link.
 
 ## Achievement ownership
 
@@ -231,8 +341,8 @@ Steam / Xbox / PlayStation APIs
   backend-only: it is how the backend resolves the linked account and any
   credential, and it is never serialised to the desktop.
 - The sync result DTOs (`ProviderProfile`, sync outcomes, `SyncCounters`,
-  `DisconnectOutcome`) are defined backend-side in Phase 1. If the desktop ever
-  needs them, genuinely safe DTOs can be hoisted into `src/domain/nexus` later;
+  `DisconnectOutcome`) are defined backend-side. If the desktop ever needs
+  them, genuinely safe DTOs can be hoisted into `src/domain/nexus` later;
   nothing desktop-side imports them today.
 - The desktop receives only safe projections and results, e.g.
   `LinkedPlatformAccountPublic`. It never receives a credential, a credential
@@ -244,7 +354,9 @@ Steam / Xbox / PlayStation APIs
   `SteamLibrarySyncService`, `SteamAchievementSyncService`,
   `SteamBackendDataClient` and `steamArtwork` keep their current behaviour and
   are called by the adapter, not replaced by it.
-- Phase 1 defines the boundary only. No backend adapter is implemented yet.
+- Phase 1 defined the boundary; Phase 2A still implements **no** adapter. The
+  Phase 2A service writes a link row and nothing else — it calls no provider
+  API.
 
 ## Security and token boundaries
 
@@ -253,8 +365,18 @@ Steam / Xbox / PlayStation APIs
   desktop; `credentialRef` and `encryptionKeyId` are not part of it, and
   neither is the internal `userId` mapping.
 - `ProviderCredentialMetadata` is backend-only and lives in
-  `services/auth-api/src/nexus/identity.ts`. The token itself lives only in the
-  server-side, encrypted credential store behind the opaque `credentialRef`.
+  `services/auth-api/src/nexus/identity.ts`. The token itself would live only in
+  the server-side, encrypted credential store behind the opaque
+  `credentialRef`.
+- **The provider credential store is deferred, not weakened.** Steam OpenID 2.0
+  is an identity assertion: it issues no access token and no refresh token, so
+  a Steam link has nothing to store. Building an encrypted credential store now
+  would mean shipping, and having to secure and review, an unused secret store.
+  `provider_credentials` is therefore implemented in the phase that introduces
+  the first token-based provider (Xbox or PlayStation), together with the real
+  key-management and revocation requirements of that provider. Until then the
+  applied table has no credential column at all, and the tests assert that no
+  credential-shaped column or field exists.
 - `findRawCredentialFields()` / `assertNoRawCredentials()` remain as
   **defense-in-depth test helpers only**, backend-side. Scanning a blacklist of
   suspicious key names is not proof that a payload contains no secret, and
@@ -269,10 +391,13 @@ Steam / Xbox / PlayStation APIs
   shared catalog rows are retained.
 - Linking always requires an authenticated Nexus user and an explicit user
   action. Email matching is rejected in code, not by convention.
+- Phase 2A logs the dual-write outcome with the event name, the provider and,
+  on failure, a sanitised error code only. No Steam ID, user id or link id is
+  logged.
 - SuperTokens is only a *candidate* for a future Nexus session layer. No SDK,
-  no connection URI, no API key and no cookie change is introduced in this
-  phase, and the existing hardened Steam OpenID session system remains the only
-  session authority.
+  no connection URI, no API key and no cookie change is introduced, and the
+  existing hardened Steam OpenID session system remains the only session
+  authority.
 
 ## Capability differences
 
@@ -293,21 +418,28 @@ no Xbox or PlayStation surface can appear before real connected data exists.
 Unsupported sync requests return an explicit `unsupported` outcome with zeroed
 counters rather than empty results that look like a successful sync.
 
+The applied table accepts `xbox` and `playstation` in its provider CHECK so the
+schema does not need another migration later, but no code path can create such
+a row: only `ensureSteamLinkedAccount()` writes links, and no Xbox or
+PlayStation login exists.
+
 ## Migration path
 
-Each step is separately reversible and none of them is executed in this phase.
+Each step is separately reversible.
 
 ### Stage A — Transitional stage: existing Steam-authenticated users link additional providers
 
-1. **Phase 1 (this change).** Domain contracts, adapter boundaries, capability
+1. **Phase 1 — completed.** Domain contracts, adapter boundaries, capability
    model, validators, architecture and database proposal. No runtime wiring.
-2. **Introduce the link table.** Apply the proposed `linked_platform_accounts`
-   table (and the credential store) in staging, backfill exactly one `steam`
-   row per existing user from `users.steam_id64`, and dual-write on Steam
-   login. The current Steam session remains the session authority.
-3. **Flip identity resolution.** Resolve login as *provider identity → linked
-   account → Nexus user* behind a flag. Sessions need no change: they already
-   reference `users.id`.
+2. **Phase 2A — completed on this branch.** Apply the
+   `linked_platform_accounts` table in staging, backfill exactly one `steam`
+   row per existing user from `users.steam_id64`, and dual-write on Steam login
+   behind `NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED`. The current Steam session
+   remains the session authority and `users.steam_id64` remains the login
+   authority. The credential store is deliberately **not** part of this step.
+3. **Phase 2B — next phase, not this one.** Flip identity resolution to
+   *provider identity → linked account → Nexus user* behind a flag, with
+   dual-read first. Sessions need no change: they already reference `users.id`.
 4. **Retire the Steam column.** Only after dual-read is proven, drop the
    not-null/unique constraints on `users.steam_id64` and treat it as legacy.
    Uniqueness now lives on `(provider, provider_user_id)`.
@@ -322,14 +454,17 @@ Each step is separately reversible and none of them is executed in this phase.
    equivalent), then link zero or more providers. A user with no Steam account
    is a first-class case, not an edge case. SuperTokens remains only a
    candidate session layer for this; nothing is integrated now.
-7. **Connected Accounts UI and unified library.** Only once real linked data
+7. **Provider credential store.** Implemented together with the first
+   token-based provider, because that is the first time there is a credential
+   to protect.
+8. **Connected Accounts UI and unified library.** Only once real linked data
    exists, gated by capability flags.
-8. **Second provider.** Xbox or PlayStation discovery → linking → sync. Full
+9. **Second provider.** Xbox or PlayStation discovery → linking → sync. Full
    Xbox/PlayStation onboarding depends on Stage B: provider-neutral Nexus auth
    is a **prerequisite** for it, not an afterthought placed after the final
    provider rollout.
-9. **Optional Nexus session layer.** Evaluate SuperTokens or an equivalent as a
-   separate, later decision.
+10. **Optional Nexus session layer.** Evaluate SuperTokens or an equivalent as a
+    separate, later decision.
 
 ## What Phase 1 implements
 
@@ -363,15 +498,36 @@ Validators and documentation:
 
 - `scripts/validate-nexus-platform-foundation.mjs` — domain contract assertions
   plus structural boundary guards (barrel exposure, module location, provider
-  normalization, proposal shape).
+  normalization, proposal shape, and the Phase 2A backend-only persistence
+  boundary).
 - `docs/architecture/MULTI_PLATFORM_ACCOUNTS.md` and
   `docs/architecture/MULTI_PLATFORM_DB_PROPOSAL.md`.
 
+## What Phase 2A implements
+
+- `services/auth-api/src/storage/postgres/migrations/020_nexus_linked_platform_accounts.sql`
+  — the applied table, its two partial unique indexes, the revocation
+  consistency CHECK and the deterministic Steam backfill.
+- `services/auth-api/src/nexus/linkedAccountRepository.ts` — in-memory and
+  PostgreSQL implementations of the backend-only persistence contract.
+- `services/auth-api/src/nexus/linkedAccountService.ts` —
+  `ensureSteamLinkedAccount()` with the two integrity conflict codes.
+- `services/auth-api/src/config.ts` — the optional, default-off
+  `NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED` flag.
+- `services/auth-api/src/authorization/sessionTokenService.ts` — the optional,
+  additive dual-write hook placed between user resolution and session issuance.
+- `services/auth-api/src/storage/storageFactory.ts` and
+  `services/auth-api/src/server.ts` — wiring, flag gating and sanitised logging.
+- `services/auth-api/tests/nexusLinkedAccounts.test.ts` and
+  `services/auth-api/tests/postgres.nexusLinkedAccounts.integration.test.ts`.
+
 ## What later phases defer
 
-Intentionally not implemented here: Xbox login, PlayStation login, SuperTokens,
-Connected Accounts UI, unified library UI, applied database migrations, provider
-token storage, provider OAuth callbacks, automatic canonical-game matching, the
-backend adapter runtime, the credential store, and any placeholder Xbox or
-PlayStation data. No existing UI, validator, session or sync behaviour was
-modified.
+Intentionally not implemented here: identity resolution through
+`linked_platform_accounts`, Xbox login, PlayStation login, SuperTokens,
+Connected Accounts UI, unified library UI, the provider credential store and
+provider token storage, provider OAuth callbacks, automatic canonical-game
+matching, the catalog/game/achievement tables, the backend adapter runtime, any
+change to the `users.steam_id64` constraints, any production migration or
+deploy, and any placeholder Xbox or PlayStation data. No existing UI, validator,
+session, RBAC or sync behaviour was modified.
