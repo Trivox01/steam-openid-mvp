@@ -169,6 +169,49 @@ test("Migration 020 linked platform accounts on PostgreSQL", {
     );
     assert.equal(afterReplay.rows[0].count, "2", "replaying 020 must not duplicate links");
 
+    // A partial state with a different active Steam identity for the same
+    // Nexus user must fail closed instead of being silently skipped.
+    await pool.query("BEGIN");
+    try {
+      await pool.query("DELETE FROM linked_platform_accounts WHERE id = $1", [first.id]);
+      await pool.query(
+        `INSERT INTO linked_platform_accounts
+           (id, user_id, provider, provider_user_id, connection_status)
+         VALUES ($1, $2, 'steam', $3, 'connected')`,
+        [randomUUID(), enriched.id, STEAM_SECOND]
+      );
+      await assert.rejects(
+        pool.query(migration020.sql),
+        (error: unknown) => (error as { code?: string }).code === "23505",
+        "backfill must fail when a Nexus user already owns a different active Steam identity"
+      );
+    } finally {
+      await pool.query("ROLLBACK");
+    }
+
+    // Likewise, an active Steam identity already owned by a different Nexus
+    // user must stop the backfill rather than being reassigned or ignored.
+    await pool.query("BEGIN");
+    try {
+      await pool.query(
+        "DELETE FROM linked_platform_accounts WHERE id = ANY($1::uuid[])",
+        [[first.id, second.id]]
+      );
+      await pool.query(
+        `INSERT INTO linked_platform_accounts
+           (id, user_id, provider, provider_user_id, connection_status)
+         VALUES ($1, $2, 'steam', $3, 'connected')`,
+        [randomUUID(), bare.id, STEAM_ENRICHED]
+      );
+      await assert.rejects(
+        pool.query(migration020.sql),
+        (error: unknown) => (error as { code?: string }).code === "23505",
+        "backfill must fail when the Steam identity is actively owned by another Nexus user"
+      );
+    } finally {
+      await pool.query("ROLLBACK");
+    }
+
     // ---- database-level invariants ----------------------------------------
     const insertRow = (values: {
       id?: string; userId: string; providerUserId: string;
@@ -232,18 +275,29 @@ test("Migration 020 linked platform accounts on PostgreSQL", {
        SET connection_status = 'disconnected', revoked_at = $2 WHERE id = $1`,
       [first.id, "2026-08-11T00:00:00.000Z"]
     );
-    // The same identity may now be linked again, by another Nexus user, and the
-    // revoked row survives for audit.
-    await insertRow({ userId: bare.id, providerUserId: STEAM_ENRICHED });
-    const afterRelink = await pool.query<{ count: string }>(
-      "SELECT count(*) FROM linked_platform_accounts WHERE revoked_at IS NOT NULL"
+    // Re-linking the same provider identity to the same Nexus user with a new
+    // row proves that both the provider-identity slot and this user's Steam
+    // provider slot were freed. The revoked row remains for audit.
+    const replacementId = randomUUID();
+    await insertRow({
+      id: replacementId,
+      userId: enriched.id,
+      providerUserId: STEAM_ENRICHED
+    });
+    const afterRelink = await pool.query<{ revoked: string; active: string }>(
+      `SELECT
+         count(*) FILTER (WHERE revoked_at IS NOT NULL)::text AS revoked,
+         count(*) FILTER (
+           WHERE user_id = $1 AND provider = 'steam' AND revoked_at IS NULL
+         )::text AS active
+       FROM linked_platform_accounts`,
+      [enriched.id]
     );
-    assert.equal(afterRelink.rows[0].count, "1");
-    // Undo so the service assertions below start from the backfilled state.
-    await pool.query(
-      "DELETE FROM linked_platform_accounts WHERE user_id = $1 AND provider_user_id = $2",
-      [bare.id, STEAM_ENRICHED]
-    );
+    assert.equal(afterRelink.rows[0].revoked, "1");
+    assert.equal(afterRelink.rows[0].active, "1");
+    // Undo so the service assertions below start from the original backfilled
+    // state while preserving the test's proof that relinking was possible.
+    await pool.query("DELETE FROM linked_platform_accounts WHERE id = $1", [replacementId]);
     await pool.query(
       `UPDATE linked_platform_accounts
        SET connection_status = 'connected', revoked_at = NULL WHERE id = $1`,
