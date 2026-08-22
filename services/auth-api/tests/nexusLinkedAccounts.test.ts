@@ -91,8 +91,14 @@ test("migration 020 backfills additively and never rewrites the authoritative id
   assert.match(sql, /trim\(u\.steam_id64\) ~ '\^\[0-9\]\{17\}\$'/);
   assert.match(sql, /'connected'/);
   assert.match(sql, /'\{\}'::text\[\]/);
-  assert.match(sql, /NOT EXISTS[\s\S]*existing\.provider = 'steam'[\s\S]*existing\.revoked_at IS NULL/);
-  assert.match(sql, /ON CONFLICT DO NOTHING/);
+  assert.match(
+    sql,
+    /NOT EXISTS[\s\S]*existing\.user_id = u\.id[\s\S]*existing\.provider = 'steam'[\s\S]*existing\.provider_user_id = trim\(u\.steam_id64\)[\s\S]*existing\.revoked_at IS NULL/
+  );
+  // Replay safety is scoped to the deterministic primary key only. Conflicts
+  // on the active provider/user unique indexes must surface and stop migration.
+  assert.match(sql, /ON CONFLICT \(id\) DO NOTHING/);
+  assert.doesNotMatch(sql, /ON CONFLICT DO NOTHING/);
 
   // Additive only. Executable statements are inspected because the comments
   // deliberately discuss what is NOT done.
