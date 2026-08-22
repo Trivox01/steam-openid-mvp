@@ -52,7 +52,7 @@ test("cleanup is bounded and removes retained terminal memory records", async ()
 
 test("PostgreSQL migrations are ordered and contain no secret-bearing columns", async () => {
   const migrations = await loadPostgresMigrations();
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
   const sql = migrations.map((item) => item.sql).join("\n").toLowerCase();
   assert.match(sql, /create table tool_definitions/);
   assert.match(sql, /create table tool_badges/);
@@ -95,6 +95,17 @@ test("PostgreSQL migrations are ordered and contain no secret-bearing columns", 
   assert.match(sql, /create table badge_asset_cleanup_jobs/);
   assert.match(sql, /create table badge_assignments/);
   assert.match(sql, /badge_assignments_active_unique/);
+  // Phase 2A: the only new table is the Nexus account link. The provider
+  // credential store and the game/achievement catalog stay unapplied.
+  assert.match(sql, /create table if not exists linked_platform_accounts/);
+  const statements = sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n");
+  assert.doesNotMatch(
+    statements,
+    /provider_credentials|canonical_games|platform_games|platform_achievements|user_game_ownership/
+  );
   for (const key of PERMISSION_KEYS) assert.match(sql, new RegExp(`'${key.replace(".", "\\.")}'`));
   for (const role of rolePresets) assert.match(sql, new RegExp(`'${role.slug}'`));
 });
