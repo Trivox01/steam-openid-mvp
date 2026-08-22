@@ -17,22 +17,36 @@ interface SessionClaims {
   epc?: number;
 }
 
+/**
+ * Phase 2A transitional dual-write hook. Receives the Nexus user that the
+ * existing users.steam_id64 path already resolved. It exists to ensure an
+ * additive linked_platform_accounts row and must never influence which user is
+ * authenticated or what the session contains.
+ */
+export type EnsureSteamLinkedAccount = (input: {
+  userId: string;
+  steamId64: string;
+}) => Promise<void>;
+
 export class SessionTokenService {
   private readonly secret: string;
   private readonly repository: AuthorizationRepository;
   private readonly now: () => number;
   private readonly enrichProfile?: (steamId64: string) => Promise<void>;
+  private readonly ensureLinkedAccount?: EnsureSteamLinkedAccount;
 
   constructor(
     secret: string,
     repository: AuthorizationRepository,
     now: () => number = Date.now,
-    enrichProfile?: (steamId64: string) => Promise<void>
+    enrichProfile?: (steamId64: string) => Promise<void>,
+    ensureLinkedAccount?: EnsureSteamLinkedAccount
   ) {
     this.secret = secret;
     this.repository = repository;
     this.now = now;
     this.enrichProfile = enrichProfile;
+    this.ensureLinkedAccount = ensureLinkedAccount;
   }
 
   async issueForSteamIdentity(steamId64: string, authenticatedAt: string) {
@@ -41,6 +55,14 @@ export class SessionTokenService {
     // the login path would hand out a credential that every request then rejects.
     assertActive(user);
     await this.enrichProfile?.(steamId64).catch(() => undefined);
+    // Ordered deliberately: users.steam_id64 has already resolved the Nexus user
+    // above, and the session is issued below. This only ensures the additive
+    // linked-account row exists. It is injected (and therefore absent) unless
+    // the backend rollout flag is on, and it is non-fatal by the same rule as
+    // profile enrichment: a linked-account problem must never break a login or
+    // change what the session represents.
+    await this.ensureLinkedAccount?.({ userId: user.id, steamId64 })
+      .catch(() => undefined);
     return this.issueForUser(user);
   }
 

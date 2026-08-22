@@ -32,6 +32,13 @@ export interface AuthApiConfig {
   badgeStorageDriver?: BadgeStorageDriver;
   s3BadgeStorage?: S3BadgeStorageConfig;
   steamWebApiKey?: string;
+  /**
+   * Phase 2A rollout flag for the transitional Steam linked-account dual write.
+   * Backend-only and off by default: while it is off, Steam authentication
+   * behaves exactly as before. It never affects identity resolution, which
+   * stays on users.steam_id64.
+   */
+  nexusLinkedAccountsDualWriteEnabled?: boolean;
 }
 
 export class ConfigurationError extends Error {
@@ -74,6 +81,10 @@ export function loadAuthApiConfig(
   const steamWebApiKey = parseOptionalSecret(
     environment.STEAM_WEB_API_KEY,
     "STEAM_WEB_API_KEY"
+  );
+  const nexusLinkedAccountsDualWriteEnabled = parseOptionalBoolean(
+    environment.NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED,
+    "NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED"
   );
 
   if (publicBaseUrl.search || openIdRealm.search || openIdRealm.hash) {
@@ -133,8 +144,24 @@ export function loadAuthApiConfig(
       ? { badgeAssetDirectory: environment.BADGE_ASSET_DIRECTORY.trim() }
       : {}),
     ...(bootstrapOwnerSteamId64 ? { bootstrapOwnerSteamId64 } : {}),
-    ...(steamWebApiKey ? { steamWebApiKey } : {})
+    ...(steamWebApiKey ? { steamWebApiKey } : {}),
+    ...(nexusLinkedAccountsDualWriteEnabled
+      ? { nexusLinkedAccountsDualWriteEnabled: true }
+      : {})
   };
+}
+
+/**
+ * Optional rollout flag. An unset or empty value is off, so an environment that
+ * has never heard of the flag keeps its current behaviour. Only the exact
+ * strings "true" and "false" are accepted, matching parseBoolean, so a typo
+ * fails loudly at startup instead of silently deciding a rollout either way.
+ */
+function parseOptionalBoolean(value: string | undefined, name: string) {
+  if (value === undefined || value.trim() === "") return false;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new ConfigurationError(`invalid_${name}`);
 }
 
 function parseOptionalSecret(
