@@ -24,6 +24,10 @@ import { ToolRatingService } from "./tools/toolRatingService.ts";
 import { ToolReviewService, ToolReviewModerationService, ToolReviewInteractionService } from "./tools/toolReviewService.ts";
 import { ToolAnalyticsService } from "./tools/toolAnalyticsService.ts";
 import { DesktopSessionService } from "./desktopSessions/desktopSessionService.ts";
+import {
+  LinkedAccountConflictError,
+  NexusLinkedAccountService
+} from "./nexus/linkedAccountService.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -58,6 +62,13 @@ async function main() {
     fetch,
     { write(entry) { process.stdout.write(JSON.stringify(entry) + "\n"); } }
   );
+  // Phase 2A transitional linked accounts. The service is always constructed so
+  // the wiring is identical in every environment, but it is only handed to the
+  // Steam auth path when the backend rollout flag is on. Identity resolution
+  // stays on users.steam_id64 either way.
+  const linkedAccounts = new NexusLinkedAccountService(
+    storage.linkedAccountRepository
+  );
   const sessions = new SessionTokenService(
     config.sessionSecret,
     storage.authorizationRepository,
@@ -71,6 +82,35 @@ async function main() {
               event: "steam_profile_persisted",
               nicknameStored: true,
               avatarStored: Boolean(profile.avatarUrl)
+            }) + "\n");
+          }
+        }
+      : undefined,
+    config.nexusLinkedAccountsDualWriteEnabled
+      ? async ({ userId, steamId64 }) => {
+          try {
+            const result = await linkedAccounts.ensureSteamLinkedAccount({
+              userId,
+              steamId64
+            });
+            process.stdout.write(JSON.stringify({
+              event: "nexus_linked_account_dual_write",
+              provider: "steam",
+              outcome: result.status
+            }) + "\n");
+          } catch (error) {
+            // Never breaks a login. An integrity conflict is surfaced as a
+            // sanitized operational signal, with no identifiers, so the rollout
+            // can be halted while Steam auth keeps its current behaviour.
+            process.stdout.write(JSON.stringify({
+              event: "nexus_linked_account_dual_write",
+              provider: "steam",
+              outcome: "conflict",
+              errorCode: sanitizeLogCode(
+                error instanceof LinkedAccountConflictError
+                  ? error.code
+                  : "internal_error"
+              )
             }) + "\n");
           }
         }
@@ -173,6 +213,9 @@ async function main() {
         badgeStorageDriver: config.badgeStorageDriver,
         trustProxy: config.trustProxy,
         steamWebApiKeyConfigured: Boolean(config.steamWebApiKey),
+        nexusLinkedAccountsDualWrite: Boolean(
+          config.nexusLinkedAccountsDualWriteEnabled
+        ),
         bootstrapOwner: bootstrapResult
       }) + "\n"
     );

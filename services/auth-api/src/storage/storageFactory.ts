@@ -46,6 +46,11 @@ import {
   PostgresDesktopSessionRepository,
   type DesktopSessionRepository
 } from "../desktopSessions/desktopSessionRepository.ts";
+import {
+  InMemoryLinkedAccountRepository,
+  PostgresLinkedAccountRepository,
+  type LinkedAccountRepository
+} from "../nexus/linkedAccountRepository.ts";
 
 export interface InitializedStorage {
   repository: AuthTransactionRepository;
@@ -64,6 +69,12 @@ export interface InitializedStorage {
   toolAnalyticsRepository: ToolAnalyticsRepository;
   toolFavoriteRepository: ToolFavoriteRepository;
   desktopSessionRepository: DesktopSessionRepository;
+  /**
+   * Phase 2A Nexus linked accounts. Present regardless of the dual-write
+   * rollout flag; the flag only decides whether the Steam auth path writes
+   * through it.
+   */
+  linkedAccountRepository: LinkedAccountRepository;
   close(): Promise<void>;
 }
 
@@ -103,6 +114,8 @@ export async function initializeStorage(
     const toolFavoriteRepository = new InMemoryToolFavoriteRepository();
     const desktopSessionRepository = new InMemoryDesktopSessionRepository();
     await desktopSessionRepository.validateSchema();
+    const linkedAccountRepository = new InMemoryLinkedAccountRepository();
+    await linkedAccountRepository.validateSchema();
     toolReviewRepository.attachReportSource(toolReviewReportRepository);
     toolReviewRepository.attachHelpfulSource(toolReviewHelpfulRepository);
     toolReviewRepository.attachReplySource(toolReviewReplyRepository);
@@ -123,6 +136,7 @@ export async function initializeStorage(
       toolAnalyticsRepository,
       toolFavoriteRepository,
       desktopSessionRepository,
+      linkedAccountRepository,
       async close() {}
     };
   }
@@ -168,6 +182,8 @@ export async function initializeStorage(
     await toolFavoriteRepository.validateSchema();
     const desktopSessionRepository = new PostgresDesktopSessionRepository(pool);
     await desktopSessionRepository.validateSchema();
+    const linkedAccountRepository = new PostgresLinkedAccountRepository(pool);
+    await linkedAccountRepository.validateSchema();
     return {
       repository,
       authorizationRepository,
@@ -185,6 +201,7 @@ export async function initializeStorage(
       toolAnalyticsRepository,
       toolFavoriteRepository,
       desktopSessionRepository,
+      linkedAccountRepository,
       async close() {
         await pool.end();
       }
