@@ -58,10 +58,12 @@ CREATE INDEX IF NOT EXISTS linked_accounts_user_idx
 
 -- Backfill: exactly one active Steam link per existing Nexus user.
 --
--- Deterministic: the primary key is derived from the owning user id, so a
--- replay of this migration produces the same row identity instead of a second
--- link. Combined with the NOT EXISTS guard and ON CONFLICT DO NOTHING, the
--- statement is safe to run again on a partially migrated database.
+-- Deterministic: the primary key is derived from the owning user id. A replay
+-- skips an already-active exact user/provider/identity mapping, and only a
+-- conflict on that deterministic primary key is allowed to become a no-op.
+-- Conflicts on either active-identity unique index are deliberately NOT
+-- swallowed: a mismatched partial state must stop the migration instead of
+-- silently reassigning or replacing a Steam identity.
 --
 -- Never reassigns a user: user_id comes from the users row that already owns
 -- the Steam identity, and users.steam_id64 stays untouched and authoritative.
@@ -102,6 +104,7 @@ WHERE trim(u.steam_id64) ~ '^[0-9]{17}$'
     SELECT 1 FROM linked_platform_accounts existing
     WHERE existing.user_id = u.id
       AND existing.provider = 'steam'
+      AND existing.provider_user_id = trim(u.steam_id64)
       AND existing.revoked_at IS NULL
   )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
