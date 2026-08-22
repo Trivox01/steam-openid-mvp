@@ -24,6 +24,7 @@ in `src/domain/nexus/`. It contains no secrets and no real credentials.
 | `provider_credentials` | linked account | unlink, revocation, account deletion |
 | `canonical_games` | catalog (shared) | never by a user action |
 | `platform_games` | catalog (shared) | never by a user action |
+| `user_canonical_mapping_suggestions` | suggesting user | account deletion |
 | `user_game_ownership` | linked account | unlink or account deletion |
 | `platform_achievements` | catalog (shared) | never by a user action |
 | `user_achievement_states` | linked account | unlink or account deletion |
@@ -43,11 +44,17 @@ CREATE TABLE linked_platform_accounts (
                       CHECK (connection_status IN
                         ('connected','reauth_required','revoked','disconnected','error')),
   scopes            text[] NOT NULL DEFAULT '{}',
-  credential_ref    text,          -- opaque handle only, never a token
   linked_at         timestamptz NOT NULL DEFAULT now(),
   last_sync_at      timestamptz,
   last_sync_status  text CHECK (last_sync_status IN ('idle','success','partial','error')),
-  revoked_at        timestamptz
+  revoked_at        timestamptz,
+  -- A terminal status always carries revoked_at, and a row with revoked_at is
+  -- always in a terminal status, so the partial unique indexes below free the
+  -- uniqueness slot exactly when a link ends. Both columns are written in the
+  -- same transaction by the unlink flow.
+  CONSTRAINT linked_accounts_revocation_consistency CHECK (
+    (connection_status IN ('revoked','disconnected')) = (revoked_at IS NOT NULL)
+  )
 );
 
 -- One provider identity belongs to at most one Nexus account at a time.
@@ -55,7 +62,7 @@ CREATE UNIQUE INDEX linked_accounts_provider_identity_uniq
   ON linked_platform_accounts (provider, provider_user_id)
   WHERE revoked_at IS NULL;
 
--- One Nexus account holds at most one active link per provider.
+-- One Nexus account holds at most one active link per provider (V1 rule).
 CREATE UNIQUE INDEX linked_accounts_one_per_provider_uniq
   ON linked_platform_accounts (user_id, provider)
   WHERE revoked_at IS NULL;
@@ -63,10 +70,13 @@ CREATE UNIQUE INDEX linked_accounts_one_per_provider_uniq
 CREATE INDEX linked_accounts_user_idx ON linked_platform_accounts (user_id);
 ```
 
-**provider / providerUserId uniqueness semantics.** Uniqueness is partial, on
-non-revoked rows only. A Steam account that was unlinked can be linked again
-later, by the same user or by another one, while the historical row remains for
-audit. Global uniqueness across all rows would make unlink irreversible.
+**provider / providerUserId uniqueness semantics.** `revoked_at IS NULL` is the
+single source of truth for "active", and the CHECK constraint guarantees a
+`revoked`/`disconnected` status always comes with `revoked_at` set. The partial
+unique indexes therefore free the slot reliably on unlink, while historical rows
+remain for audit. Re-linking creates a new row with a new id; it never
+resurrects a revoked row. Global uniqueness across all rows would make unlink
+irreversible, which is why the indexes are partial.
 
 **Relation to the current schema.** `users.steam_id64` stays authoritative until
 step 4 of the migration path in `MULTI_PLATFORM_ACCOUNTS.md`. During the dual
@@ -93,10 +103,15 @@ CREATE TABLE provider_credentials (
 );
 ```
 
-Rules: this table is written and read only by the backend credential service;
-no route, projection or desktop cache may select `ciphertext`; the value is
-encrypted at rest with a key referenced by `encryption_key_id`; Steam creates no
-row here because Steam OpenID issues no credential.
+The relationship between a linked account and its credential exists exactly
+once, here, enforced by this `UNIQUE` foreign key. The accounts table
+deliberately has no credential column of its own, so there is no duplicated
+reference to keep in sync. Rules: this table is written and read only by the
+backend credential service; no route, projection or desktop cache may select
+`ciphertext`; the value is encrypted at rest with a key referenced by
+`encryption_key_id`; `credential_ref` and `encryption_key_id` are backend-only
+locators and never appear in a desktop-facing projection; Steam creates no row
+here because Steam OpenID issues no credential.
 
 ## Catalog: canonical and platform games
 
@@ -118,7 +133,7 @@ CREATE TABLE platform_games (
   title                    text NOT NULL,
   canonical_game_id        uuid REFERENCES canonical_games(id) ON DELETE SET NULL,
   canonical_mapping_method text CHECK (canonical_mapping_method IN
-                             ('provider_verified','editorial_verified','user_confirmed')),
+                             ('provider_verified','editorial_verified')),
   canonical_verified_by    text,
   canonical_verified_at    timestamptz,
   first_seen_at            timestamptz NOT NULL DEFAULT now(),
@@ -134,15 +149,42 @@ CREATE TABLE platform_games (
 CREATE UNIQUE INDEX platform_games_identity_uniq
   ON platform_games (provider, provider_game_id);
 CREATE INDEX platform_games_canonical_idx ON platform_games (canonical_game_id);
+
+-- Per-user suggestions live OUTSIDE the shared catalog. They can never set
+-- platform_games.canonical_game_id; promotion happens only by creating a
+-- verified mapping through the editorial/provider flow.
+CREATE TABLE user_canonical_mapping_suggestions (
+  id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  platform_game_id           uuid NOT NULL REFERENCES platform_games(id) ON DELETE CASCADE,
+  proposed_canonical_game_id uuid NOT NULL REFERENCES canonical_games(id) ON DELETE CASCADE,
+  method                     text NOT NULL CHECK (method IN
+                               ('user_confirmed','title_similarity_candidate')),
+  suggested_by_user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status                     text NOT NULL DEFAULT 'pending'
+                               CHECK (status IN ('pending','accepted_as_verified','rejected')),
+  suggested_at               timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX mapping_suggestions_game_idx
+  ON user_canonical_mapping_suggestions (platform_game_id);
 ```
+
+**Internal ids vs provider keys.** Every table uses an opaque internal `uuid`
+primary key. The unique *provider identity* of a game is
+`(provider, provider_game_id)`, enforced by `platform_games_identity_uniq`. The
+legacy Steam strings (`steam:<appId>`, `steam:<appId>:<apiName>`) are
+compatibility keys only: they let the existing runtime be bridged without
+re-keying, and they are never database primary keys here.
 
 **Canonical / platform relationship.** One canonical game has zero or more
 platform games; a platform game has at most one canonical game. The check
 constraint enforces at the database level what
 `linkPlatformGameToCanonical()` enforces in the domain: no mapping without
-verified evidence. `title_similarity_candidate` is intentionally absent from the
-allowed methods, so a title match can never become a stored link. Deleting a
-canonical game only detaches its platform rows; it never deletes provider data.
+verified evidence. `user_confirmed` and `title_similarity_candidate` are
+intentionally absent from `canonical_mapping_method`, so a user confirmation or
+a title match can never become a stored shared link; both exist only in the
+suggestions table. Deleting a canonical game only detaches its platform rows;
+it never deletes provider data.
 
 ## Ownership
 
@@ -150,7 +192,6 @@ canonical game only detaches its platform rows; it never deletes provider data.
 -- PROPOSAL ONLY — DO NOT APPLY
 CREATE TABLE user_game_ownership (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id           uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   linked_account_id uuid NOT NULL
                       REFERENCES linked_platform_accounts(id) ON DELETE CASCADE,
   platform_game_id  uuid NOT NULL REFERENCES platform_games(id) ON DELETE CASCADE,
@@ -164,8 +205,15 @@ CREATE TABLE user_game_ownership (
 
 CREATE UNIQUE INDEX user_game_ownership_uniq
   ON user_game_ownership (linked_account_id, platform_game_id);
-CREATE INDEX user_game_ownership_user_idx ON user_game_ownership (user_id);
+CREATE INDEX user_game_ownership_game_idx ON user_game_ownership (platform_game_id);
 ```
+
+The owning Nexus user is derived through `linked_account_id` →
+`linked_platform_accounts.user_id`. The normalized design was chosen over a
+redundant column plus a composite foreign key: with no separate per-row user
+column, a cross-user ownership row is structurally impossible and there is
+nothing to keep in sync on re-link. Per-user library queries join through the
+link table, which is indexed on `user_id`.
 
 Ownership is keyed by linked account, not by user, so the same title owned on
 two providers produces two rows. `playtime_known` keeps "not supplied" distinct
@@ -198,7 +246,6 @@ CREATE UNIQUE INDEX platform_achievements_identity_uniq
 
 CREATE TABLE user_achievement_states (
   id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id                 uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   linked_account_id       uuid NOT NULL
                             REFERENCES linked_platform_accounts(id) ON DELETE CASCADE,
   platform_achievement_id uuid NOT NULL
@@ -211,15 +258,16 @@ CREATE TABLE user_achievement_states (
 
 CREATE UNIQUE INDEX user_achievement_states_uniq
   ON user_achievement_states (linked_account_id, platform_achievement_id);
-CREATE INDEX user_achievement_states_user_idx ON user_achievement_states (user_id);
 ```
 
 **Achievement ownership.** The definition belongs to a platform game and is
-shared between all users; the unlock fact belongs to a linked account. There is
-no canonical achievement table in this proposal, because provider achievement
-sets differ for the same canonical title and merging them would invent data.
+shared between all users; the unlock fact belongs to a linked account, with the
+Nexus user derived through the link exactly like ownership. There is no
+canonical achievement table in this proposal, because provider achievement sets
+differ for the same canonical title and merging them would invent data.
 `unlock_state_known` mirrors the existing Steam merge semantics: unknown is not
-locked.
+locked, and the completion truth contract in the domain (exact only when every
+state is known) applies to any read model built on these tables.
 
 ## Unlink behaviour
 
@@ -230,11 +278,14 @@ Unlinking one provider from a Nexus account:
    `revoke_then_delete`, `delete_only` or `not_applicable`);
 2. delete `user_achievement_states` and `user_game_ownership` rows for that
    `linked_account_id`;
-3. set `connection_status = 'disconnected'` and `revoked_at = now()` on the
-   link, or delete the row when the user asked for full removal;
+3. in one transaction, set `connection_status = 'disconnected'` (or
+   `'revoked'`) and `revoked_at = now()` on the link — the CHECK constraint
+   requires both together — or delete the row when the user asked for full
+   removal. The partial unique indexes immediately free the slot;
 4. keep `canonical_games`, `platform_games` and `platform_achievements`, which
    are shared reference data and contain nothing user-specific;
-5. leave the Nexus account, its roles, badges and sessions untouched.
+5. leave the Nexus account, its roles, badges, sessions and its past mapping
+   suggestions untouched.
 
 Unlinking the last provider is allowed. The Nexus account survives with no
 linked accounts, which is exactly why the account cannot be the Steam row.
@@ -242,12 +293,13 @@ linked accounts, which is exactly why the account cannot be the Steam row.
 ## Deletion and privacy behaviour
 
 - Account deletion cascades from `users(id)` through links, credentials,
-  ownership and unlock state, so no user-scoped provider data survives.
+  ownership, unlock state and mapping suggestions, so no user-scoped provider
+  data survives.
 - Shared catalog rows are retained; they describe games, not people.
 - Audit and sync-log rows keep identifiers and outcomes only, never provider
   profile payloads or credential material.
 - The desktop SQLite cache stores non-sensitive projections and is cleared for
-  a provider on unlink; it never receives credentials.
+  a provider on unlink; it never receives credentials or credential locators.
 - Provider profile fields (`display_name`, `avatar_url`) are refreshed from the
   provider and deleted with the link, so removing a connection removes the
   provider's personal data from the product.

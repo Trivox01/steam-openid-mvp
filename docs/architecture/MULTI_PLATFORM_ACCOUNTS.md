@@ -1,8 +1,8 @@
 # Multi-platform Nexus accounts
 
-Status: Phase 1, architecture only. Nothing described here changes runtime
-behaviour today. The current Steam OpenID login, desktop session system, RBAC,
-sync services and UI are untouched by this phase.
+Status: Phase 1, architecture only (second-review correction pass). Nothing
+described here changes runtime behaviour today. The current Steam OpenID login,
+desktop session system, RBAC, sync services and UI are untouched by this phase.
 
 Target model:
 
@@ -62,7 +62,9 @@ compatible with a Nexus identity; only user lookup/creation is Steam-keyed.
 
 A user must be able to connect more than one platform account, disconnect one,
 or connect a second one later without losing their identity, roles, badges or
-history. If the user row *is* the Steam row, then:
+history. A person with **no Steam account at all** must also be able to create
+and use a Nexus account (see Migration path, Stage B). If the user row *is* the
+Steam row, then:
 
 - disconnecting Steam would mean deleting the account;
 - a second provider would have no owner to attach to;
@@ -78,10 +80,8 @@ provider, not the identity.
 
 ```
 NexusUser (id, displayName, status, roles)
-   └── LinkedPlatformAccount[]
-          id, userId, provider, providerUserId, displayName,
-          connectionStatus, scopes, tokenMetadata?, linkedAt,
-          lastSyncAt, lastSyncStatus
+   └── LinkedPlatformAccount[]        (backend record)
+          └── LinkedPlatformAccountPublic   (desktop-facing projection)
 ```
 
 Rules encoded in `src/domain/nexus/identity.ts`:
@@ -90,14 +90,21 @@ Rules encoded in `src/domain/nexus/identity.ts`:
   "login created a link" path;
 - a provider identity (`provider` + `providerUserId`) may be attached to at most
   one Nexus account at a time;
-- a Nexus account holds at most one active link per provider;
-- a revoked or disconnected link frees the slot again;
+- a Nexus account holds at most one active link per provider (V1 rule);
+- a revoked or disconnected link frees the slot again. A link is active iff
+  `connection_status` is not `revoked`/`disconnected`, and the database proposal
+  ties those terminal statuses to `revoked_at` with a CHECK constraint so the
+  uniqueness slot frees reliably;
 - matching email addresses are never sufficient evidence to link.
 
 `connectionStatus` (`connected`, `reauth_required`, `revoked`, `disconnected`,
 `error`) is what the future Connected Accounts UI will render. Sync state
 (`lastSyncAt`, `lastSyncStatus`) belongs to the link, not to the user, because
 each provider syncs on its own schedule and can fail independently.
+
+The desktop never receives the backend record. It receives only
+`LinkedPlatformAccountPublic`, an explicit allowlisted projection (see Security
+and token boundaries).
 
 ## Canonical game vs platform game
 
@@ -114,16 +121,44 @@ CanonicalGame "Cyberpunk 2077"
 - ownership, playtime, artwork and achievements hang off `PlatformGame`,
   because they are provider facts;
 - `PlatformGame.canonicalGameId` is optional and starts empty;
-- a link is only created through `linkPlatformGameToCanonical()`, which rejects
-  any mapping that is not verified;
-- `candidateMappingFromTitleMatch()` exists so a future matching phase has a
-  typed place for hints, and it is deliberately built so the domain refuses to
-  persist it: identical titles are not evidence;
+- **trust model:** only `provider_verified` and `editorial_verified` may create
+  a shared, globally verified mapping, via `linkPlatformGameToCanonical()`.
+  `user_confirmed` is deliberately NOT a mapping method: a single user's
+  confirmation only produces a `UserCanonicalMappingSuggestion`, which lives
+  outside `PlatformGame` (its own table in the database proposal) and stays
+  `pending` until editorial/provider verification. A validator proves that a
+  forged `user_confirmed` mapping is rejected with
+  `unverified_mapping_rejected`;
+- title similarity is not a mapping at all: `candidateMappingFromTitleMatch()`
+  returns a `CanonicalMatchCandidate`, a candidate-only hint type that can never
+  be persisted as a shared link. Identical titles are not evidence;
 - unmapped platform games never merge. `groupOwnershipByCanonical()` keeps them
   as separate, provider-scoped groups.
 
 This is why a unified library is a *view* over verified mappings, not a
-deduplication heuristic.
+deduplication heuristic, and why no user action can rewrite global catalog
+truth.
+
+## Identity and key strategy
+
+Three different kinds of identifier exist, and they must not be conflated:
+
+| kind | example | role |
+| --- | --- | --- |
+| internal entity id | `PlatformGame.id` (opaque, future UUID) | database primary key |
+| provider natural key | `(provider, providerGameId)`, e.g. `steam` + `1091500` | unique provider identity |
+| legacy Steam compatibility key | `steam:1091500`, `steam:1091500:ACH_WIN_ONE_GAME` | compatibility with existing runtime rows only |
+
+- `PlatformGame.id` and `PlatformAchievement.id` are internal opaque ids. The
+  unique provider identity is `provider` + `providerGameId` for games and
+  `platformGameId` + `providerAchievementId` for achievements.
+- `legacySteamGameKey()` and `legacySteamAchievementKey()` exist so the current
+  Steam runtime can be bridged onto the new model without re-keying existing
+  rows. The Phase 1 compatibility helpers reuse those legacy keys as stand-in
+  ids, but they are **compatibility keys, not future database primary keys**.
+  A later migration assigns real internal ids.
+- `platformGameKey()` / `platformAchievementKey()` return the provider natural
+  key, not an entity id.
 
 ## Achievement ownership
 
@@ -131,79 +166,83 @@ deduplication heuristic.
   Achievement sets differ per provider even for the same canonical title, so
   there is no canonical achievement concept in this phase.
 - `UserAchievementState` is the unlock fact and belongs to a
-  `LinkedPlatformAccount`, because the achievement was earned on that account.
-- `unlockStateKnown` preserves the existing Steam semantics: a definition can
-  arrive without a trustworthy unlock state, and unknown must never be counted
-  as locked. `summarizeAchievementProgress()` computes completion over known
-  state only and returns `null` when nothing is known.
+  `LinkedPlatformAccount`. It carries no redundant `userId`; the owning Nexus
+  user is derived through the linked account, so a cross-user row is
+  structurally impossible.
+- **Completion truth contract:**
+  - `total === 0` or `known === 0` → `completionPercentage = null`;
+  - `unknown > 0` → `completionPercentage = null`;
+  - only when every state is known may `completionPercentage` be exact;
+  - `knownCompletionPercentage` is a diagnostic/internal-only figure computed
+    over known states. It is explicitly non-exact and must never be presented
+    as the user-facing completion percentage;
+  - unknown unlock state is never presented as locked.
 - Provider scores are not a shared currency. Gamerscore and trophy grades are
-  never summed or compared across providers
-  (`canCompareProviderScores()`).
+  never summed or compared across providers (`canCompareProviderScores()`).
 
 Effect of unlinking: the definitions stay (shared reference data), the user's
 unlock rows for that link are removed.
 
 ## Adapter boundaries
 
-`PlatformAdapter` (`src/domain/nexus/adapter.ts`) is the shared data contract:
-`provider`, `capabilities`, `getProfile()`, `syncLibrary()`, `syncGame()`,
-`syncAchievements()`, `disconnect()`.
-
-Deliberately **not** part of the adapter: account linking. Steam OpenID 2.0 is
-an identity assertion with no tokens; Xbox and PlayStation linking is
-undetermined until their discovery phase. Forcing them through one login method
-would encode a false abstraction, so linking is described by a separate,
-provider-shaped `AccountLinkStrategy`.
-
-An adapter never receives credentials. It receives an `AdapterContext`
-(`nexusUserId`, `linkedAccountId`, `providerUserId`) and resolves anything
-sensitive server-side.
-
-Boundary the code will follow:
+Trust boundary:
 
 ```
-Nexus identity / session
-   ↓
-Achievement Nexus backend (adapters, credential store)
-   ↓
-Linked platform accounts
+Desktop/Tauri
+   ↓  safe DTOs only (requests, projections, sync results)
+Achievement Nexus Backend
+   ↓  resolves provider credentials server-side
+Provider Adapter (BACKEND-ONLY)
    ↓
 Steam / Xbox / PlayStation APIs
 ```
 
-A future `SteamPlatformAdapter` is a thin wrapper: `SteamLibrarySyncService`,
-`SteamAchievementSyncService`, `SteamBackendDataClient` and `steamArtwork` keep
-their current behaviour and are called by the adapter, not replaced by it.
-`src/domain/nexus/steamCompatibility.ts` already maps the existing Steam DTOs
-onto the new records and keeps the existing `steam:<appId>` and
-`steam:<appId>:<apiName>` id conventions so a later migration can reuse rows
-instead of re-keying them.
+- `PlatformAdapter` is a **backend-owned runtime interface**. An adapter that
+  resolves provider credentials must never execute in React/Tauri.
+- Shared domain DTOs (`ProviderProfile`, sync outcomes, `SyncCounters`,
+  `DisconnectOutcome`) are reusable on both sides of the boundary.
+- `AdapterContext` (`nexusUserId`, `linkedAccountId`, `providerUserId`) is
+  backend-only: it is how the backend resolves the linked account and any
+  credential, and it is never serialised to the desktop.
+- The desktop receives only safe projections and results, e.g.
+  `LinkedPlatformAccountPublic` and sync outcomes. It never receives a
+  credential, a credential locator, or a credential-resolving object.
+- Account linking stays provider-shaped (`AccountLinkStrategy`): Steam OpenID
+  2.0 is an identity assertion with no tokens; Xbox and PlayStation linking is
+  undetermined until discovery. No fake shared auth protocol.
+- A future `SteamPlatformAdapter` is a thin backend wrapper:
+  `SteamLibrarySyncService`, `SteamAchievementSyncService`,
+  `SteamBackendDataClient` and `steamArtwork` keep their current behaviour and
+  are called by the adapter, not replaced by it.
+- Phase 1 defines the boundary only. No backend adapter is implemented yet.
 
 ## Security and token boundaries
 
+- **The primary security boundary is the explicit allowlisted projection.**
+  `LinkedPlatformAccountPublic` names every field that may cross to the
+  desktop; `credentialRef` and `encryptionKeyId` are not part of it, and
+  neither is the internal `userId` mapping.
+- `ProviderCredentialMetadata` is backend-only. The token itself lives only in
+  the server-side, encrypted credential store behind the opaque
+  `credentialRef`.
+- `findRawCredentialFields()` / `assertNoRawCredentials()` remain as
+  **defense-in-depth test helpers only**. Scanning a blacklist of suspicious
+  key names is not proof that a payload contains no secret, and these helpers
+  are never treated as the primary boundary.
 - Provider access tokens, refresh tokens and provider secrets are server-side
   only, encrypted at rest, and never appear in React, frontend persistence, the
   desktop SQLite cache, source control or logs.
-- The domain type cannot carry a token: `ProviderTokenMetadata` holds an opaque
-  `credentialRef`, an `encryptionKeyId`, expiry timestamps and a
-  `revocationSupported` flag. The secret itself lives only in the credential
-  store behind that reference.
-- `findRawCredentialFields()` / `assertNoRawCredentials()` are structural guards
-  for any payload crossing a trust boundary, and are exercised by the
-  validators.
 - Disconnect is a plan, not a delete statement: `planDisconnect()` returns
   `revoke_then_delete` when the provider supports revocation, `delete_only`
-  otherwise, and `not_applicable` for Steam, which issues no credential. It also
-  states that user-scoped ownership and unlock rows are removed while shared
-  catalog rows are retained.
-- The desktop SQLite cache stays a cache of non-sensitive projections only.
+  otherwise, and `not_applicable` for Steam, which issues no credential. It
+  also states that user-scoped ownership and unlock rows are removed while
+  shared catalog rows are retained.
 - Linking always requires an authenticated Nexus user and an explicit user
   action. Email matching is rejected in code, not by convention.
-
-SuperTokens is only a *candidate* for a future Nexus session layer. No SDK, no
-connection URI, no API key and no cookie change is introduced in this phase, and
-the existing hardened Steam OpenID session system remains the only session
-authority.
+- SuperTokens is only a *candidate* for a future Nexus session layer. No SDK,
+  no connection URI, no API key and no cookie change is introduced in this
+  phase, and the existing hardened Steam OpenID session system remains the only
+  session authority.
 
 ## Capability differences
 
@@ -228,12 +267,14 @@ counters rather than empty results that look like a successful sync.
 
 Each step is separately reversible and none of them is executed in this phase.
 
+### Stage A — Transitional stage: existing Steam-authenticated users link additional providers
+
 1. **Phase 1 (this change).** Domain contracts, adapter boundaries, capability
    model, validators, architecture and database proposal. No runtime wiring.
 2. **Introduce the link table.** Apply the proposed `linked_platform_accounts`
-   table in staging, backfill exactly one `steam` row per existing user from
-   `users.steam_id64`, and dual-write on Steam login. `users.steam_id64` stays
-   authoritative during this window.
+   table (and the credential store) in staging, backfill exactly one `steam`
+   row per existing user from `users.steam_id64`, and dual-write on Steam
+   login. The current Steam session remains the session authority.
 3. **Flip identity resolution.** Resolve login as *provider identity → linked
    account → Nexus user* behind a flag. Sessions need no change: they already
    reference `users.id`.
@@ -242,28 +283,43 @@ Each step is separately reversible and none of them is executed in this phase.
    Uniqueness now lives on `(provider, provider_user_id)`.
 5. **Catalog tables and the Steam adapter.** Add canonical/platform game,
    ownership and achievement tables, then wrap the existing Steam sync services
-   in `SteamPlatformAdapter`. Behaviour must stay identical.
-6. **Connected Accounts UI and unified library.** Only once real linked data
+   in a backend-only `SteamPlatformAdapter`. Behaviour must stay identical.
+
+### Stage B — Provider-neutral onboarding
+
+6. **Provider-neutral Nexus auth.** New users can create a Nexus account and
+   authenticate independently of any gaming provider (email/password or
+   equivalent), then link zero or more providers. A user with no Steam account
+   is a first-class case, not an edge case. SuperTokens remains only a
+   candidate session layer for this; nothing is integrated now.
+7. **Connected Accounts UI and unified library.** Only once real linked data
    exists, gated by capability flags.
-7. **Second provider.** Discovery for Xbox or PlayStation: real capability
-   measurement first, then linking, then sync.
-8. **Optional Nexus session layer.** Evaluate SuperTokens or an equivalent as a
-   separate decision, after identity is provider-neutral.
+8. **Second provider.** Xbox or PlayStation discovery → linking → sync. Full
+   Xbox/PlayStation onboarding depends on Stage B: provider-neutral Nexus auth
+   is a **prerequisite** for it, not an afterthought placed after the final
+   provider rollout.
+9. **Optional Nexus session layer.** Evaluate SuperTokens or an equivalent as a
+   separate, later decision.
 
 ## What Phase 1 implements
 
 - `src/domain/nexus/provider.ts` — provider union, capability model, provider
   descriptors, capability gates.
-- `src/domain/nexus/identity.ts` — `NexusUser`, `LinkedPlatformAccount`,
-  token metadata, linking policy, disconnect plan, credential guards.
+- `src/domain/nexus/identity.ts` — `NexusUser`, `LinkedPlatformAccount`
+  (backend record), `LinkedPlatformAccountPublic` (allowlisted desktop
+  projection), `ProviderCredentialMetadata` (backend-only), linking policy,
+  disconnect plan, defense-in-depth credential scanners.
 - `src/domain/nexus/catalog.ts` — `CanonicalGame`, `PlatformGame`,
-  `UserGameOwnership`, verified-mapping rules, grouping helper.
+  `UserGameOwnership` (no redundant user id), verified-only mapping rules,
+  `UserCanonicalMappingSuggestion`, `CanonicalMatchCandidate`, legacy Steam
+  compatibility keys, grouping helper.
 - `src/domain/nexus/achievements.ts` — `PlatformAchievement`,
-  `UserAchievementState`, progress and score-comparison rules.
-- `src/domain/nexus/adapter.ts` — `PlatformAdapter`, sync outcomes, link
-  strategies, capability-refusal helpers.
+  `UserAchievementState`, the completion truth contract, score rules, legacy
+  achievement compatibility key.
+- `src/domain/nexus/adapter.ts` — backend-owned `PlatformAdapter` contract,
+  sync outcomes, link strategies, capability-refusal helpers.
 - `src/domain/nexus/steamCompatibility.ts` — pure, inert mappings from the
-  existing Steam DTOs to the new records.
+  existing Steam DTOs to the new records, using legacy keys as stand-in ids.
 - `src/domain/nexus/validation.ts` and
   `scripts/validate-nexus-platform-foundation.mjs` — contract validators plus
   Phase 1 boundary guards.
@@ -274,6 +330,7 @@ Each step is separately reversible and none of them is executed in this phase.
 
 Intentionally not implemented here: Xbox login, PlayStation login, SuperTokens,
 Connected Accounts UI, unified library UI, applied database migrations, provider
-token storage, provider OAuth callbacks, automatic canonical-game matching, and
-any placeholder Xbox or PlayStation data. No existing UI, validator, session or
-sync behaviour was modified.
+token storage, provider OAuth callbacks, automatic canonical-game matching, the
+backend adapter runtime, the credential store, and any placeholder Xbox or
+PlayStation data. No existing UI, validator, session or sync behaviour was
+modified.
