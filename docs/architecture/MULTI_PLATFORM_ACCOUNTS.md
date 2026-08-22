@@ -1,6 +1,6 @@
 # Multi-platform Nexus accounts
 
-Status: Phase 1, architecture only (second-review correction pass). Nothing
+Status: Phase 1, architecture only (final structural cleanup). Nothing
 described here changes runtime behaviour today. The current Steam OpenID login,
 desktop session system, RBAC, sync services and UI are untouched by this phase.
 
@@ -12,6 +12,22 @@ Nexus account (owner identity)
 ├── linked Xbox account        (later phase)
 └── linked PlayStation account (later phase)
 ```
+
+## Module ownership
+
+The trust boundary is enforced structurally, by module location — not by
+comments:
+
+| location | owner | contents |
+| --- | --- | --- |
+| `src/domain/nexus/` | desktop-safe shared domain | provider + capability model, `NexusUser`, the `LinkedPlatformAccountPublic` projection, `CanonicalGame` / `PlatformGame` / ownership, achievement contracts + completion truth, Steam compatibility mappings |
+| `services/auth-api/src/nexus/` | backend-only | `LinkedPlatformAccount` server record, `ProviderCredentialMetadata`, the public-projection mapper, account linking/disconnect policy, credential scanners, `PlatformAdapter` + `AdapterContext` + sync DTOs |
+
+The desktop domain barrel (`src/domain/nexus/index.ts`) deliberately does not
+re-export anything from the backend tree, so `ProviderCredentialMetadata`,
+`AdapterContext` and the credential-resolving `PlatformAdapter` cannot be
+imported through it. The validators prove this by inspecting both the barrel
+source and its runtime namespace.
 
 ## Current Steam-first assumptions found
 
@@ -80,11 +96,12 @@ provider, not the identity.
 
 ```
 NexusUser (id, displayName, status, roles)
-   └── LinkedPlatformAccount[]        (backend record)
-          └── LinkedPlatformAccountPublic   (desktop-facing projection)
+   └── LinkedPlatformAccount[]        (backend server record, services/auth-api/src/nexus/identity.ts)
+          └── LinkedPlatformAccountPublic   (desktop-facing projection, src/domain/nexus/identity.ts)
 ```
 
-Rules encoded in `src/domain/nexus/identity.ts`:
+Rules encoded in the backend-owned policy module
+(`services/auth-api/src/nexus/identity.ts`):
 
 - linking requires an authenticated Nexus user; there is no implicit
   "login created a link" path;
@@ -133,7 +150,11 @@ CanonicalGame "Cyberpunk 2077"
   returns a `CanonicalMatchCandidate`, a candidate-only hint type that can never
   be persisted as a shared link. Identical titles are not evidence;
 - unmapped platform games never merge. `groupOwnershipByCanonical()` keeps them
-  as separate, provider-scoped groups.
+  as separate, provider-scoped groups;
+- **normalization:** `PlatformGame` owns `provider` + `providerGameId`.
+  `UserGameOwnership` deliberately carries no `provider` field — the provider is
+  derived via the referenced `PlatformGame`, so an ownership row can never
+  disagree with its game about which provider it belongs to.
 
 This is why a unified library is a *view* over verified mappings, not a
 deduplication heuristic, and why no user action can rewrite global catalog
@@ -158,13 +179,18 @@ Three different kinds of identifier exist, and they must not be conflated:
   ids, but they are **compatibility keys, not future database primary keys**.
   A later migration assigns real internal ids.
 - `platformGameKey()` / `platformAchievementKey()` return the provider natural
-  key, not an entity id.
+  key, not an entity id, and never become duplicated authoritative state on a
+  stored entity.
 
 ## Achievement ownership
 
 - `PlatformAchievement` is a definition and belongs to a `PlatformGame`.
   Achievement sets differ per provider even for the same canonical title, so
   there is no canonical achievement concept in this phase.
+- **Provider normalization:** `PlatformAchievement` carries no `provider`
+  field. The provider identity of an achievement is derived —
+  `PlatformAchievement → PlatformGame → provider` — so an impossible state such
+  as an Xbox achievement attached to a Steam platform game is unrepresentable.
 - `UserAchievementState` is the unlock fact and belongs to a
   `LinkedPlatformAccount`. It carries no redundant `userId`; the owning Nexus
   user is derived through the linked account, so a cross-user row is
@@ -197,16 +223,20 @@ Provider Adapter (BACKEND-ONLY)
 Steam / Xbox / PlayStation APIs
 ```
 
-- `PlatformAdapter` is a **backend-owned runtime interface**. An adapter that
-  resolves provider credentials must never execute in React/Tauri.
-- Shared domain DTOs (`ProviderProfile`, sync outcomes, `SyncCounters`,
-  `DisconnectOutcome`) are reusable on both sides of the boundary.
+- `PlatformAdapter` is a **backend-owned runtime interface** and lives at
+  `services/auth-api/src/nexus/adapter.ts`. An adapter that resolves provider
+  credentials must never execute in React/Tauri — and the desktop barrel cannot
+  re-export it, which the validators prove.
 - `AdapterContext` (`nexusUserId`, `linkedAccountId`, `providerUserId`) is
   backend-only: it is how the backend resolves the linked account and any
   credential, and it is never serialised to the desktop.
+- The sync result DTOs (`ProviderProfile`, sync outcomes, `SyncCounters`,
+  `DisconnectOutcome`) are defined backend-side in Phase 1. If the desktop ever
+  needs them, genuinely safe DTOs can be hoisted into `src/domain/nexus` later;
+  nothing desktop-side imports them today.
 - The desktop receives only safe projections and results, e.g.
-  `LinkedPlatformAccountPublic` and sync outcomes. It never receives a
-  credential, a credential locator, or a credential-resolving object.
+  `LinkedPlatformAccountPublic`. It never receives a credential, a credential
+  locator, or a credential-resolving object.
 - Account linking stays provider-shaped (`AccountLinkStrategy`): Steam OpenID
   2.0 is an identity assertion with no tokens; Xbox and PlayStation linking is
   undetermined until discovery. No fake shared auth protocol.
@@ -222,13 +252,13 @@ Steam / Xbox / PlayStation APIs
   `LinkedPlatformAccountPublic` names every field that may cross to the
   desktop; `credentialRef` and `encryptionKeyId` are not part of it, and
   neither is the internal `userId` mapping.
-- `ProviderCredentialMetadata` is backend-only. The token itself lives only in
-  the server-side, encrypted credential store behind the opaque
-  `credentialRef`.
+- `ProviderCredentialMetadata` is backend-only and lives in
+  `services/auth-api/src/nexus/identity.ts`. The token itself lives only in the
+  server-side, encrypted credential store behind the opaque `credentialRef`.
 - `findRawCredentialFields()` / `assertNoRawCredentials()` remain as
-  **defense-in-depth test helpers only**. Scanning a blacklist of suspicious
-  key names is not proof that a payload contains no secret, and these helpers
-  are never treated as the primary boundary.
+  **defense-in-depth test helpers only**, backend-side. Scanning a blacklist of
+  suspicious key names is not proof that a payload contains no secret, and
+  these helpers are never treated as the primary boundary.
 - Provider access tokens, refresh tokens and provider secrets are server-side
   only, encrypted at rest, and never appear in React, frontend persistence, the
   desktop SQLite cache, source control or logs.
@@ -303,26 +333,37 @@ Each step is separately reversible and none of them is executed in this phase.
 
 ## What Phase 1 implements
 
-- `src/domain/nexus/provider.ts` — provider union, capability model, provider
-  descriptors, capability gates.
-- `src/domain/nexus/identity.ts` — `NexusUser`, `LinkedPlatformAccount`
-  (backend record), `LinkedPlatformAccountPublic` (allowlisted desktop
-  projection), `ProviderCredentialMetadata` (backend-only), linking policy,
-  disconnect plan, defense-in-depth credential scanners.
-- `src/domain/nexus/catalog.ts` — `CanonicalGame`, `PlatformGame`,
-  `UserGameOwnership` (no redundant user id), verified-only mapping rules,
+Desktop-safe shared domain (`src/domain/nexus/`):
+
+- `provider.ts` — provider union, capability model, provider descriptors,
+  capability gates.
+- `identity.ts` — `NexusUser` and the allowlisted `LinkedPlatformAccountPublic`
+  projection only. No server record, no credential types, no policy.
+- `catalog.ts` — `CanonicalGame`, `PlatformGame`, `UserGameOwnership` (no
+  redundant user id, no duplicated provider), verified-only mapping rules,
   `UserCanonicalMappingSuggestion`, `CanonicalMatchCandidate`, legacy Steam
   compatibility keys, grouping helper.
-- `src/domain/nexus/achievements.ts` — `PlatformAchievement`,
-  `UserAchievementState`, the completion truth contract, score rules, legacy
-  achievement compatibility key.
-- `src/domain/nexus/adapter.ts` — backend-owned `PlatformAdapter` contract,
-  sync outcomes, link strategies, capability-refusal helpers.
-- `src/domain/nexus/steamCompatibility.ts` — pure, inert mappings from the
-  existing Steam DTOs to the new records, using legacy keys as stand-in ids.
-- `src/domain/nexus/validation.ts` and
-  `scripts/validate-nexus-platform-foundation.mjs` — contract validators plus
-  Phase 1 boundary guards.
+- `achievements.ts` — `PlatformAchievement` (provider derived via the
+  PlatformGame), `UserAchievementState`, the completion truth contract, score
+  rules, legacy achievement compatibility key.
+- `steamCompatibility.ts` — pure, inert mappings from the existing Steam DTOs
+  to the new desktop-safe records, using legacy keys as stand-in ids.
+
+Backend-owned contracts (`services/auth-api/src/nexus/`):
+
+- `identity.ts` — `LinkedPlatformAccount` server record,
+  `ProviderCredentialMetadata`, the public-projection mapper, account
+  linking/disconnect policy, the Steam-identity linking mapper,
+  defense-in-depth credential scanners.
+- `adapter.ts` — the backend-owned `PlatformAdapter` contract,
+  `AdapterContext`, sync outcomes, link strategies, capability-refusal helpers.
+- `index.ts` — backend barrel.
+
+Validators and documentation:
+
+- `scripts/validate-nexus-platform-foundation.mjs` — domain contract assertions
+  plus structural boundary guards (barrel exposure, module location, provider
+  normalization, proposal shape).
 - `docs/architecture/MULTI_PLATFORM_ACCOUNTS.md` and
   `docs/architecture/MULTI_PLATFORM_DB_PROPOSAL.md`.
 

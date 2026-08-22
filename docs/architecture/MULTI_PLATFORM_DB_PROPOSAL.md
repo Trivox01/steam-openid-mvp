@@ -13,7 +13,8 @@ the latest being `019_desktop_session_refresh_protocol.sql`), and it would be
 applied to staging first.
 
 The SQL below is illustrative PostgreSQL, written to match the domain contracts
-in `src/domain/nexus/`. It contains no secrets and no real credentials.
+in `src/domain/nexus/` and `services/auth-api/src/nexus/`. It contains no
+secrets and no real credentials.
 
 ## Ownership summary
 
@@ -186,6 +187,11 @@ a title match can never become a stored shared link; both exist only in the
 suggestions table. Deleting a canonical game only detaches its platform rows;
 it never deletes provider data.
 
+**Provider normalization.** `platform_games` is the only table that stores a
+provider for a game. Ownership and achievement tables deliberately have no
+provider column; the provider is always derived through
+`platform_game_id → platform_games.provider`.
+
 ## Ownership
 
 ```sql
@@ -209,11 +215,13 @@ CREATE INDEX user_game_ownership_game_idx ON user_game_ownership (platform_game_
 ```
 
 The owning Nexus user is derived through `linked_account_id` →
-`linked_platform_accounts.user_id`. The normalized design was chosen over a
-redundant column plus a composite foreign key: with no separate per-row user
-column, a cross-user ownership row is structurally impossible and there is
-nothing to keep in sync on re-link. Per-user library queries join through the
-link table, which is indexed on `user_id`.
+`linked_platform_accounts.user_id`, and the provider is derived through
+`platform_game_id` → `platform_games.provider`. The normalized design was chosen
+over redundant columns plus composite foreign keys: with no separate per-row
+user or provider column, a cross-user or cross-provider ownership row is
+structurally impossible and there is nothing to keep in sync on re-link.
+Per-user library queries join through the link table, which is indexed on
+`user_id`.
 
 Ownership is keyed by linked account, not by user, so the same title owned on
 two providers produces two rows. `playtime_known` keeps "not supplied" distinct
@@ -227,7 +235,6 @@ unverified.
 CREATE TABLE platform_achievements (
   id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   platform_game_id        uuid NOT NULL REFERENCES platform_games(id) ON DELETE CASCADE,
-  provider                text NOT NULL CHECK (provider IN ('steam','xbox','playstation')),
   provider_achievement_id text NOT NULL,
   title                   text NOT NULL,
   description             text NOT NULL DEFAULT '',
@@ -268,6 +275,14 @@ differ for the same canonical title and merging them would invent data.
 `unlock_state_known` mirrors the existing Steam merge semantics: unknown is not
 locked, and the completion truth contract in the domain (exact only when every
 state is known) applies to any read model built on these tables.
+
+**Provider normalization.** `platform_achievements` has no provider column: the
+provider identity of an achievement is `platform_achievements → platform_games
+→ provider`. Because `platform_game_id` is already provider-scoped and unique
+per provider, the identity index `(platform_game_id, provider_achievement_id)`
+is sufficient — and an impossible state such as an Xbox achievement row
+pointing at a Steam platform game while claiming `provider = 'xbox'` is
+unrepresentable.
 
 ## Unlink behaviour
 
