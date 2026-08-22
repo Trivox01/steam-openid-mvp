@@ -18,15 +18,24 @@ interface SessionClaims {
 }
 
 /**
- * Phase 2A transitional dual-write hook. Receives the Nexus user that the
- * existing users.steam_id64 path already resolved. It exists to ensure an
- * additive linked_platform_accounts row and must never influence which user is
- * authenticated or what the session contains.
+ * Phase 2A transitional dual-write hook. Receives the Nexus user that identity
+ * resolution already selected. It exists only to ensure the additive Steam
+ * linked-account row and never changes what the session represents.
  */
 export type EnsureSteamLinkedAccount = (input: {
   userId: string;
   steamId64: string;
 }) => Promise<void>;
+
+/**
+ * Phase 2B optional identity-resolution hook. When absent the service executes
+ * the exact historical users.steam_id64 path. When present, the backend Nexus
+ * resolver selects the Nexus user and this class keeps all session semantics.
+ */
+export type ResolveSteamIdentity = (input: {
+  steamId64: string;
+  authenticatedAt: string;
+}) => Promise<AuthorizationUser>;
 
 export class SessionTokenService {
   private readonly secret: string;
@@ -34,33 +43,35 @@ export class SessionTokenService {
   private readonly now: () => number;
   private readonly enrichProfile?: (steamId64: string) => Promise<void>;
   private readonly ensureLinkedAccount?: EnsureSteamLinkedAccount;
+  private readonly resolveSteamIdentity?: ResolveSteamIdentity;
 
   constructor(
     secret: string,
     repository: AuthorizationRepository,
     now: () => number = Date.now,
     enrichProfile?: (steamId64: string) => Promise<void>,
-    ensureLinkedAccount?: EnsureSteamLinkedAccount
+    ensureLinkedAccount?: EnsureSteamLinkedAccount,
+    resolveSteamIdentity?: ResolveSteamIdentity
   ) {
     this.secret = secret;
     this.repository = repository;
     this.now = now;
     this.enrichProfile = enrichProfile;
     this.ensureLinkedAccount = ensureLinkedAccount;
+    this.resolveSteamIdentity = resolveSteamIdentity;
   }
 
   async issueForSteamIdentity(steamId64: string, authenticatedAt: string) {
-    const user = await this.repository.ensureAuthenticatedUser(steamId64, authenticatedAt);
+    const user = this.resolveSteamIdentity
+      ? await this.resolveSteamIdentity({ steamId64, authenticatedAt })
+      : await this.repository.ensureAuthenticatedUser(steamId64, authenticatedAt);
     // A suspended or disabled account must not get a fresh token either, otherwise
     // the login path would hand out a credential that every request then rejects.
     assertActive(user);
     await this.enrichProfile?.(steamId64).catch(() => undefined);
-    // Ordered deliberately: users.steam_id64 has already resolved the Nexus user
-    // above, and the session is issued below. This only ensures the additive
-    // linked-account row exists. It is injected (and therefore absent) unless
-    // the backend rollout flag is on, and it is non-fatal by the same rule as
-    // profile enrichment: a linked-account problem must never break a login or
-    // change what the session represents.
+    // The dual-write stays ordered after identity selection and before session
+    // issuance. It remains non-fatal: persistence rollout trouble must not turn
+    // into a login outage once the user has been authenticated safely.
     await this.ensureLinkedAccount?.({ userId: user.id, steamId64 })
       .catch(() => undefined);
     return this.issueForUser(user);
