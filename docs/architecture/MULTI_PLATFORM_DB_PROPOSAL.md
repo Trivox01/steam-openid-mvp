@@ -1,10 +1,10 @@
 # Multi-platform database proposal
 
-**Status: mixed. One table is applied; everything else is still a proposal.**
+**Status: mixed. One table is implemented as a migration; everything else is still a proposal.**
 
 | section | state |
 | --- | --- |
-| `linked_platform_accounts` | **APPLIED** in Phase 2A as `020_nexus_linked_platform_accounts.sql` |
+| `linked_platform_accounts` | **IMPLEMENTED** in Phase 2A as `020_nexus_linked_platform_accounts.sql`; pending controlled migration execution |
 | `provider_credentials` | **DEFERRED** — proposal only, until the first token-based provider |
 | `canonical_games`, `platform_games`, `user_canonical_mapping_suggestions` | proposal only. **DO NOT APPLY.** |
 | `user_game_ownership`, `platform_achievements`, `user_achievement_states` | proposal only. **DO NOT APPLY.** |
@@ -12,10 +12,11 @@
 Every SQL block below that is still a proposal is marked
 `-- PROPOSAL ONLY — DO NOT APPLY` and is deliberately kept in this document
 rather than in `services/auth-api/src/storage/postgres/migrations/`, so no
-migration runner can pick it up. The only executed migration from this document
-is migration 020, which was applied to a local/ephemeral test database by the
-integration test suite. **No production migration or deploy is part of Phase
-2A.**
+migration runner can pick it up. Migration 020 is the only executable migration
+introduced by Phase 2A. It is exercised by the PostgreSQL integration test when
+`TEST_DATABASE_URL` points at an allowed local/ephemeral database; implementing
+this branch does not itself apply the migration to staging or production.
+**No production migration or deploy is part of Phase 2A.**
 
 The SQL below is PostgreSQL, written to match the domain contracts in
 `src/domain/nexus/` and `services/auth-api/src/nexus/`. It contains no secrets
@@ -35,9 +36,9 @@ and no real credentials.
 | `platform_achievements` | catalog (shared) | never by a user action |
 | `user_achievement_states` | linked account | unlink or account deletion |
 
-## Identity: linked platform accounts — APPLIED (migration 020)
+## Identity: linked platform accounts — IMPLEMENTED (migration 020)
 
-This is the table as actually created by
+This is the table definition shipped by
 `services/auth-api/src/storage/postgres/migrations/020_nexus_linked_platform_accounts.sql`.
 It matches the Phase 1 proposal, with two deliberate differences: the primary
 key has no `gen_random_uuid()` default (ids are supplied by the application, and
@@ -49,13 +50,14 @@ CREATE TABLE IF NOT EXISTS linked_platform_accounts (
   id                uuid PRIMARY KEY,
   user_id           uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider          text NOT NULL CHECK (provider IN ('steam', 'xbox', 'playstation')),
-  provider_user_id  text NOT NULL,
+  provider_user_id  text NOT NULL
+                      CHECK (char_length(provider_user_id) BETWEEN 1 AND 128),
   display_name      text,
   avatar_url        text,
   connection_status text NOT NULL DEFAULT 'connected'
                       CHECK (connection_status IN
                         ('connected', 'reauth_required', 'revoked', 'disconnected', 'error')),
-  scopes            text[] NOT NULL DEFAULT '{}'::text[],
+  scopes            text[] NOT NULL DEFAULT '{}',
   linked_at         timestamptz NOT NULL DEFAULT now(),
   last_sync_at      timestamptz,
   last_sync_status  text CHECK (last_sync_status IN ('idle', 'success', 'partial', 'error')),
@@ -90,10 +92,10 @@ equally, that an active row can never carry a `revoked_at`. The partial unique
 indexes therefore free the slot reliably on unlink, while historical rows remain
 for audit. Re-linking creates a new row with a new id; it never resurrects a
 revoked row. Global uniqueness across all rows would make unlink irreversible,
-which is why the indexes are partial. The PostgreSQL integration test proves all
-of this at the database level: duplicate active rows are rejected with `23505`,
-inconsistent status/`revoked_at` pairs with `23514`, and an unknown provider
-with `23514`.
+which is why the indexes are partial. The PostgreSQL integration test verifies
+all of this when run against its permitted test database: duplicate active rows
+are rejected with `23505`, inconsistent status/`revoked_at` pairs with `23514`,
+and an unknown provider with `23514`.
 
 **Relation to the current schema.** `users.steam_id64` stays authoritative until
 step 4 of the migration path in `MULTI_PLATFORM_ACCOUNTS.md`; Phase 2A is step
@@ -120,20 +122,28 @@ WHERE trim(u.steam_id64) ~ '^[0-9]{17}$'
     SELECT 1 FROM linked_platform_accounts existing
     WHERE existing.user_id = u.id
       AND existing.provider = 'steam'
+      AND existing.provider_user_id = trim(u.steam_id64)
       AND existing.revoked_at IS NULL
   )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 ```
 
 Backfill behaviour, exactly as implemented:
 
-- **Deterministic.** The primary key is derived from the owning Nexus user, so a
-  replay computes the same id instead of minting a second link. Nothing depends
-  on `gen_random_uuid()` or on row order.
-- **Exactly one active Steam link per user.** The `NOT EXISTS` guard skips any
-  user that already has an active Steam link, and `ON CONFLICT DO NOTHING`
-  absorbs any remaining collision against the partial unique indexes. Running
-  the statement twice produces no second row.
+- **Deterministic and replay-safe for a correct state.** The primary key is
+  derived from the owning Nexus user, so a replay computes the same id instead
+  of minting a second link. An already-active exact
+  `(user_id, 'steam', provider_user_id)` mapping is skipped, and only the
+  deterministic primary-key conflict may be absorbed by
+  `ON CONFLICT (id) DO NOTHING`.
+- **Identity conflicts fail closed.** The guard does not skip a different active
+  Steam identity for the same Nexus user, nor the same Steam identity owned by
+  another Nexus user. Those states hit the partial unique indexes and abort the
+  backfill with `23505`; they are never silently reassigned, replaced or
+  ignored. The PostgreSQL integration test includes both conflict scenarios.
+- **Exactly one active Steam link per user.** On a consistent database, running
+  the statement twice produces no second row. The partial unique indexes remain
+  the final authority under concurrency and partial-state recovery.
 - **Only valid identities.** `trim(u.steam_id64) ~ '^[0-9]{17}$'` filters out
   anything that is not a well-formed SteamID64. `users.steam_id64` is `char(17)`
   and therefore blank-padded, so the stored `provider_user_id` is trimmed — the
@@ -177,13 +187,14 @@ CREATE TABLE provider_credentials (
 
 The relationship between a linked account and its credential exists exactly
 once, here, enforced by this `UNIQUE` foreign key. The accounts table
-deliberately has no credential column of its own — and the applied table proves
-it — so there is no duplicated reference to keep in sync. Rules: this table is
-written and read only by the backend credential service; no route, projection or
-desktop cache may select `ciphertext`; the value is encrypted at rest with a key
-referenced by `encryption_key_id`; `credential_ref` and `encryption_key_id` are
-backend-only locators and never appear in a desktop-facing projection; Steam
-creates no row here because Steam OpenID issues no credential.
+deliberately has no credential column of its own — and the implemented table
+definition proves it — so there is no duplicated reference to keep in sync.
+Rules: this table is written and read only by the backend credential service; no
+route, projection or desktop cache may select `ciphertext`; the value is
+encrypted at rest with a key referenced by `encryption_key_id`; `credential_ref`
+and `encryption_key_id` are backend-only locators and never appear in a
+desktop-facing projection; Steam creates no row here because Steam OpenID issues
+no credential.
 
 Deferring the table does not weaken the boundary: the backend-only module
 ownership, the allowlisted public projection and the credential scanners all
@@ -296,7 +307,7 @@ over redundant columns plus composite foreign keys: with no separate per-row
 user or provider column, a cross-user or cross-provider ownership row is
 structurally impossible and there is nothing to keep in sync on re-link.
 Per-user library queries join through the link table, which is indexed on
-`user_id` — that index now exists, created by migration 020.
+`user_id` — that index is defined by migration 020.
 
 Ownership is keyed by linked account, not by user, so the same title owned on
 two providers produces two rows. `playtime_known` keeps "not supplied" distinct
@@ -390,8 +401,8 @@ the link table in Phase 2B.
 
 - Account deletion cascades from `users(id)` through links, credentials,
   ownership, unlock state and mapping suggestions, so no user-scoped provider
-  data survives. The applied `ON DELETE CASCADE` on
-  `linked_platform_accounts.user_id` already guarantees this for links.
+  data survives. Migration 020 defines `ON DELETE CASCADE` on
+  `linked_platform_accounts.user_id` for links.
 - Shared catalog rows are retained; they describe games, not people.
 - Audit and sync-log rows keep identifiers and outcomes only, never provider
   profile payloads or credential material. The Phase 2A dual-write log records
