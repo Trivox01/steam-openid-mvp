@@ -136,6 +136,42 @@ for (const [, key] of [...page.matchAll(/"(gameDetails\.[A-Za-z.]+)"/g), ...row.
   assert.ok(arCopy.has(key), `${key} is used by Game Details but missing from the Arabic locale`);
 }
 
+// A number and the sign that qualifies it are one unit, and in Arabic that has
+// to be stated in the string itself. The Arabic percent sign is a bidi European
+// Terminator: beside Latin digits the algorithm folds it into the number run and
+// lays that run out left to right, so inside an RTL sentence the sign ends up on
+// the run's right edge, which is the first thing an Arabic reader reaches. Beside
+// Arabic-Indic digits the fold does not happen at all, and then the sentence
+// orders the sign instead of the number. One directional isolate answers both:
+// the pair is laid out on its own, then placed in the sentence as a single
+// neutral atom. It is an isolate rather than a legacy embedding or an override,
+// so the Arabic words around it keep their own resolved direction. English is an
+// LTR sentence that already orders a number and its sign correctly, so a control
+// character there would be noise. These assertions are deliberately keyed to
+// this one value: a blanket "every Arabic percent must be isolated" rule would
+// fail on unrelated copy such as rareDescription and globalPercent.
+const arCompletionValue = arCopy.get("gameDetails.completionValue") ?? "";
+assert.match(
+  arCompletionValue,
+  /\\u2066\{\{percent\}\}\u066A\\u2069/,
+  "the Arabic completion value keeps the number and its percent sign inside one directional isolate"
+);
+assert.doesNotMatch(
+  arCompletionValue,
+  /\\u202[a-eA-E]/,
+  "the numeric unit is isolated, never force-ordered by a legacy embedding or override control"
+);
+assert.doesNotMatch(
+  enCopy.get("gameDetails.completionValue") ?? "",
+  /\\u2066|\\u2069/,
+  "English needs no isolate, so the Arabic fix must not leak into the LTR copy"
+);
+assert.match(
+  page,
+  /t\("gameDetails\.completionValue", \{ percent: number\.format\(summary\.completion \?\? 0\) \}\)/,
+  "the bidi fix belongs to the copy: the page still renders the same formatted completion number"
+);
+
 // Nothing may be presented as more certain than it is.
 assert.match(page, /calculateAchievementSummary/);
 assert.match(page, /unknownUnlockStates > 0/);
