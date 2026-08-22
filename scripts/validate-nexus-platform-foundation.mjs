@@ -641,13 +641,18 @@ assert.match(
 );
 assert.match(
   linkedAccountsMigration,
-  /NOT EXISTS[\s\S]*revoked_at IS NULL/,
-  "the backfill must be guarded so it can never create a second active Steam link"
+  /NOT EXISTS[\s\S]*existing\.user_id = u\.id[\s\S]*existing\.provider = 'steam'[\s\S]*existing\.provider_user_id = trim\(u\.steam_id64\)[\s\S]*existing\.revoked_at IS NULL/,
+  "the backfill must skip only an already-active exact Steam mapping"
 );
 assert.match(
   linkedAccountsMigration,
+  /ON CONFLICT \(id\) DO NOTHING/,
+  "replay safety may suppress only the deterministic primary-key conflict"
+);
+assert.doesNotMatch(
+  linkedAccountsMigration,
   /ON CONFLICT DO NOTHING/,
-  "the backfill must be replay-safe"
+  "provider/user uniqueness conflicts must remain fail-closed"
 );
 
 // F. Phase 2A persistence is backend-owned, flag-gated and route-free.
