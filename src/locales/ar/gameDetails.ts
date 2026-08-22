@@ -14,7 +14,11 @@ export const gameDetails = {
   "gameDetails.progressOverview": "نظرة عامة على التقدم",
   "gameDetails.progressDescription": "تابع مدى اقترابك من إكمال هذه اللعبة.",
   "gameDetails.completion": "الإكمال",
-  "gameDetails.completionValue": "أكملت {{percent}}٪",
+  // الرقم وعلامة النسبة وحدة واحدة. محرفا العزل الاتجاهي (LRI قبل الوحدة وPDI
+  // بعدها) يثبّتان ترتيب «الرقم ثم العلامة» داخل الجملة العربية مع أي نظام
+  // أرقام. عزل لا تجاوز: بقية الجملة تحتفظ باتجاهها. حذفهما يعيد العلامة إلى
+  // يمين الرقم فتُقرأ قبله.
+  "gameDetails.completionValue": "أكملت \u2066{{percent}}٪\u2069",
   "gameDetails.completionPartial": "نسبة الإكمال غير دقيقة بعد",
   "gameDetails.unlockedOfTotal": "{{unlocked}} من {{total}} مفتوح",
   "gameDetails.lockedCount": "{{count}} مقفل",
