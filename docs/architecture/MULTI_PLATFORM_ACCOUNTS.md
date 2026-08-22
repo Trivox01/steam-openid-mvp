@@ -179,6 +179,10 @@ Steam OpenID verification      (unchanged)
   `USER_ALREADY_LINKED_TO_ANOTHER_PROVIDER_IDENTITY`. The existing link is never
   replaced.
 - A malformed Steam ID → `INVALID_PROVIDER_IDENTITY`, rejected before any write.
+- Migration backfill follows the same fail-closed rule: only an already-active
+  exact `(user_id, steam, provider_user_id)` mapping is skipped. A mismatched
+  active provider identity is left to the partial unique indexes and aborts the
+  migration instead of being silently absorbed.
 
 The hook is wired non-fatally: a conflict is logged as an operational signal
 (event, provider and error code only — never a user id or a Steam ID) and never
@@ -216,10 +220,12 @@ frontend flag, and the validators fail if the name ever appears in `src/`.
   loses only derived data, because every value in it is reconstructible from
   `users.steam_id64` by re-running the backfill. That is the whole point of
   keeping `users.steam_id64` authoritative until Phase 2B.
-- *Replay.* Re-running the migration is safe: the table uses
-  `CREATE TABLE IF NOT EXISTS`, the backfill derives a deterministic primary key
-  per user, is guarded by `NOT EXISTS` against an existing active Steam link,
-  and ends with `ON CONFLICT DO NOTHING`.
+- *Replay.* Re-running the migration is safe for an already-correct state: the
+  table uses `CREATE TABLE IF NOT EXISTS`, the backfill derives a deterministic
+  primary key per user, skips an already-active exact Steam mapping, and uses
+  `ON CONFLICT (id) DO NOTHING` only for that deterministic primary-key replay.
+  Conflicts on `(provider, provider_user_id)` or `(user_id, provider)` remain
+  fail-closed and stop the migration.
 
 **Explicitly out of scope for Phase 2A:** identity resolution via
 `linked_platform_accounts` (that is Phase 2B), the provider credential store,
