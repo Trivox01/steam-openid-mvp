@@ -21,11 +21,12 @@ for (const key of [
 }
 assert.match(backendClient, /GetSchemaForGame\/v2/);
 assert.match(backendClient, /GetPlayerAchievements\/v1/);
-assert.match(desktopClient, /authorization: `Bearer \$\{session\.token\}`/);
+assert.match(desktopClient, /this\.sessions\.authenticatedFetch\(/);
+assert.doesNotMatch(desktopClient, /authorization\s*:/i);
 assert.doesNotMatch(desktopClient, /api\.steampowered\.com/);
 assert.match(service, /stage:\s*"steam"\s*\|\s*"sqlite"/);
 assert.match(service, /stage === "sqlite" \? "database" : "request"/);
 assert.match(service, /httpStatus/);
 assert.doesNotMatch(service, /apiKey|pollSecret|sessionToken/);
 
-console.log(`Steam achievement validation passed (${assertions + 18} assertions).`);
+console.log(`Steam achievement validation passed (${assertions + 19} assertions).`);
