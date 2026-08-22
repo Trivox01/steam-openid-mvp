@@ -47,11 +47,19 @@ export type SteamIdentityResolutionResult = {
 };
 
 export class NexusSteamIdentityResolver {
+  private readonly authorizationRepository: AuthorizationRepository;
+  private readonly linkedAccountRepository: LinkedAccountRepository;
+  private readonly mode: NexusSteamIdentityResolutionMode;
+
   constructor(
-    private readonly authorizationRepository: AuthorizationRepository,
-    private readonly linkedAccountRepository: LinkedAccountRepository,
-    private readonly mode: NexusSteamIdentityResolutionMode
-  ) {}
+    authorizationRepository: AuthorizationRepository,
+    linkedAccountRepository: LinkedAccountRepository,
+    mode: NexusSteamIdentityResolutionMode
+  ) {
+    this.authorizationRepository = authorizationRepository;
+    this.linkedAccountRepository = linkedAccountRepository;
+    this.mode = mode;
+  }
 
   async resolve(input: {
     steamId64: string;
