@@ -1,20 +1,26 @@
 # Multi-platform database proposal
 
-**Status: proposal. DO NOT APPLY.**
+**Status: mixed. One table is implemented as a migration; everything else is still a proposal.**
 
-This file is deliberately a document, not a migration. It is not placed in
-`services/auth-api/src/storage/postgres/migrations/`, so no migration runner can
-pick it up. Nothing here has been executed against any environment, and no
-production migration is part of Phase 1.
+| section | state |
+| --- | --- |
+| `linked_platform_accounts` | **IMPLEMENTED** in Phase 2A as `020_nexus_linked_platform_accounts.sql`; pending controlled migration execution |
+| `provider_credentials` | **DEFERRED** — proposal only, until the first token-based provider |
+| `canonical_games`, `platform_games`, `user_canonical_mapping_suggestions` | proposal only. **DO NOT APPLY.** |
+| `user_game_ownership`, `platform_achievements`, `user_achievement_states` | proposal only. **DO NOT APPLY.** |
 
-When a later phase decides to implement it, the first file would land as
-`020_nexus_multi_platform_foundation.sql` (migrations `001`–`019` already exist,
-the latest being `019_desktop_session_refresh_protocol.sql`), and it would be
-applied to staging first.
+Every SQL block below that is still a proposal is marked
+`-- PROPOSAL ONLY — DO NOT APPLY` and is deliberately kept in this document
+rather than in `services/auth-api/src/storage/postgres/migrations/`, so no
+migration runner can pick it up. Migration 020 is the only executable migration
+introduced by Phase 2A. It is exercised by the PostgreSQL integration test when
+`TEST_DATABASE_URL` points at an allowed local/ephemeral database; implementing
+this branch does not itself apply the migration to staging or production.
+**No production migration or deploy is part of Phase 2A.**
 
-The SQL below is illustrative PostgreSQL, written to match the domain contracts
-in `src/domain/nexus/` and `services/auth-api/src/nexus/`. It contains no
-secrets and no real credentials.
+The SQL below is PostgreSQL, written to match the domain contracts in
+`src/domain/nexus/` and `services/auth-api/src/nexus/`. It contains no secrets
+and no real credentials.
 
 ## Ownership summary
 
@@ -30,64 +36,139 @@ secrets and no real credentials.
 | `platform_achievements` | catalog (shared) | never by a user action |
 | `user_achievement_states` | linked account | unlink or account deletion |
 
-## Identity: linked platform accounts
+## Identity: linked platform accounts — IMPLEMENTED (migration 020)
+
+This is the table definition shipped by
+`services/auth-api/src/storage/postgres/migrations/020_nexus_linked_platform_accounts.sql`.
+It matches the Phase 1 proposal, with two deliberate differences: the primary
+key has no `gen_random_uuid()` default (ids are supplied by the application, and
+by the deterministic backfill, so the `pgcrypto` extension is not required), and
+the constraint is named after the table.
 
 ```sql
--- PROPOSAL ONLY — DO NOT APPLY
-CREATE TABLE linked_platform_accounts (
-  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE IF NOT EXISTS linked_platform_accounts (
+  id                uuid PRIMARY KEY,
   user_id           uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider          text NOT NULL CHECK (provider IN ('steam','xbox','playstation')),
-  provider_user_id  text NOT NULL,
+  provider          text NOT NULL CHECK (provider IN ('steam', 'xbox', 'playstation')),
+  provider_user_id  text NOT NULL
+                      CHECK (char_length(provider_user_id) BETWEEN 1 AND 128),
   display_name      text,
   avatar_url        text,
   connection_status text NOT NULL DEFAULT 'connected'
                       CHECK (connection_status IN
-                        ('connected','reauth_required','revoked','disconnected','error')),
+                        ('connected', 'reauth_required', 'revoked', 'disconnected', 'error')),
   scopes            text[] NOT NULL DEFAULT '{}',
   linked_at         timestamptz NOT NULL DEFAULT now(),
   last_sync_at      timestamptz,
-  last_sync_status  text CHECK (last_sync_status IN ('idle','success','partial','error')),
+  last_sync_status  text CHECK (last_sync_status IN ('idle', 'success', 'partial', 'error')),
   revoked_at        timestamptz,
-  -- A terminal status always carries revoked_at, and a row with revoked_at is
-  -- always in a terminal status, so the partial unique indexes below free the
-  -- uniqueness slot exactly when a link ends. Both columns are written in the
-  -- same transaction by the unlink flow.
-  CONSTRAINT linked_accounts_revocation_consistency CHECK (
-    (connection_status IN ('revoked','disconnected')) = (revoked_at IS NOT NULL)
+  CONSTRAINT linked_platform_accounts_revocation_consistency CHECK (
+    (connection_status IN ('revoked', 'disconnected')) = (revoked_at IS NOT NULL)
   )
 );
 
 -- One provider identity belongs to at most one Nexus account at a time.
-CREATE UNIQUE INDEX linked_accounts_provider_identity_uniq
+CREATE UNIQUE INDEX IF NOT EXISTS linked_accounts_provider_identity_uniq
   ON linked_platform_accounts (provider, provider_user_id)
   WHERE revoked_at IS NULL;
 
 -- One Nexus account holds at most one active link per provider (V1 rule).
-CREATE UNIQUE INDEX linked_accounts_one_per_provider_uniq
+CREATE UNIQUE INDEX IF NOT EXISTS linked_accounts_one_per_provider_uniq
   ON linked_platform_accounts (user_id, provider)
   WHERE revoked_at IS NULL;
 
-CREATE INDEX linked_accounts_user_idx ON linked_platform_accounts (user_id);
+CREATE INDEX IF NOT EXISTS linked_accounts_user_idx
+  ON linked_platform_accounts (user_id);
 ```
 
-**provider / providerUserId uniqueness semantics.** `revoked_at IS NULL` is the
-single source of truth for "active", and the CHECK constraint guarantees a
-`revoked`/`disconnected` status always comes with `revoked_at` set. The partial
-unique indexes therefore free the slot reliably on unlink, while historical rows
-remain for audit. Re-linking creates a new row with a new id; it never
-resurrects a revoked row. Global uniqueness across all rows would make unlink
-irreversible, which is why the indexes are partial.
+There is deliberately **no credential column here**, and none is added by this
+migration. The integration test asserts the exact column list and fails if a
+credential-shaped column ever appears.
+
+**provider / provider_user_id uniqueness semantics.** `revoked_at IS NULL` is
+the single source of truth for "active", and the CHECK constraint guarantees a
+`revoked`/`disconnected` status always comes with `revoked_at` set — and,
+equally, that an active row can never carry a `revoked_at`. The partial unique
+indexes therefore free the slot reliably on unlink, while historical rows remain
+for audit. Re-linking creates a new row with a new id; it never resurrects a
+revoked row. Global uniqueness across all rows would make unlink irreversible,
+which is why the indexes are partial. The PostgreSQL integration test verifies
+all of this when run against its permitted test database: duplicate active rows
+are rejected with `23505`, inconsistent status/`revoked_at` pairs with `23514`,
+and an unknown provider with `23514`.
 
 **Relation to the current schema.** `users.steam_id64` stays authoritative until
-step 4 of the migration path in `MULTI_PLATFORM_ACCOUNTS.md`. During the dual
-window, every existing user is backfilled as exactly one `steam` row here.
-Sessions (`017_persistent_desktop_sessions.sql`) need no change because they
-already reference `users(id)`, not the Steam identity. RBAC tables
-(`user_roles`, `user_permission_overrides`) likewise stay attached to the Nexus
-user.
+step 4 of the migration path in `MULTI_PLATFORM_ACCOUNTS.md`; Phase 2A is step
+2, and Phase 2B (the identity-resolution flip) is step 3 and is **not** part of
+this phase. During the dual window, every existing user is backfilled as exactly
+one `steam` row here. Sessions (`017_persistent_desktop_sessions.sql`) need no
+change because they already reference `users(id)`, not the Steam identity. RBAC
+tables (`user_roles`, `user_permission_overrides`) likewise stay attached to the
+Nexus user, and migration 020 does not touch them.
 
-## Credentials
+## Backfill of existing Steam users (migration 020)
+
+```sql
+INSERT INTO linked_platform_accounts
+  (id, user_id, provider, provider_user_id, display_name, avatar_url,
+   connection_status, scopes, linked_at)
+SELECT
+  (md5('nexus:linked-platform-account:steam:' || u.id::text))::uuid,
+  u.id, 'steam', trim(u.steam_id64), u.steam_nickname, u.avatar_url,
+  'connected', '{}'::text[], u.created_at
+FROM users u
+WHERE trim(u.steam_id64) ~ '^[0-9]{17}$'
+  AND NOT EXISTS (
+    SELECT 1 FROM linked_platform_accounts existing
+    WHERE existing.user_id = u.id
+      AND existing.provider = 'steam'
+      AND existing.provider_user_id = trim(u.steam_id64)
+      AND existing.revoked_at IS NULL
+  )
+ON CONFLICT (id) DO NOTHING;
+```
+
+Backfill behaviour, exactly as implemented:
+
+- **Deterministic and replay-safe for a correct state.** The primary key is
+  derived from the owning Nexus user, so a replay computes the same id instead
+  of minting a second link. An already-active exact
+  `(user_id, 'steam', provider_user_id)` mapping is skipped, and only the
+  deterministic primary-key conflict may be absorbed by
+  `ON CONFLICT (id) DO NOTHING`.
+- **Identity conflicts fail closed.** The guard does not skip a different active
+  Steam identity for the same Nexus user, nor the same Steam identity owned by
+  another Nexus user. Those states hit the partial unique indexes and abort the
+  backfill with `23505`; they are never silently reassigned, replaced or
+  ignored. The PostgreSQL integration test includes both conflict scenarios.
+- **Exactly one active Steam link per user.** On a consistent database, running
+  the statement twice produces no second row. The partial unique indexes remain
+  the final authority under concurrency and partial-state recovery.
+- **Only valid identities.** `trim(u.steam_id64) ~ '^[0-9]{17}$'` filters out
+  anything that is not a well-formed SteamID64. `users.steam_id64` is `char(17)`
+  and therefore blank-padded, so the stored `provider_user_id` is trimmed — the
+  link stores the identity, not the padding.
+- **No invented values.** `display_name` and `avatar_url` are copied from
+  `users.steam_nickname` / `users.avatar_url` when present and left `NULL`
+  otherwise. `last_sync_at` and `last_sync_status` stay `NULL` because no sync
+  has run against the link. `scopes` is the empty array: Steam OpenID grants
+  none.
+- **`linked_at` is honest.** It is set to `users.created_at`, the moment the
+  Steam identity actually became known to the product, rather than the time the
+  migration happened to run.
+- **No user reassignment, no rewriting.** The statement only ever inserts into
+  the new table. It contains no `UPDATE users`, no `DELETE FROM users`, no
+  `ALTER TABLE users` and no `DROP`, so `users.steam_id64` is preserved
+  byte-for-byte and sessions and RBAC are untouched. The integration test
+  snapshots every user row before and after and asserts equality.
+
+## Credentials — DEFERRED
+
+Not implemented in Phase 2A and not created by migration 020. Steam OpenID 2.0
+is an identity assertion and issues no access or refresh token, so a Steam link
+has no credential to store. This table lands in the phase that introduces the
+first token-based provider, together with that provider's real key-management,
+expiry and revocation requirements.
 
 ```sql
 -- PROPOSAL ONLY — DO NOT APPLY
@@ -106,13 +187,18 @@ CREATE TABLE provider_credentials (
 
 The relationship between a linked account and its credential exists exactly
 once, here, enforced by this `UNIQUE` foreign key. The accounts table
-deliberately has no credential column of its own, so there is no duplicated
-reference to keep in sync. Rules: this table is written and read only by the
-backend credential service; no route, projection or desktop cache may select
-`ciphertext`; the value is encrypted at rest with a key referenced by
-`encryption_key_id`; `credential_ref` and `encryption_key_id` are backend-only
-locators and never appear in a desktop-facing projection; Steam creates no row
-here because Steam OpenID issues no credential.
+deliberately has no credential column of its own — and the implemented table
+definition proves it — so there is no duplicated reference to keep in sync.
+Rules: this table is written and read only by the backend credential service; no
+route, projection or desktop cache may select `ciphertext`; the value is
+encrypted at rest with a key referenced by `encryption_key_id`; `credential_ref`
+and `encryption_key_id` are backend-only locators and never appear in a
+desktop-facing projection; Steam creates no row here because Steam OpenID issues
+no credential.
+
+Deferring the table does not weaken the boundary: the backend-only module
+ownership, the allowlisted public projection and the credential scanners all
+remain in force, so the boundary is already in place when the store arrives.
 
 ## Catalog: canonical and platform games
 
@@ -221,7 +307,7 @@ over redundant columns plus composite foreign keys: with no separate per-row
 user or provider column, a cross-user or cross-provider ownership row is
 structurally impossible and there is nothing to keep in sync on re-link.
 Per-user library queries join through the link table, which is indexed on
-`user_id`.
+`user_id` — that index is defined by migration 020.
 
 Ownership is keyed by linked account, not by user, so the same title owned on
 two providers produces two rows. `playtime_known` keeps "not supplied" distinct
@@ -290,7 +376,8 @@ Unlinking one provider from a Nexus account:
 
 1. revoke the provider credential when the provider supports revocation, then
    delete the `provider_credentials` row (`planDisconnect()` returns
-   `revoke_then_delete`, `delete_only` or `not_applicable`);
+   `revoke_then_delete`, `delete_only` or `not_applicable`). For Steam this step
+   is `not_applicable` and there is no credential row to remove;
 2. delete `user_achievement_states` and `user_game_ownership` rows for that
    `linked_account_id`;
 3. in one transaction, set `connection_status = 'disconnected'` (or
@@ -305,14 +392,22 @@ Unlinking one provider from a Nexus account:
 Unlinking the last provider is allowed. The Nexus account survives with no
 linked accounts, which is exactly why the account cannot be the Steam row.
 
+Note for Phase 2A: no unlink route exists yet. While `users.steam_id64` is still
+the login authority, revoking a Steam link would be re-created on the next login
+by the dual-write. Unlink becomes meaningful once identity resolution moves to
+the link table in Phase 2B.
+
 ## Deletion and privacy behaviour
 
 - Account deletion cascades from `users(id)` through links, credentials,
   ownership, unlock state and mapping suggestions, so no user-scoped provider
-  data survives.
+  data survives. Migration 020 defines `ON DELETE CASCADE` on
+  `linked_platform_accounts.user_id` for links.
 - Shared catalog rows are retained; they describe games, not people.
 - Audit and sync-log rows keep identifiers and outcomes only, never provider
-  profile payloads or credential material.
+  profile payloads or credential material. The Phase 2A dual-write log records
+  the event, the provider and a sanitised error code — never a Steam ID, user
+  id or link id.
 - The desktop SQLite cache stores non-sensitive projections and is cleared for
   a provider on unlink; it never receives credentials or credential locators.
 - Provider profile fields (`display_name`, `avatar_url`) are refreshed from the

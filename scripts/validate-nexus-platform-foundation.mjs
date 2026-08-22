@@ -459,7 +459,10 @@ for (const forbidden of [
   "evaluateAccountLink",
   "planDisconnect",
   "findRawCredentialFields",
-  "assertNoRawCredentials"
+  "assertNoRawCredentials",
+  "LinkedPlatformAccountRecord",
+  "LinkedAccountRepository",
+  "NexusLinkedAccountService"
 ]) {
   assert.ok(
     !barrelSource.includes(forbidden),
@@ -475,7 +478,10 @@ for (const forbiddenValue of [
   "unsupportedLibrarySync",
   "unsupportedAchievementSync",
   "emptyCounters",
-  "linkedAccountFromSteamIdentity"
+  "linkedAccountFromSteamIdentity",
+  "InMemoryLinkedAccountRepository",
+  "PostgresLinkedAccountRepository",
+  "LinkedAccountConflictError"
 ]) {
   assert.ok(
     !(forbiddenValue in desktopBarrel),
@@ -514,7 +520,9 @@ for (const file of domainFiles) {
     "AdapterContext",
     "toPublicLinkedAccount",
     "evaluateAccountLink",
-    "planDisconnect"
+    "planDisconnect",
+    "LinkedAccountRepository",
+    "NexusLinkedAccountService"
   ]) {
     assert.ok(!source.includes(forbidden), `${file} must not reference backend-only ${forbidden}`);
   }
@@ -541,7 +549,7 @@ for (const marker of ["export interface PlatformAdapter", "export type AdapterCo
   assert.ok(backendAdapter.includes(marker), `backend adapter module must define ${marker}`);
 }
 
-// D. Phase 1 stays design-only: SuperTokens is documented, not installed.
+// D. SuperTokens stays documented, not installed.
 for (const manifest of ["package.json", "services/auth-api/package.json"]) {
   assert.doesNotMatch(
     fs.readFileSync(manifest, "utf8"),
@@ -550,15 +558,19 @@ for (const manifest of ["package.json", "services/auth-api/package.json"]) {
   );
 }
 
-// E. No multi-platform migration may exist yet; the schema stays a proposal.
+// E. Phase 2A applies the linked-account table only. Catalog and credential
+// tables stay proposals. Comments legitimately discuss the deferred tables, so
+// only executable SQL is inspected.
 const migrationsDir = "services/auth-api/src/storage/postgres/migrations";
 const migrations = fs.readdirSync(migrationsDir).filter((name) => name.endsWith(".sql"));
 assert.ok(migrations.length > 0, "existing migrations must remain in place");
-const migrationSql = migrations
+const executableMigrationSql = migrations
   .map((name) => fs.readFileSync(path.join(migrationsDir, name), "utf8"))
+  .join("\n")
+  .split("\n")
+  .filter((line) => !line.trim().startsWith("--"))
   .join("\n");
 for (const table of [
-  "linked_platform_accounts",
   "provider_credentials",
   "canonical_games",
   "platform_games",
@@ -568,17 +580,171 @@ for (const table of [
   "user_canonical_mapping_suggestions"
 ]) {
   assert.doesNotMatch(
-    migrationSql,
+    executableMigrationSql,
     new RegExp(table),
     `${table} must stay a proposal until a later phase applies it`
   );
 }
 assert.ok(
   !fs.existsSync(path.join(migrationsDir, "020_nexus_multi_platform_foundation.sql")),
-  "the proposed migration must not be added to the migrations directory"
+  "the full catalog migration must not be added to the migrations directory"
 );
 
-// F. Existing Steam-first surfaces are untouched by this phase.
+const linkedAccountsMigrationName = "020_nexus_linked_platform_accounts.sql";
+assert.ok(
+  migrations.includes(linkedAccountsMigrationName),
+  "Phase 2A must ship the linked_platform_accounts migration"
+);
+const linkedAccountsMigration = fs.readFileSync(
+  path.join(migrationsDir, linkedAccountsMigrationName),
+  "utf8"
+);
+for (const fragment of [
+  "CREATE TABLE IF NOT EXISTS linked_platform_accounts",
+  "REFERENCES users(id) ON DELETE CASCADE",
+  "CHECK (provider IN ('steam', 'xbox', 'playstation'))",
+  "linked_platform_accounts_revocation_consistency",
+  "linked_accounts_provider_identity_uniq",
+  "linked_accounts_one_per_provider_uniq",
+  "WHERE revoked_at IS NULL"
+]) {
+  assert.ok(
+    linkedAccountsMigration.includes(fragment),
+    `migration 020 must contain: ${fragment}`
+  );
+}
+// Both active-uniqueness slots must be partial on the same predicate, so ending
+// a link reliably frees them.
+assert.equal(
+  [...linkedAccountsMigration.matchAll(/WHERE revoked_at IS NULL/g)].length >= 2,
+  true,
+  "both unique indexes must be partial on revoked_at IS NULL"
+);
+// The migration is additive: it must never rewrite the authoritative identity.
+for (const forbidden of [
+  /DELETE\s+FROM\s+users/i,
+  /UPDATE\s+users\b/i,
+  /ALTER\s+TABLE\s+users\b/i,
+  /DROP\s+(TABLE|COLUMN|CONSTRAINT|INDEX)/i,
+  /credential_ref|access_token|refresh_token|encryption_key/i
+]) {
+  assert.doesNotMatch(
+    linkedAccountsMigration,
+    forbidden,
+    `migration 020 must not contain ${forbidden}`
+  );
+}
+assert.match(
+  linkedAccountsMigration,
+  /INSERT INTO linked_platform_accounts[\s\S]*FROM users u/,
+  "migration 020 must backfill existing Steam users"
+);
+assert.match(
+  linkedAccountsMigration,
+  /NOT EXISTS[\s\S]*existing\.user_id = u\.id[\s\S]*existing\.provider = 'steam'[\s\S]*existing\.provider_user_id = trim\(u\.steam_id64\)[\s\S]*existing\.revoked_at IS NULL/,
+  "the backfill must skip only an already-active exact Steam mapping"
+);
+assert.match(
+  linkedAccountsMigration,
+  /ON CONFLICT \(id\) DO NOTHING/,
+  "replay safety may suppress only the deterministic primary-key conflict"
+);
+assert.doesNotMatch(
+  linkedAccountsMigration,
+  /ON CONFLICT DO NOTHING/,
+  "provider/user uniqueness conflicts must remain fail-closed"
+);
+
+// F. Phase 2A persistence is backend-owned, flag-gated and route-free.
+for (const file of ["linkedAccountRepository.ts", "linkedAccountService.ts"]) {
+  assert.ok(
+    fs.existsSync(path.join(backendDir, file)),
+    `Phase 2A backend module missing: services/auth-api/src/nexus/${file}`
+  );
+}
+const backendNexusBarrel = fs.readFileSync(path.join(backendDir, "index.ts"), "utf8");
+for (const moduleName of ["./linkedAccountRepository.ts", "./linkedAccountService.ts"]) {
+  assert.ok(
+    backendNexusBarrel.includes(moduleName),
+    `the backend Nexus barrel must export ${moduleName}`
+  );
+}
+const repositorySource = fs.readFileSync(path.join(backendDir, "linkedAccountRepository.ts"), "utf8");
+for (const marker of [
+  "export interface LinkedAccountRepository",
+  "export class InMemoryLinkedAccountRepository",
+  "export class PostgresLinkedAccountRepository",
+  "export class LinkedAccountUniqueViolation",
+  "findActiveByProviderIdentity",
+  "findActiveByUserAndProvider"
+]) {
+  assert.ok(repositorySource.includes(marker), `the linked-account repository must define ${marker}`);
+}
+assert.doesNotMatch(
+  repositorySource,
+  /credential_ref|access_token|refresh_token/i,
+  "Phase 2A persistence must store no credential material"
+);
+const serviceSource = fs.readFileSync(path.join(backendDir, "linkedAccountService.ts"), "utf8");
+for (const marker of [
+  "export class NexusLinkedAccountService",
+  "ensureSteamLinkedAccount",
+  "PROVIDER_IDENTITY_OWNED_BY_ANOTHER_USER",
+  "USER_ALREADY_LINKED_TO_ANOTHER_PROVIDER_IDENTITY"
+]) {
+  assert.ok(serviceSource.includes(marker), `the linked-account service must define ${marker}`);
+}
+
+const configSource = fs.readFileSync("services/auth-api/src/config.ts", "utf8");
+assert.ok(
+  configSource.includes("NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED"),
+  "the backend rollout flag must be read from the environment"
+);
+assert.ok(
+  configSource.includes("nexusLinkedAccountsDualWriteEnabled?: boolean"),
+  "the rollout flag must be optional so an unset environment keeps current behaviour"
+);
+const sessionSource = fs.readFileSync(
+  "services/auth-api/src/authorization/sessionTokenService.ts",
+  "utf8"
+);
+assert.match(
+  sessionSource,
+  /ensureAuthenticatedUser[\s\S]*ensureLinkedAccount[\s\S]*issueForUser\(user\)/,
+  "the linked-account write must run after Nexus user resolution and before session issuance"
+);
+assert.ok(
+  sessionSource.includes("ensureLinkedAccount?: EnsureSteamLinkedAccount"),
+  "the dual-write hook must stay optional so the flag can disable it entirely"
+);
+assert.doesNotMatch(
+  fs.readFileSync("services/auth-api/src/router.ts", "utf8"),
+  /linked[-_]?(platform[-_]?)?account/i,
+  "Phase 2A must not expose a desktop or public linked-account route"
+);
+
+// G. The rollout flag is backend-only: the desktop app must never see it.
+function walkSourceFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return walkSourceFiles(full);
+    return /\.(ts|tsx)$/.test(entry.name) ? [full] : [];
+  });
+}
+for (const file of walkSourceFiles("src")) {
+  const source = fs.readFileSync(file, "utf8");
+  assert.ok(
+    !source.includes("NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED"),
+    `${file} must not carry the backend-only rollout flag`
+  );
+  assert.doesNotMatch(
+    source,
+    /services\/auth-api\/src\/nexus\/linkedAccount/,
+    `${file} must not import the backend linked-account persistence layer`
+  );
+}
+
+// H. Existing Steam-first surfaces are untouched by this phase.
 for (const kept of [
   "src/services/platform/PlatformProvider.ts",
   "src/services/platform/SteamProvider.ts",
@@ -595,7 +761,7 @@ assert.match(
   "the existing frontend Platform union must remain unchanged"
 );
 
-// G. The architecture documentation covers every required topic.
+// I. The architecture documentation covers every required topic.
 const architectureDoc = fs.readFileSync("docs/architecture/MULTI_PLATFORM_ACCOUNTS.md", "utf8");
 for (const topic of [
   "Why the Nexus account is independent from Steam",
@@ -612,14 +778,17 @@ for (const topic of [
   "Provider-neutral onboarding",
   "What Phase 1 implements",
   "What later phases defer",
-  "services/auth-api/src/nexus"
+  "services/auth-api/src/nexus",
+  "Phase 2A",
+  "NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED",
+  "Rollout sequence",
+  "Rollback behaviour"
 ]) {
   assert.ok(architectureDoc.includes(topic), `the architecture document must cover: ${topic}`);
 }
 
-// H. The database proposal keeps the normalized, backend-safe shape.
+// J. The database proposal keeps the normalized, backend-safe shape.
 const dbProposal = fs.readFileSync("docs/architecture/MULTI_PLATFORM_DB_PROPOSAL.md", "utf8");
-assert.match(dbProposal, /DO NOT APPLY/, "the schema must be marked as not applied");
 for (const topic of [
   "PRIMARY KEY",
   "REFERENCES",
@@ -628,10 +797,14 @@ for (const topic of [
   "Unlink behaviour",
   "Deletion and privacy behaviour",
   "connection_status",
-  "revoked_at"
+  "revoked_at",
+  "020_nexus_linked_platform_accounts.sql",
+  "Backfill"
 ]) {
   assert.ok(dbProposal.includes(topic), `the database proposal must document: ${topic}`);
 }
+// linked_platform_accounts is applied now; everything else stays unapplied.
+assert.match(dbProposal, /DO NOT APPLY/, "the unapplied part of the schema must stay marked");
 
 const ownershipTable = dbProposal.match(/CREATE TABLE user_game_ownership \(([\s\S]*?)\);/);
 assert.ok(ownershipTable, "user_game_ownership must be defined in the proposal");
@@ -650,10 +823,11 @@ assert.doesNotMatch(
   "platform_achievements must derive the provider via platform_games, not a duplicated column"
 );
 
-const linksTable = dbProposal.match(/CREATE TABLE linked_platform_accounts \(([\s\S]*?)\);/);
-assert.ok(linksTable, "linked_platform_accounts must be defined in the proposal");
-assert.doesNotMatch(linksTable[1], /credential_ref/, "linked_platform_accounts must not duplicate credential_ref");
+const linksTable = dbProposal.match(/CREATE TABLE( IF NOT EXISTS)? linked_platform_accounts \(([\s\S]*?)\);/);
+assert.ok(linksTable, "linked_platform_accounts must be documented in the proposal");
+assert.doesNotMatch(linksTable[2], /credential_ref/, "linked_platform_accounts must not duplicate credential_ref");
 
 console.log(
-  `Nexus multi-platform foundation validation passed (${assertions} domain assertions, ${domainFiles.length} desktop modules, backend nexus contracts present).`
+  `Nexus platform validation passed (${assertions} domain assertions, ${domainFiles.length} desktop modules, ` +
+    "backend Nexus contracts present, Phase 2A linked-account persistence backend-only and flag-gated)."
 );
