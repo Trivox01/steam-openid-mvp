@@ -5,9 +5,27 @@ export const gameDetails = {
   "gameDetails.lastPlayed": "آخر تشغيل {{date}}",
   "gameDetails.neverPlayed": "لم تُلعب بعد",
   "gameDetails.favorite": "مفضلة",
+  // المعرّف رقم تقني يُعزل وحده (LRI قبله وPDI بعده) داخل الجملة العربية التي
+  // تبقى باتجاهها. كان سابقًا يُغلَّف الجملة كاملة بـ dir="ltr" فتُفرض العربية
+  // يسارًا. الإنجليزية جملة LTR أصلًا فلا تحتاج عزلًا.
+  "gameDetails.appId": "معرّف اللعبة \u2066{{id}}\u2069",
+  "gameDetails.install.installed": "مثبتة",
+  "gameDetails.install.notInstalled": "غير مثبتة",
+  "gameDetails.install.running": "قيد التشغيل الآن",
+  "gameDetails.install.steamMissing": "Steam غير مثبت",
+  "gameDetails.install.steamUnavailable": "حالة التثبيت غير متاحة",
   "gameDetails.progressOverview": "نظرة عامة على التقدم",
   "gameDetails.progressDescription": "تابع مدى اقترابك من إكمال هذه اللعبة.",
   "gameDetails.completion": "الإكمال",
+  // الرقم وعلامة النسبة وحدة واحدة. محرفا العزل الاتجاهي (LRI قبل الوحدة وPDI
+  // بعدها) يثبّتان ترتيب «الرقم ثم العلامة» داخل الجملة العربية مع أي نظام
+  // أرقام. عزل لا تجاوز: بقية الجملة تحتفظ باتجاهها. حذفهما يعيد العلامة إلى
+  // يمين الرقم فتُقرأ قبله.
+  "gameDetails.completionValue": "أكملت \u2066{{percent}}٪\u2069",
+  "gameDetails.completionPartial": "نسبة الإكمال غير دقيقة بعد",
+  "gameDetails.unlockedOfTotal": "{{unlocked}} من {{total}} مفتوح",
+  "gameDetails.lockedCount": "{{count}} مقفل",
+  "gameDetails.unknownCount": "{{count}} غير معروفة",
   "gameDetails.unlocked": "مفتوح",
   "gameDetails.locked": "مقفل",
   "gameDetails.unknown": "الحالة غير متاحة",
@@ -17,8 +35,11 @@ export const gameDetails = {
   "gameDetails.rareAvailable": "النادرة المتاحة",
   "gameDetails.lastUnlocked": "آخر إنجاز مفتوح",
   "gameDetails.lastSync": "آخر مزامنة للإنجازات",
+  "gameDetails.lastSyncValue": "آخر تحديث {{date}}",
   "gameDetails.unavailable": "غير متاح",
   "gameDetails.neverSynced": "لم تُحدّث بعد",
+  "gameDetails.offlineCached": "بلا اتصال \u2014 يُعرض آخر ما تمت مزامنته",
+  "gameDetails.offlineSyncDisabled": "أعد الاتصال لتحديث الإنجازات",
   "gameDetails.allAchievements": "كل الإنجازات",
   "gameDetails.achievementCount": "{{shown}} من {{total}} إنجازًا",
   "gameDetails.search": "البحث في الإنجازات",
@@ -29,6 +50,7 @@ export const gameDetails = {
   "gameDetails.filter.rare": "نادرة",
   "gameDetails.filter.hidden": "مخفية",
   "gameDetails.filter.recent": "مفتوحة حديثًا",
+  "gameDetails.clearFilters": "مسح عوامل التصفية",
   "gameDetails.sort": "الترتيب",
   "gameDetails.sort.default": "الترتيب الافتراضي",
   "gameDetails.sort.name": "الاسم",
@@ -50,6 +72,8 @@ export const gameDetails = {
   "gameDetails.syncTitle": "الإنجازات",
   "gameDetails.sync": "تحديث الإنجازات",
   "gameDetails.syncing": "جارٍ التحديث…",
+  "gameDetails.loadingAchievements": "جارٍ تحميل الإنجازات",
+  "gameDetails.achievementsError": "تعذر تحميل الإنجازات.",
   "gameDetails.smartSync.saved": "تعمل باستخدام آخر بيانات محفوظة",
   "gameDetails.smartSync.unavailable": "التحديث غير متاح",
   "gameDetails.smartSync.updating": "جارٍ التحديث…",
@@ -85,7 +109,11 @@ export const gameDetails = {
   "gameDetails.loadMore": "عرض المزيد من الإنجازات",
   "gameDetails.showing": "يُعرض {{shown}} من {{total}}",
   "gameDetails.achievementDetails": "تفاصيل الإنجاز",
-  "gameDetails.globalPercent": "يفتحه {{percent}}% عالميًا",
+  // النسبة العالمية وحدتها الرقم وعلامتها. يُعزلان معًا (LRI قبل الوحدة وPDI
+  // بعدها) داخل الجملة العربية؛ كانا يُفرضان يسارًا بـ dir="ltr" فتظهر النسبة
+  // قبل الرقم. الإنجليزية تبقى كما هي بلا عزل.
+  "gameDetails.globalPercent": "يفتحه \u2066{{percent}}%\u2069 عالميًا",
+  "gameDetails.rarityTooltip": "فتحه {{percent}} من اللاعبين",
   "gameDetails.rarityUnknown": "الندرة العالمية غير معروفة",
   "gameDetails.hiddenAchievement": "إنجاز مخفي",
   "gameDetails.hiddenDescription": "لم يوفر Steam تفاصيل عامة لهذا الإنجاز المخفي.",
@@ -95,6 +123,9 @@ export const gameDetails = {
   "gameDetails.continueJourney": "تابع رحلتك",
   "gameDetails.recommendationProgress": "تقدم الإنجاز",
   "gameDetails.viewRecommended": "عرض الإنجاز المقترح",
+  // بطاقة عنوان صف التوصية. بلا متغيرات عن قصد: اسم الإنجاز يُعرض بجانبها،
+  // واستدعاء t() على الجملة ذات المتغير أدناه يطبع النص البديل كما هو.
+  "gameDetails.nextTarget": "الهدف التالي",
   "gameDetails.nextAchievement": "الإنجاز التالي: {{name}}",
   "gameDetails.gameNotFound": "اللعبة غير موجودة",
   "gameDetails.gameNotFoundDescription": "لم تعد هذه اللعبة متاحة في مكتبتك.",

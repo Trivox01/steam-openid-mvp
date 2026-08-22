@@ -9,7 +9,9 @@ const png = readFileSync(assetUrl);
 const consumers = [
   "../src/pages/DashboardPage.tsx",
   "../src/pages/StatisticsPage.tsx",
+  "../src/pages/GameDetailsPage.tsx",
   "../src/components/dashboard/AchievementCard.tsx",
+  "../src/components/achievements/AchievementRow.tsx",
   "../src/components/achievements/AchievementListCard.tsx",
   "../src/components/achievements/AchievementExperienceCard.tsx",
   "../src/components/achievements/AchievementDetailsDialog.tsx"
@@ -49,7 +51,7 @@ assert.match(dialog, /previousFocus\?\.focus\(\)/, "details modal must restore t
 assert.match(dialog, /setAttribute\("inert", ""\)/, "details modal must isolate background interaction");
 assert.match(dialog, /headingRef\.current\?\.focus\(\)/, "details modal must receive deterministic initial focus");
 
-assert.equal((consumers.match(/<AchievementIcon/g) ?? []).length, 6, "all current achievement image surfaces must use the shared component");
+assert.equal((consumers.match(/<AchievementIcon/g) ?? []).length, 8, "all current achievement image surfaces must use the shared component");
 assert.doesNotMatch(consumers, /<img\s+src=\{(?:achievement|details|nextAchievement)\.iconUrl/, "achievement consumers must not bypass fallback handling");
 
 console.log("Steam-first achievement icons, low-resolution sizing and Nexus fallback validation passed.");
