@@ -67,6 +67,12 @@ jobs:
       - name: Backend TypeScript
         run: npm run typecheck:backend
 
+      - name: Nexus foundation structural gate
+        run: npm run test:nexus-foundation
+
+      - name: Nexus linked accounts unit gate
+        run: npm --prefix services/auth-api run test:nexus-linked-accounts
+
       - name: Persistent desktop sessions
         run: npm run test:persistent-sessions
 
@@ -77,6 +83,9 @@ jobs:
 
       - name: Existing PostgreSQL integration
         run: npm run test:backend-postgres
+
+      - name: Nexus linked accounts PostgreSQL gate
+        run: npm --prefix services/auth-api run test:postgres-nexus-linked-accounts
 
       - name: Migration 019 and refresh protocol PostgreSQL gate
         run: >
