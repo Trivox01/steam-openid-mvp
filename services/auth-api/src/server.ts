@@ -70,13 +70,12 @@ async function main() {
   const linkedAccounts = new NexusLinkedAccountService(
     storage.linkedAccountRepository
   );
-  // Phase 2B is opt-in. When no mode is configured SessionTokenService receives
+  // Phase 2B is opt-in. When the flag is off SessionTokenService receives
   // no resolver hook at all and executes the exact legacy users.steam_id64 path.
-  const steamIdentityResolver = config.nexusSteamIdentityResolutionMode
+  const steamIdentityResolver = config.nexusLinkedAccountsIdentityResolutionEnabled
     ? new NexusSteamIdentityResolver(
         storage.authorizationRepository,
-        storage.linkedAccountRepository,
-        config.nexusSteamIdentityResolutionMode
+        storage.linkedAccountRepository
       )
     : undefined;
   const sessions = new SessionTokenService(
@@ -134,7 +133,7 @@ async function main() {
             process.stdout.write(JSON.stringify({
               event: "nexus_steam_identity_resolution",
               provider: "steam",
-              mode: config.nexusSteamIdentityResolutionMode,
+              enabled: true,
               source: result.source,
               outcome: "success"
             }) + "\n");
@@ -143,7 +142,7 @@ async function main() {
             process.stdout.write(JSON.stringify({
               event: "nexus_steam_identity_resolution",
               provider: "steam",
-              mode: config.nexusSteamIdentityResolutionMode,
+              enabled: true,
               outcome: "failure",
               errorCode: sanitizeLogCode(
                 error instanceof SteamIdentityResolutionError
@@ -258,8 +257,8 @@ async function main() {
         nexusLinkedAccountsDualWrite: Boolean(
           config.nexusLinkedAccountsDualWriteEnabled
         ),
-        nexusSteamIdentityResolutionMode:
-          config.nexusSteamIdentityResolutionMode ?? "legacy",
+        nexusLinkedAccountsIdentityResolutionEnabled:
+          config.nexusLinkedAccountsIdentityResolutionEnabled ?? false,
         bootstrapOwner: bootstrapResult
       }) + "\n"
     );

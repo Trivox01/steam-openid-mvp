@@ -443,9 +443,12 @@ Each step is separately reversible.
    behind `NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED`. The current Steam session
    remains the session authority and `users.steam_id64` remains the login
    authority. The credential store is deliberately **not** part of this step.
-3. **Phase 2B — next phase, not this one.** Flip identity resolution to
-   *provider identity → linked account → Nexus user* behind a flag, with
-   dual-read first. Sessions need no change: they already reference `users.id`.
+3. **Phase 2B — identity resolution rollout.** With
+   `NEXUS_LINKED_ACCOUNTS_IDENTITY_RESOLUTION_ENABLED=true`, resolve
+   *provider identity → linked account → Nexus user* first, then fall back to
+   `users.steam_id64` only when the active Steam link is absent. The flag is
+   default-off; invalid or conflicting mappings fail closed and never create or
+   move a mapping. Sessions need no change: they still reference `users.id`.
 4. **Retire the Steam column.** Only after dual-read is proven, drop the
    not-null/unique constraints on `users.steam_id64` and treat it as legacy.
    Uniqueness now lives on `(provider, provider_user_id)`.
@@ -529,8 +532,7 @@ Validators and documentation:
 
 ## What later phases defer
 
-Intentionally not implemented here: identity resolution through
-`linked_platform_accounts`, Xbox login, PlayStation login, SuperTokens,
+Intentionally not implemented here: Xbox login, PlayStation login, SuperTokens,
 Connected Accounts UI, unified library UI, the provider credential store and
 provider token storage, provider OAuth callbacks, automatic canonical-game
 matching, the catalog/game/achievement tables, the backend adapter runtime, any

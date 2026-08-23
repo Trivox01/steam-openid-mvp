@@ -41,41 +41,27 @@ function claimsOf(token: string) {
   };
 }
 
-test("identity resolution mode defaults to the exact legacy path", () => {
+test("identity resolution flag defaults to the exact legacy path", () => {
   const config = loadAuthApiConfig(VALID_ENV);
-  assert.equal(config.nexusSteamIdentityResolutionMode, undefined);
+  assert.equal(config.nexusLinkedAccountsIdentityResolutionEnabled, undefined);
 });
 
-test("identity resolution modes are explicit and malformed values fail closed", () => {
+test("identity resolution flag is explicit and malformed values fail closed", () => {
   assert.equal(
     loadAuthApiConfig({
       ...VALID_ENV,
-      NEXUS_STEAM_IDENTITY_RESOLUTION_MODE: "dual_read"
-    }).nexusSteamIdentityResolutionMode,
-    "dual_read"
-  );
-  assert.equal(
-    loadAuthApiConfig({
-      ...VALID_ENV,
-      NEXUS_STEAM_IDENTITY_RESOLUTION_MODE: "linked"
-    }).nexusSteamIdentityResolutionMode,
-    "linked"
-  );
-  assert.equal(
-    loadAuthApiConfig({
-      ...VALID_ENV,
-      NEXUS_STEAM_IDENTITY_RESOLUTION_MODE: "legacy"
-    }).nexusSteamIdentityResolutionMode,
-    undefined
+      NEXUS_LINKED_ACCOUNTS_IDENTITY_RESOLUTION_ENABLED: "true"
+    }).nexusLinkedAccountsIdentityResolutionEnabled,
+    true
   );
   assert.throws(
     () => loadAuthApiConfig({
       ...VALID_ENV,
-      NEXUS_STEAM_IDENTITY_RESOLUTION_MODE: "auto"
+      NEXUS_LINKED_ACCOUNTS_IDENTITY_RESOLUTION_ENABLED: "dual_read"
     }),
     (error: unknown) =>
       error instanceof ConfigurationError &&
-      error.code === "invalid_NEXUS_STEAM_IDENTITY_RESOLUTION_MODE"
+      error.code === "invalid_NEXUS_LINKED_ACCOUNTS_IDENTITY_RESOLUTION_ENABLED"
   );
 });
 
@@ -94,8 +80,7 @@ test("dual_read prefers the active linked account when both mappings agree", asy
   });
   const resolver = new NexusSteamIdentityResolver(
     authorization,
-    linkedAccounts,
-    "dual_read"
+    linkedAccounts
   );
 
   const resolved = await resolver.resolve({
@@ -111,8 +96,7 @@ test("dual_read falls back to the legacy resolver only when no active link exist
   const linkedAccounts = new InMemoryLinkedAccountRepository();
   const resolver = new NexusSteamIdentityResolver(
     authorization,
-    linkedAccounts,
-    "dual_read"
+    linkedAccounts
   );
 
   const resolved = await resolver.resolve({
@@ -122,24 +106,6 @@ test("dual_read falls back to the legacy resolver only when no active link exist
   assert.equal(resolved.source, "legacy_fallback");
   assert.equal(resolved.user.steamId64, STEAM_A);
   assert.equal((await linkedAccounts.listByUser(resolved.user.id)).length, 0);
-});
-
-test("linked mode refuses a missing link without creating a Nexus user", async () => {
-  const authorization = new InMemoryAuthorizationRepository();
-  const linkedAccounts = new InMemoryLinkedAccountRepository();
-  const resolver = new NexusSteamIdentityResolver(
-    authorization,
-    linkedAccounts,
-    "linked"
-  );
-
-  await assert.rejects(
-    () => resolver.resolve({ steamId64: STEAM_A, authenticatedAt: NOW }),
-    (error: unknown) =>
-      error instanceof SteamIdentityResolutionError &&
-      error.code === "LINKED_ACCOUNT_REQUIRED"
-  );
-  assert.equal(await authorization.findUserBySteamId(STEAM_A), undefined);
 });
 
 test("linked mapping disagreement fails closed and never moves either identity", async () => {
@@ -158,8 +124,7 @@ test("linked mapping disagreement fails closed and never moves either identity",
   });
   const resolver = new NexusSteamIdentityResolver(
     authorization,
-    linkedAccounts,
-    "dual_read"
+    linkedAccounts
   );
 
   await assert.rejects(
@@ -191,8 +156,7 @@ test("linked mapping conflict cannot create a missing legacy Steam user", async 
   });
   const resolver = new NexusSteamIdentityResolver(
     authorization,
-    linkedAccounts,
-    "linked"
+    linkedAccounts
   );
 
   await assert.rejects(
@@ -220,8 +184,7 @@ test("SessionTokenService keeps users.id as subject under linked resolution", as
   });
   const resolver = new NexusSteamIdentityResolver(
     authorization,
-    linkedAccounts,
-    "linked"
+    linkedAccounts
   );
   const sessions = new SessionTokenService(
     SECRET,
