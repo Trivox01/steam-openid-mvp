@@ -176,6 +176,35 @@ test("linked mapping disagreement fails closed and never moves either identity",
   );
 });
 
+test("linked mapping conflict cannot create a missing legacy Steam user", async () => {
+  const authorization = new InMemoryAuthorizationRepository();
+  const linkedAccounts = new InMemoryLinkedAccountRepository();
+  const userB = await authorization.ensureAuthenticatedUser(STEAM_B, NOW);
+  await linkedAccounts.insert({
+    id: "44444444-4444-4444-8444-444444444444",
+    userId: userB.id,
+    provider: "steam",
+    providerUserId: STEAM_A,
+    connectionStatus: "connected",
+    scopes: [],
+    linkedAt: NOW
+  });
+  const resolver = new NexusSteamIdentityResolver(
+    authorization,
+    linkedAccounts,
+    "linked"
+  );
+
+  await assert.rejects(
+    () => resolver.resolve({ steamId64: STEAM_A, authenticatedAt: NOW }),
+    (error: unknown) =>
+      error instanceof SteamIdentityResolutionError &&
+      error.code === "IDENTITY_MAPPING_CONFLICT"
+  );
+  assert.equal(await authorization.findUserBySteamId(STEAM_A), undefined);
+  assert.equal((await authorization.findUserBySteamId(STEAM_B))?.id, userB.id);
+});
+
 test("SessionTokenService keeps users.id as subject under linked resolution", async () => {
   const authorization = new InMemoryAuthorizationRepository();
   const linkedAccounts = new InMemoryLinkedAccountRepository();
