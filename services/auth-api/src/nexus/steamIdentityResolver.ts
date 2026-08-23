@@ -11,8 +11,9 @@
  *   closed and never creates/reassigns a Nexus user.
  *
  * A linked mapping is never trusted blindly while the legacy Steam column is
- * still authoritative data. The resolver cross-checks the user returned by the
- * existing repository path and rejects any disagreement.
+ * still authoritative data. The resolver cross-checks the linked user before
+ * invoking the legacy upsert, so an inconsistent linked row cannot create a new
+ * Nexus user as a side effect of failing closed.
  */
 
 import type {
@@ -84,10 +85,17 @@ export class NexusSteamIdentityResolver {
       return { user, source: "legacy_fallback" };
     }
 
-    // Keep the existing repository call during the transition for two reasons:
-    // it preserves authenticated_at/updated_at semantics, and it provides an
-    // independent legacy mapping to compare against the link. The linked row is
-    // the selected mapping; disagreement is treated as an integrity fault.
+    // Validate the linked mapping without any write first. This is important in
+    // linked mode: a corrupt/stale link must fail closed without allowing the
+    // legacy upsert to create a second Nexus user for the incoming Steam ID.
+    const linkedUser = await this.authorizationRepository.findUserById(linked.userId);
+    if (!linkedUser || linkedUser.steamId64 !== input.steamId64) {
+      throw new SteamIdentityResolutionError("IDENTITY_MAPPING_CONFLICT");
+    }
+
+    // After the read-only cross-check succeeds, retain the historical
+    // authenticated_at/updated_at write semantics. Because the matching legacy
+    // user is already proven to exist, this call cannot create a new identity.
     const legacyUser = await this.authorizationRepository.ensureAuthenticatedUser(
       input.steamId64,
       input.authenticatedAt
