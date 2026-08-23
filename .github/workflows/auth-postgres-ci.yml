@@ -8,6 +8,11 @@ on:
   pull_request:
     paths:
       - "services/auth-api/**"
+      - "src/domain/nexus/**"
+      - "docs/architecture/MULTI_PLATFORM_*.md"
+      - "scripts/validate-nexus-platform-foundation.mjs"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/auth-postgres-ci.yml"
 
   workflow_dispatch:
@@ -89,6 +94,9 @@ jobs:
 
       - name: Nexus linked accounts PostgreSQL gate
         run: npm --prefix services/auth-api run test:postgres-nexus-linked-accounts
+
+      - name: Nexus catalog PostgreSQL gate
+        run: npm --prefix services/auth-api run test:postgres-nexus-catalog
 
       - name: Migration 019 and refresh protocol PostgreSQL gate
         run: >
