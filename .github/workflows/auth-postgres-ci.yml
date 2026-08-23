@@ -8,6 +8,11 @@ on:
   pull_request:
     paths:
       - "services/auth-api/**"
+      - "src/domain/nexus/**"
+      - "docs/architecture/MULTI_PLATFORM_*.md"
+      - "scripts/validate-nexus-platform-foundation.mjs"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/auth-postgres-ci.yml"
 
   workflow_dispatch:
