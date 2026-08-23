@@ -12,6 +12,7 @@ import { MigrationError } from "./storage/postgres/migrationRunner.ts";
 import { initializeStorage } from "./storage/storageFactory.ts";
 import { AuthorizationService } from "./authorization/authorizationService.ts";
 import { SessionTokenService } from "./authorization/sessionTokenService.ts";
+import { AuthorizationError } from "./authorization/contracts.ts";
 import { BadgeService } from "./badges/badgeService.ts";
 import { createBadgeAssetStorage } from "./badges/badgeAssetStorageFactory.ts";
 import { BadgeAssignmentService } from "./badgeAssignments/badgeAssignmentService.ts";
@@ -28,6 +29,10 @@ import {
   LinkedAccountConflictError,
   NexusLinkedAccountService
 } from "./nexus/linkedAccountService.ts";
+import {
+  NexusSteamIdentityResolver,
+  SteamIdentityResolutionError
+} from "./nexus/steamIdentityResolver.ts";
 
 void main().catch((error: unknown) => {
   const migration = error instanceof MigrationError ? error : undefined;
@@ -62,13 +67,18 @@ async function main() {
     fetch,
     { write(entry) { process.stdout.write(JSON.stringify(entry) + "\n"); } }
   );
-  // Phase 2A transitional linked accounts. The service is always constructed so
-  // the wiring is identical in every environment, but it is only handed to the
-  // Steam auth path when the backend rollout flag is on. Identity resolution
-  // stays on users.steam_id64 either way.
   const linkedAccounts = new NexusLinkedAccountService(
     storage.linkedAccountRepository
   );
+  // Phase 2B is opt-in. When no mode is configured SessionTokenService receives
+  // no resolver hook at all and executes the exact legacy users.steam_id64 path.
+  const steamIdentityResolver = config.nexusSteamIdentityResolutionMode
+    ? new NexusSteamIdentityResolver(
+        storage.authorizationRepository,
+        storage.linkedAccountRepository,
+        config.nexusSteamIdentityResolutionMode
+      )
+    : undefined;
   const sessions = new SessionTokenService(
     config.sessionSecret,
     storage.authorizationRepository,
@@ -100,8 +110,7 @@ async function main() {
             }) + "\n");
           } catch (error) {
             // Never breaks a login. An integrity conflict is surfaced as a
-            // sanitized operational signal, with no identifiers, so the rollout
-            // can be halted while Steam auth keeps its current behaviour.
+            // sanitized operational signal, with no identifiers.
             process.stdout.write(JSON.stringify({
               event: "nexus_linked_account_dual_write",
               provider: "steam",
@@ -112,6 +121,39 @@ async function main() {
                   : "internal_error"
               )
             }) + "\n");
+          }
+        }
+      : undefined,
+    steamIdentityResolver
+      ? async ({ steamId64, authenticatedAt }) => {
+          try {
+            const result = await steamIdentityResolver.resolve({
+              steamId64,
+              authenticatedAt
+            });
+            process.stdout.write(JSON.stringify({
+              event: "nexus_steam_identity_resolution",
+              provider: "steam",
+              mode: config.nexusSteamIdentityResolutionMode,
+              source: result.source,
+              outcome: "success"
+            }) + "\n");
+            return result.user;
+          } catch (error) {
+            process.stdout.write(JSON.stringify({
+              event: "nexus_steam_identity_resolution",
+              provider: "steam",
+              mode: config.nexusSteamIdentityResolutionMode,
+              outcome: "failure",
+              errorCode: sanitizeLogCode(
+                error instanceof SteamIdentityResolutionError
+                  ? error.code
+                  : "internal_error"
+              )
+            }) + "\n");
+            // Resolution failures are security-significant and therefore fail
+            // closed. The client receives only the existing opaque auth error.
+            throw new AuthorizationError("AUTHENTICATION_REQUIRED");
           }
         }
       : undefined
@@ -216,6 +258,8 @@ async function main() {
         nexusLinkedAccountsDualWrite: Boolean(
           config.nexusLinkedAccountsDualWriteEnabled
         ),
+        nexusSteamIdentityResolutionMode:
+          config.nexusSteamIdentityResolutionMode ?? "legacy",
         bootstrapOwner: bootstrapResult
       }) + "\n"
     );
