@@ -1,5 +1,3 @@
-import type { NexusSteamIdentityResolutionMode } from "./nexus/steamIdentityResolver.ts";
-
 export type AuthStorageDriver = "memory" | "postgres";
 export type BadgeStorageDriver = "memory" | "local" | "s3";
 export interface S3BadgeStorageConfig {
@@ -39,11 +37,8 @@ export interface AuthApiConfig {
    * Backend-only and off by default.
    */
   nexusLinkedAccountsDualWriteEnabled?: boolean;
-  /**
-   * Phase 2B identity resolution mode. Omitted means legacy and therefore keeps
-   * the exact pre-Phase-2B users.steam_id64 resolution path.
-   */
-  nexusSteamIdentityResolutionMode?: NexusSteamIdentityResolutionMode;
+  /** Phase 2B backend-only dual-read rollout flag. Default: false. */
+  nexusLinkedAccountsIdentityResolutionEnabled?: boolean;
 }
 
 export class ConfigurationError extends Error {
@@ -91,8 +86,9 @@ export function loadAuthApiConfig(
     environment.NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED,
     "NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED"
   );
-  const nexusSteamIdentityResolutionMode = parseSteamIdentityResolutionMode(
-    environment.NEXUS_STEAM_IDENTITY_RESOLUTION_MODE
+  const nexusLinkedAccountsIdentityResolutionEnabled = parseOptionalBoolean(
+    environment.NEXUS_LINKED_ACCOUNTS_IDENTITY_RESOLUTION_ENABLED,
+    "NEXUS_LINKED_ACCOUNTS_IDENTITY_RESOLUTION_ENABLED"
   );
 
   if (publicBaseUrl.search || openIdRealm.search || openIdRealm.hash) {
@@ -156,8 +152,8 @@ export function loadAuthApiConfig(
     ...(nexusLinkedAccountsDualWriteEnabled
       ? { nexusLinkedAccountsDualWriteEnabled: true }
       : {}),
-    ...(nexusSteamIdentityResolutionMode !== "legacy"
-      ? { nexusSteamIdentityResolutionMode }
+    ...(nexusLinkedAccountsIdentityResolutionEnabled
+      ? { nexusLinkedAccountsIdentityResolutionEnabled: true }
       : {})
   };
 }
@@ -173,18 +169,6 @@ function parseOptionalBoolean(value: string | undefined, name: string) {
   if (value === "true") return true;
   if (value === "false") return false;
   throw new ConfigurationError(`invalid_${name}`);
-}
-
-function parseSteamIdentityResolutionMode(
-  value: string | undefined
-): "legacy" | NexusSteamIdentityResolutionMode {
-  if (value === undefined || value.trim() === "" || value === "legacy") {
-    return "legacy";
-  }
-  if (value === "dual_read" || value === "linked") return value;
-  throw new ConfigurationError(
-    "invalid_NEXUS_STEAM_IDENTITY_RESOLUTION_MODE"
-  );
 }
 
 function parseOptionalSecret(

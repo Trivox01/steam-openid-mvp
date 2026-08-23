@@ -5,10 +5,8 @@
  * users.id and users.steam_id64 is still present on the users table. What
  * changes is how a successful Steam OpenID identity selects the Nexus user:
  *
- * - dual_read: linked account first, legacy users.steam_id64 fallback when the
- *   link is missing.
- * - linked: linked account is required; a missing or conflicting link fails
- *   closed and never creates/reassigns a Nexus user.
+ * - linked account first, legacy users.steam_id64 fallback when the link is
+ *   missing. This is the sole Phase 2B rollout mode.
  *
  * A linked mapping is never trusted blindly while the legacy Steam column is
  * still authoritative data. The resolver cross-checks the linked user before
@@ -22,15 +20,11 @@ import type {
 } from "../authorization/authorizationRepository.ts";
 import type { LinkedAccountRepository } from "./linkedAccountRepository.ts";
 
-export type NexusSteamIdentityResolutionMode = "dual_read" | "linked";
-
 export type SteamIdentityResolutionSource =
   | "linked_account"
   | "legacy_fallback";
 
-export type SteamIdentityResolutionErrorCode =
-  | "LINKED_ACCOUNT_REQUIRED"
-  | "IDENTITY_MAPPING_CONFLICT";
+export type SteamIdentityResolutionErrorCode = "IDENTITY_MAPPING_CONFLICT";
 
 export class SteamIdentityResolutionError extends Error {
   readonly code: SteamIdentityResolutionErrorCode;
@@ -50,16 +44,12 @@ export type SteamIdentityResolutionResult = {
 export class NexusSteamIdentityResolver {
   private readonly authorizationRepository: AuthorizationRepository;
   private readonly linkedAccountRepository: LinkedAccountRepository;
-  private readonly mode: NexusSteamIdentityResolutionMode;
-
   constructor(
     authorizationRepository: AuthorizationRepository,
-    linkedAccountRepository: LinkedAccountRepository,
-    mode: NexusSteamIdentityResolutionMode
+    linkedAccountRepository: LinkedAccountRepository
   ) {
     this.authorizationRepository = authorizationRepository;
     this.linkedAccountRepository = linkedAccountRepository;
-    this.mode = mode;
   }
 
   async resolve(input: {
@@ -72,9 +62,6 @@ export class NexusSteamIdentityResolver {
     );
 
     if (!linked) {
-      if (this.mode === "linked") {
-        throw new SteamIdentityResolutionError("LINKED_ACCOUNT_REQUIRED");
-      }
       // Dual-read rollout fallback. This is intentionally the exact legacy
       // resolver, so users with a not-yet-backfilled link keep working while
       // operators inspect the fallback signal and complete the rollout.

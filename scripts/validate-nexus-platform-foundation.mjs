@@ -781,6 +781,8 @@ for (const topic of [
   "services/auth-api/src/nexus",
   "Phase 2A",
   "NEXUS_LINKED_ACCOUNTS_DUAL_WRITE_ENABLED",
+  "Phase 2B",
+  "NEXUS_LINKED_ACCOUNTS_IDENTITY_RESOLUTION_ENABLED",
   "Rollout sequence",
   "Rollback behaviour"
 ]) {
@@ -827,7 +829,24 @@ const linksTable = dbProposal.match(/CREATE TABLE( IF NOT EXISTS)? linked_platfo
 assert.ok(linksTable, "linked_platform_accounts must be documented in the proposal");
 assert.doesNotMatch(linksTable[2], /credential_ref/, "linked_platform_accounts must not duplicate credential_ref");
 
+const identityResolverPath = path.join(backendDir, "steamIdentityResolver.ts");
+assert.ok(fs.existsSync(identityResolverPath), "Phase 2B resolver must remain backend-owned");
+const identityResolverSource = fs.readFileSync(identityResolverPath, "utf8");
+assert.match(identityResolverSource, /findActiveByProviderIdentity/, "Phase 2B must read linked identities first");
+assert.match(identityResolverSource, /ensureAuthenticatedUser/, "Phase 2B must retain legacy fallback");
+assert.doesNotMatch(identityResolverSource, /provider_credentials|access_token|refresh_token/i, "Phase 2B must not add credentials");
+const phase2bConfigSource = fs.readFileSync("services/auth-api/src/config.ts", "utf8");
+assert.match(phase2bConfigSource, /NEXUS_LINKED_ACCOUNTS_IDENTITY_RESOLUTION_ENABLED/, "Phase 2B flag must be explicit");
+for (const file of walkSourceFiles("src")) {
+  assert.doesNotMatch(
+    fs.readFileSync(file, "utf8"),
+    /services\/auth-api\/src\/nexus\/steamIdentityResolver/,
+    `${file} must not import the backend Phase 2B resolver`
+  );
+}
+
 console.log(
   `Nexus platform validation passed (${assertions} domain assertions, ${domainFiles.length} desktop modules, ` +
-    "backend Nexus contracts present, Phase 2A linked-account persistence backend-only and flag-gated)."
+    "backend Nexus contracts present, Phase 2A linked-account persistence backend-only and flag-gated, " +
+    "Phase 2B identity resolution backend-only and dual-read gated)."
 );

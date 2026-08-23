@@ -90,6 +90,9 @@ jobs:
       - name: Nexus linked accounts PostgreSQL gate
         run: npm --prefix services/auth-api run test:postgres-nexus-linked-accounts
 
+      - name: Nexus identity resolution PostgreSQL gate
+        run: npm --prefix services/auth-api run test:postgres-nexus-identity-resolution
+
       - name: Migration 019 and refresh protocol PostgreSQL gate
         run: >
           node --experimental-strip-types --test
