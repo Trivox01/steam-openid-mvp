@@ -52,7 +52,7 @@ test("cleanup is bounded and removes retained terminal memory records", async ()
 
 test("PostgreSQL migrations are ordered and contain no secret-bearing columns", async () => {
   const migrations = await loadPostgresMigrations();
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
   const sql = migrations.map((item) => item.sql).join("\n").toLowerCase();
   assert.match(sql, /create table tool_definitions/);
   assert.match(sql, /create table tool_badges/);
@@ -95,17 +95,31 @@ test("PostgreSQL migrations are ordered and contain no secret-bearing columns", 
   assert.match(sql, /create table badge_asset_cleanup_jobs/);
   assert.match(sql, /create table badge_assignments/);
   assert.match(sql, /badge_assignments_active_unique/);
-  // Phase 2A: the only new table is the Nexus account link. The provider
-  // credential store and the game/achievement catalog stay unapplied.
+
+  // Phase 2A linked-account persistence remains present.
   assert.match(sql, /create table if not exists linked_platform_accounts/);
+
+  // Phase 3A adds only canonical/platform catalog + ownership persistence.
+  assert.match(sql, /create table if not exists canonical_games/);
+  assert.match(sql, /create table if not exists platform_games/);
+  assert.match(sql, /create table if not exists user_canonical_mapping_suggestions/);
+  assert.match(sql, /create table if not exists user_game_ownership/);
+  assert.match(sql, /platform_games_identity_uniq/);
+  assert.match(sql, /user_game_ownership_uniq/);
+  assert.match(sql, /user_game_ownership_provider_match/);
+  assert.match(sql, /create table if not exists platform_achievements/);
+  assert.match(sql, /create table if not exists user_achievement_states/);
+  assert.match(sql, /platform_achievements_identity_uniq/);
+  assert.match(sql, /user_achievement_states_uniq/);
+
   const statements = sql
     .split("\n")
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n");
-  assert.doesNotMatch(
-    statements,
-    /provider_credentials|canonical_games|platform_games|platform_achievements|user_game_ownership/
-  );
+  // Provider credentials remain the one piece still deferred to a later phase.
+  // Phase 3B achievement persistence (platform_achievements / user_achievement_states)
+  // is applied by migration 022 and is asserted to exist above.
+  assert.doesNotMatch(statements, /provider_credentials/);
   for (const key of PERMISSION_KEYS) assert.match(sql, new RegExp(`'${key.replace(".", "\\.")}'`));
   for (const role of rolePresets) assert.match(sql, new RegExp(`'${role.slug}'`));
 });

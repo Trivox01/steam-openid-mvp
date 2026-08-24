@@ -6,8 +6,10 @@
  * anything from this tree.
  *
  * Phase 1 contributed design-only contracts. Phase 2A added linked-account
- * persistence and transitional Steam dual-write. Phase 2B adds the backend-only
+ * persistence and transitional Steam dual-write. Phase 2B added the backend-only
  * Steam identity resolver used for a guarded linked-account-first cutover.
+ * Phase 3A adds inert backend catalog/ownership persistence primitives; no
+ * provider adapter or public route is wired by this barrel.
  */
 
 export * from "./identity.ts";
@@ -15,3 +17,6 @@ export * from "./adapter.ts";
 export * from "./linkedAccountRepository.ts";
 export * from "./linkedAccountService.ts";
 export * from "./steamIdentityResolver.ts";
+export * from "./catalogRepository.ts";
+export * from "./achievementRepository.ts";
+export * from "./steamPlatformAdapter.ts";

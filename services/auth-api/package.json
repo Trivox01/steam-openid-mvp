@@ -17,6 +17,9 @@
     "test:postgres-nexus-linked-accounts": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.nexusLinkedAccounts.integration.test.ts",
     "test:nexus-identity-resolution": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/nexusIdentityResolution.test.ts",
     "test:postgres-nexus-identity-resolution": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.nexusIdentityResolution.integration.test.ts",
+    "test:postgres-nexus-catalog": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.nexusCatalog.integration.test.ts",
+    "test:nexus-batch1": "node --experimental-strip-types --test tests/nexusBatch1.test.ts",
+    "test:postgres-nexus-achievements": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.nexusAchievements.integration.test.ts",
     "test:release-channel": "node --test tests/releaseChannel.test.mjs"
   },
   "devDependencies": {

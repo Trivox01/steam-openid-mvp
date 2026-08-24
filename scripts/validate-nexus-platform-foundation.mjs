@@ -558,9 +558,10 @@ for (const manifest of ["package.json", "services/auth-api/package.json"]) {
   );
 }
 
-// E. Phase 2A applies the linked-account table only. Catalog and credential
-// tables stay proposals. Comments legitimately discuss the deferred tables, so
-// only executable SQL is inspected.
+// E. Phase 2A applies linked accounts, Phase 3A applies catalog/ownership and
+// Phase 3B applies achievement persistence. Only provider credentials remain
+// deferred. Comments legitimately discuss deferred tables, so only executable
+// SQL is inspected.
 const migrationsDir = "services/auth-api/src/storage/postgres/migrations";
 const migrations = fs.readdirSync(migrationsDir).filter((name) => name.endsWith(".sql"));
 assert.ok(migrations.length > 0, "existing migrations must remain in place");
@@ -570,25 +571,91 @@ const executableMigrationSql = migrations
   .split("\n")
   .filter((line) => !line.trim().startsWith("--"))
   .join("\n");
-for (const table of [
-  "provider_credentials",
-  "canonical_games",
-  "platform_games",
-  "user_game_ownership",
-  "platform_achievements",
-  "user_achievement_states",
-  "user_canonical_mapping_suggestions"
-]) {
-  assert.doesNotMatch(
-    executableMigrationSql,
-    new RegExp(table),
-    `${table} must stay a proposal until a later phase applies it`
-  );
-}
+// Provider credentials are the one piece still deferred to a later phase.
+assert.doesNotMatch(
+  executableMigrationSql,
+  /provider_credentials/,
+  "provider_credentials must stay a proposal until a later phase applies it"
+);
 assert.ok(
   !fs.existsSync(path.join(migrationsDir, "020_nexus_multi_platform_foundation.sql")),
   "the full catalog migration must not be added to the migrations directory"
 );
+
+// E2. Phase 3B achievement foundation (migration 022) is applied and additive.
+const achievementsMigrationName = "022_nexus_achievements_foundation.sql";
+assert.equal(
+  migrations.filter((name) => /^022_/.test(name)).length,
+  1,
+  "Phase 3B must ship exactly one migration 022"
+);
+assert.ok(
+  migrations.includes(achievementsMigrationName),
+  `Phase 3B migration must be named exactly ${achievementsMigrationName}`
+);
+const achievementsMigration = fs.readFileSync(
+  path.join(migrationsDir, achievementsMigrationName),
+  "utf8"
+);
+const achievementsMigrationSql = achievementsMigration
+  .split("\n")
+  .filter((line) => !line.trim().startsWith("--"))
+  .join("\n");
+for (const table of ["platform_achievements", "user_achievement_states"]) {
+  assert.match(
+    achievementsMigrationSql,
+    new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\s*\\(`, "i"),
+    `migration 022 must create ${table}`
+  );
+}
+assert.match(
+  achievementsMigrationSql,
+  /CREATE UNIQUE INDEX IF NOT EXISTS platform_achievements_identity_uniq\s+ON platform_achievements \(platform_game_id, provider_achievement_id\)/i,
+  "migration 022 must enforce per-game achievement identity"
+);
+assert.match(
+  achievementsMigrationSql,
+  /CREATE UNIQUE INDEX IF NOT EXISTS user_achievement_states_uniq\s+ON user_achievement_states \(linked_account_id, platform_achievement_id\)/i,
+  "migration 022 must enforce per-linked-account achievement state identity"
+);
+assert.match(
+  achievementsMigrationSql,
+  /CREATE TRIGGER user_achievement_states_provider_match[\s\S]*EXECUTE FUNCTION nexus_enforce_achievement_state_provider_match\(\)/i,
+  "migration 022 must enforce provider consistency between the state and its achievement's game"
+);
+// The provider stays normalized: platform_achievements derives its provider via
+// platform_games, never a duplicated column on the achievement table.
+const platformAchievementsTable = achievementsMigrationSql.match(
+  /CREATE TABLE IF NOT EXISTS platform_achievements \(([\s\S]*?)\n\);/i
+);
+assert.ok(platformAchievementsTable, "migration 022 must define platform_achievements");
+assert.doesNotMatch(
+  platformAchievementsTable[1],
+  /\bprovider\b/i,
+  "migration 022 platform_achievements must derive provider via platform_games"
+);
+// user_achievement_states possesses no redundant userId, matching ownership.
+const userAchievementStatesTable = achievementsMigrationSql.match(
+  /CREATE TABLE IF NOT EXISTS user_achievement_states \(([\s\S]*?)\n\);/i
+);
+assert.ok(userAchievementStatesTable, "migration 022 must define user_achievement_states");
+assert.doesNotMatch(
+  userAchievementStatesTable[1],
+  /\buser_id\b/i,
+  "migration 022 user_achievement_states must derive the Nexus user via linked_account_id"
+);
+// Migration 022 is purely additive: it must never rewrite Phase 1/2/3A tables.
+for (const forbidden of [
+  /ALTER\s+TABLE/i,
+  /DROP\s+(TABLE|COLUMN|CONSTRAINT|INDEX)/i,
+  /access_token|refresh_token|session_token|credential_ref|client_secret|api_key|encryption_key|password|poll_secret/i
+]) {
+  assert.doesNotMatch(
+    achievementsMigrationSql,
+    forbidden,
+    `migration 022 must not contain ${forbidden}`
+  );
+}
 
 const linkedAccountsMigrationName = "020_nexus_linked_platform_accounts.sql";
 assert.ok(
@@ -655,6 +722,29 @@ assert.doesNotMatch(
   "provider/user uniqueness conflicts must remain fail-closed"
 );
 
+const catalogMigrationName = "021_nexus_catalog_ownership_foundation.sql";
+assert.equal(migrations.filter((name) => /^021_/.test(name)).length, 1, "Phase 3A must ship exactly one migration 021");
+assert.ok(migrations.includes(catalogMigrationName), `Phase 3A migration must be named exactly ${catalogMigrationName}`);
+const catalogMigration = fs.readFileSync(path.join(migrationsDir, catalogMigrationName), "utf8");
+const catalogMigrationSql = catalogMigration.split("\n").filter((line) => !line.trim().startsWith("--")).join("\n");
+for (const table of ["canonical_games", "platform_games", "user_canonical_mapping_suggestions", "user_game_ownership"]) {
+  assert.match(catalogMigrationSql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\s*\\(`, "i"), `migration 021 must create ${table}`);
+}
+assert.match(catalogMigrationSql, /CREATE UNIQUE INDEX IF NOT EXISTS platform_games_identity_uniq\s+ON platform_games \(provider, provider_game_id\)/i, "migration 021 must enforce provider-game identity");
+assert.match(catalogMigrationSql, /CREATE UNIQUE INDEX IF NOT EXISTS user_game_ownership_uniq\s+ON user_game_ownership \(linked_account_id, platform_game_id\)/i, "migration 021 must enforce ownership identity");
+const ownershipMigrationTable = catalogMigrationSql.match(/CREATE TABLE IF NOT EXISTS user_game_ownership \(([\s\S]*?)\n\);/i);
+assert.ok(ownershipMigrationTable, "migration 021 must define user_game_ownership");
+assert.doesNotMatch(ownershipMigrationTable[1], /\buser_id\b/i, "migration 021 ownership must derive the user through linked_account_id");
+assert.doesNotMatch(ownershipMigrationTable[1], /\bprovider\b/i, "migration 021 ownership must derive provider through platform_games");
+assert.match(ownershipMigrationTable[1], /CONSTRAINT user_game_ownership_playtime_truth CHECK \(\s*playtime_known OR playtime_minutes IS NULL\s*\)/i, "migration 021 must preserve unknown-playtime truth");
+assert.match(catalogMigrationSql, /CREATE TRIGGER user_game_ownership_provider_match[\s\S]*BEFORE INSERT OR UPDATE OF linked_account_id, platform_game_id[\s\S]*EXECUTE FUNCTION nexus_enforce_ownership_provider_match\(\)/i, "migration 021 must enforce provider consistency in the database");
+const platformMigrationTable = catalogMigrationSql.match(/CREATE TABLE IF NOT EXISTS platform_games \(([\s\S]*?)\n\);/i);
+assert.ok(platformMigrationTable, "migration 021 must define platform_games");
+assert.match(platformMigrationTable[1], /canonical_game_id\s+uuid REFERENCES canonical_games\(id\) ON DELETE RESTRICT/i, "migration 021 canonical links must use ON DELETE RESTRICT");
+assert.match(platformMigrationTable[1], /canonical_mapping_method\s+text CHECK \(canonical_mapping_method IN\s*\(\s*'provider_verified','editorial_verified'\s*\)\)/i, "migration 021 must accept only provider/editorial verified mappings");
+assert.match(platformMigrationTable[1], /canonical_game_id IS NOT NULL[\s\S]*canonical_mapping_method IS NOT NULL[\s\S]*canonical_verified_by IS NOT NULL[\s\S]*canonical_verified_at IS NOT NULL/i, "migration 021 verified mappings must carry canonical id, method, verifier and timestamp");
+assert.doesNotMatch(catalogMigrationSql, /provider_credentials|platform_achievements|user_achievement_states|access_token|refresh_token|session_token|credential_ref|client_secret|api_key|poll_secret|encryption_key|password/i, "migration 021 must contain no credentials, tokens, secrets or achievement persistence");
+
 // F. Phase 2A persistence is backend-owned, flag-gated and route-free.
 for (const file of ["linkedAccountRepository.ts", "linkedAccountService.ts"]) {
   assert.ok(
@@ -669,6 +759,7 @@ for (const moduleName of ["./linkedAccountRepository.ts", "./linkedAccountServic
     `the backend Nexus barrel must export ${moduleName}`
   );
 }
+assert.ok(fs.existsSync(path.join(backendDir, "catalogRepository.ts")), "Phase 3A catalogRepository.ts must remain backend-owned");
 const repositorySource = fs.readFileSync(path.join(backendDir, "linkedAccountRepository.ts"), "utf8");
 for (const marker of [
   "export interface LinkedAccountRepository",
@@ -742,6 +833,7 @@ for (const file of walkSourceFiles("src")) {
     /services\/auth-api\/src\/nexus\/linkedAccount/,
     `${file} must not import the backend linked-account persistence layer`
   );
+  assert.doesNotMatch(source, /services\/auth-api\/src\/nexus\/catalogRepository/, `${file} must not import the backend catalog persistence layer`);
 }
 
 // H. Existing Steam-first surfaces are untouched by this phase.
@@ -848,5 +940,7 @@ for (const file of walkSourceFiles("src")) {
 console.log(
   `Nexus platform validation passed (${assertions} domain assertions, ${domainFiles.length} desktop modules, ` +
     "backend Nexus contracts present, Phase 2A linked-account persistence backend-only and flag-gated, " +
-    "Phase 2B identity resolution backend-only and dual-read gated)."
+    "Phase 2B identity resolution backend-only and dual-read gated, " +
+    "Phase 3A catalog persistence structurally guarded, " +
+    "Phase 3B achievement persistence applied and additive)."
 );
