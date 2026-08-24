@@ -18,13 +18,28 @@ import {
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const LOCAL_HOSTNAMES = ["localhost", "127.0.0.1", "::1", "[::1]", "postgres"];
+// Only run against a local or ephemeral CI PostgreSQL. A shared/remote host is
+// treated as "not configured" so the suite skips cleanly and never connects to
+// a database it should not touch.
+function isLocalDatabase(): boolean {
+  if (!databaseUrl) return false;
+  try {
+    return LOCAL_HOSTNAMES.includes(new URL(databaseUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+const localDatabase = isLocalDatabase();
+const skipReason = localDatabase
+  ? false
+  : "TEST_DATABASE_URL is not configured or does not point at a local/ephemeral PostgreSQL host";
 const STEAM_ENRICHED = "76561198000007001";
 const STEAM_BARE = "76561198000007002";
 const STEAM_SECOND = "76561198000007003";
 const STEAM_UNUSED = "76561198000007004";
 
 test("Migration 020 linked platform accounts on PostgreSQL", {
-  skip: databaseUrl ? false : "TEST_DATABASE_URL is not configured"
+  skip: skipReason
 }, async () => {
   assert.ok(databaseUrl);
   const target = new URL(databaseUrl);

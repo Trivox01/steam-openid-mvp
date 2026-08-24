@@ -15,12 +15,28 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
 const LOCAL_HOSTNAMES = ["localhost", "127.0.0.1", "::1", "[::1]", "postgres"];
 const STEAM_ID = "76561198000008101";
 
+// Only run against a local or ephemeral CI PostgreSQL. A shared/remote host is
+// treated as "not configured" so the suite skips cleanly and never connects to
+// a database it should not touch.
+function isLocalDatabase(): boolean {
+  if (!databaseUrl) return false;
+  try {
+    return LOCAL_HOSTNAMES.includes(new URL(databaseUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+const localDatabase = isLocalDatabase();
+const skipReason = localDatabase
+  ? false
+  : "TEST_DATABASE_URL is not configured or does not point at a local/ephemeral PostgreSQL host";
+
 function now(offset = 0) {
   return new Date(Date.parse("2026-08-23T00:00:00.000Z") + offset).toISOString();
 }
 
 test("Migration 021 Nexus catalog and ownership foundation on PostgreSQL", {
-  skip: databaseUrl ? false : "TEST_DATABASE_URL is not configured"
+  skip: skipReason
 }, async () => {
   assert.ok(databaseUrl);
   const target = new URL(databaseUrl);

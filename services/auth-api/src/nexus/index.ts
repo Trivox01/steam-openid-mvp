@@ -18,3 +18,5 @@ export * from "./linkedAccountRepository.ts";
 export * from "./linkedAccountService.ts";
 export * from "./steamIdentityResolver.ts";
 export * from "./catalogRepository.ts";
+export * from "./achievementRepository.ts";
+export * from "./steamPlatformAdapter.ts";
