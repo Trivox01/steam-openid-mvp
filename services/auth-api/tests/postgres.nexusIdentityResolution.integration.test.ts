@@ -9,13 +9,28 @@ import { NexusSteamIdentityResolver, SteamIdentityResolutionError } from "../src
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const LOCAL_HOSTNAMES = ["localhost", "127.0.0.1", "::1", "[::1]", "postgres"];
+// Only run against a local or ephemeral CI PostgreSQL. A shared/remote host is
+// treated as "not configured" so the suite skips cleanly and never connects to
+// a database it should not touch.
+function isLocalDatabase(): boolean {
+  if (!databaseUrl) return false;
+  try {
+    return LOCAL_HOSTNAMES.includes(new URL(databaseUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+const localDatabase = isLocalDatabase();
+const skipReason = localDatabase
+  ? false
+  : "TEST_DATABASE_URL is not configured or does not point at a local/ephemeral PostgreSQL host";
 const STEAM_A = "76561198000009001";
 const STEAM_B = "76561198000009002";
 const STEAM_C = "76561198000009003";
 const NOW = "2026-08-23T00:00:00.000Z";
 
 test("Phase 2B dual-read identity resolution on PostgreSQL", {
-  skip: databaseUrl ? false : "TEST_DATABASE_URL is not configured"
+  skip: skipReason
 }, async () => {
   assert.ok(databaseUrl);
   const target = new URL(databaseUrl);

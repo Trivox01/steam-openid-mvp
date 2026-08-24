@@ -558,9 +558,10 @@ for (const manifest of ["package.json", "services/auth-api/package.json"]) {
   );
 }
 
-// E. Phase 2A applies linked accounts and Phase 3A applies catalog/ownership.
-// Credentials and achievement persistence remain deferred. Comments legitimately
-// discuss deferred tables, so only executable SQL is inspected.
+// E. Phase 2A applies linked accounts, Phase 3A applies catalog/ownership and
+// Phase 3B applies achievement persistence. Only provider credentials remain
+// deferred. Comments legitimately discuss deferred tables, so only executable
+// SQL is inspected.
 const migrationsDir = "services/auth-api/src/storage/postgres/migrations";
 const migrations = fs.readdirSync(migrationsDir).filter((name) => name.endsWith(".sql"));
 assert.ok(migrations.length > 0, "existing migrations must remain in place");
@@ -570,21 +571,91 @@ const executableMigrationSql = migrations
   .split("\n")
   .filter((line) => !line.trim().startsWith("--"))
   .join("\n");
-for (const table of [
-  "provider_credentials",
-  "platform_achievements",
-  "user_achievement_states"
-]) {
-  assert.doesNotMatch(
-    executableMigrationSql,
-    new RegExp(table),
-    `${table} must stay a proposal until a later phase applies it`
-  );
-}
+// Provider credentials are the one piece still deferred to a later phase.
+assert.doesNotMatch(
+  executableMigrationSql,
+  /provider_credentials/,
+  "provider_credentials must stay a proposal until a later phase applies it"
+);
 assert.ok(
   !fs.existsSync(path.join(migrationsDir, "020_nexus_multi_platform_foundation.sql")),
   "the full catalog migration must not be added to the migrations directory"
 );
+
+// E2. Phase 3B achievement foundation (migration 022) is applied and additive.
+const achievementsMigrationName = "022_nexus_achievements_foundation.sql";
+assert.equal(
+  migrations.filter((name) => /^022_/.test(name)).length,
+  1,
+  "Phase 3B must ship exactly one migration 022"
+);
+assert.ok(
+  migrations.includes(achievementsMigrationName),
+  `Phase 3B migration must be named exactly ${achievementsMigrationName}`
+);
+const achievementsMigration = fs.readFileSync(
+  path.join(migrationsDir, achievementsMigrationName),
+  "utf8"
+);
+const achievementsMigrationSql = achievementsMigration
+  .split("\n")
+  .filter((line) => !line.trim().startsWith("--"))
+  .join("\n");
+for (const table of ["platform_achievements", "user_achievement_states"]) {
+  assert.match(
+    achievementsMigrationSql,
+    new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\s*\\(`, "i"),
+    `migration 022 must create ${table}`
+  );
+}
+assert.match(
+  achievementsMigrationSql,
+  /CREATE UNIQUE INDEX IF NOT EXISTS platform_achievements_identity_uniq\s+ON platform_achievements \(platform_game_id, provider_achievement_id\)/i,
+  "migration 022 must enforce per-game achievement identity"
+);
+assert.match(
+  achievementsMigrationSql,
+  /CREATE UNIQUE INDEX IF NOT EXISTS user_achievement_states_uniq\s+ON user_achievement_states \(linked_account_id, platform_achievement_id\)/i,
+  "migration 022 must enforce per-linked-account achievement state identity"
+);
+assert.match(
+  achievementsMigrationSql,
+  /CREATE TRIGGER user_achievement_states_provider_match[\s\S]*EXECUTE FUNCTION nexus_enforce_achievement_state_provider_match\(\)/i,
+  "migration 022 must enforce provider consistency between the state and its achievement's game"
+);
+// The provider stays normalized: platform_achievements derives its provider via
+// platform_games, never a duplicated column on the achievement table.
+const platformAchievementsTable = achievementsMigrationSql.match(
+  /CREATE TABLE IF NOT EXISTS platform_achievements \(([\s\S]*?)\n\);/i
+);
+assert.ok(platformAchievementsTable, "migration 022 must define platform_achievements");
+assert.doesNotMatch(
+  platformAchievementsTable[1],
+  /\bprovider\b/i,
+  "migration 022 platform_achievements must derive provider via platform_games"
+);
+// user_achievement_states possesses no redundant userId, matching ownership.
+const userAchievementStatesTable = achievementsMigrationSql.match(
+  /CREATE TABLE IF NOT EXISTS user_achievement_states \(([\s\S]*?)\n\);/i
+);
+assert.ok(userAchievementStatesTable, "migration 022 must define user_achievement_states");
+assert.doesNotMatch(
+  userAchievementStatesTable[1],
+  /\buser_id\b/i,
+  "migration 022 user_achievement_states must derive the Nexus user via linked_account_id"
+);
+// Migration 022 is purely additive: it must never rewrite Phase 1/2/3A tables.
+for (const forbidden of [
+  /ALTER\s+TABLE/i,
+  /DROP\s+(TABLE|COLUMN|CONSTRAINT|INDEX)/i,
+  /access_token|refresh_token|session_token|credential_ref|client_secret|api_key|encryption_key|password|poll_secret/i
+]) {
+  assert.doesNotMatch(
+    achievementsMigrationSql,
+    forbidden,
+    `migration 022 must not contain ${forbidden}`
+  );
+}
 
 const linkedAccountsMigrationName = "020_nexus_linked_platform_accounts.sql";
 assert.ok(
@@ -870,5 +941,6 @@ console.log(
   `Nexus platform validation passed (${assertions} domain assertions, ${domainFiles.length} desktop modules, ` +
     "backend Nexus contracts present, Phase 2A linked-account persistence backend-only and flag-gated, " +
     "Phase 2B identity resolution backend-only and dual-read gated, " +
-    "Phase 3A catalog persistence structurally guarded)."
+    "Phase 3A catalog persistence structurally guarded, " +
+    "Phase 3B achievement persistence applied and additive)."
 );
